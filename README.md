@@ -32,8 +32,9 @@ Um jovem é sugado para dentro do próprio computador enquanto usava IAs de form
 
 ## 🗺️ Mapas Temáticos
 
-1. **Mapa 1 — Dependência:** Focado no uso excessivo e sem senso crítico.
-2. **Mapa 2 — Alucinação:** Focado nos erros e nas informações falsas geradas por IAs.
+1. **Lobby — Interlúdio Entre os Mapas:** Mini-Mapa central para entrar nos outros Mundos ao decorrer do progresso.
+2. **Mapa 1 — Dependência:** Focado no uso excessivo e sem senso crítico.
+3. **Mapa 2 — Alucinação:** Focado nos erros e nas informações falsas geradas por IAs.
 
 ---
 

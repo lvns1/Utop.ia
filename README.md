@@ -1,4 +1,4 @@
-# 🧠 UtopIA
+# UtopIA
 
 > **Um RPG educativo sobre Inteligência Artificial, alucinação, senso crítico e uso consciente de IA.**
 

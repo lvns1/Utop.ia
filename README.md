@@ -473,21 +473,29 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 
 ## 👥 Equipe
 
-### 🎨 Interface Humano-Computador
+1. **🎨 Interface Humano-Computador (IHC)**
 
-**Filipe • Brenda Paiva • Áurea**
+   * **Filipe:** Desenvolvedor front end
+   * **Brenda Paiva:** Pesquisadora de IHC e UI/UX Designer
+   * **Áurea:** Visual Designer
 
-### 💻 Programação Imperativa e Funcional
+2. **💻 Programação Imperativa e Funcional (PIF)**
 
-**Messias • Lucas • Brenna**
+   * **Messias:** Desenvolvedor Core
+   * **Lucas:** Desenvolvedor de Algoritmos
+   * **Brenna:** Desenvolvedora de Sistemas
 
-### 🏗️ Fundamentos de Desenvolvimento de Software
+3. **🏗️ Fundamentos de Desenvolvimento de Software (FDS)**
 
-**Ardilles • Gabriel • Brenna**
+   * **Ardilles:** Arquiteto de Software
+   * **Gabriel:** Scrum Master / Project Owner
+   * **Brenna:** QA Engineer
 
-### 🧠 Lógica
+4. **🧠 Lógica**
 
-**Gabriel • Lucas • Brenna**
+   * **Lucas:** Designer de Puzzles
+   * **Gabriel:** Engenheiro de Regras
+   * **Brenna:** Analista de Conteúdo
 
 ---
 

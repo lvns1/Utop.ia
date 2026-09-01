@@ -250,30 +250,26 @@ O jogador então recebe o desfecho de derrota.
 
 ---
 
-# 📊 Sistema de pontuação
+## 📊 Sistema de pontuação
 
-A pontuação considera o desempenho do jogador durante toda a jornada.
+A pontuação considera apenas o desempenho do jogador nos desafios.
 
 Uma proposta inicial é:
 
 ```text
 SCORE =
 Pontos dos Quizzes
-+ Bônus Inicial
 + Pontos dos Puzzles
-- Ações/Tokens utilizados
 ```
 
-Dessa forma, não basta apenas concluir o jogo.
+A quantidade de ações/tokens **não interfere na pontuação**. Ela é utilizada exclusivamente para controlar o consumo das vidas do jogador.
 
-O jogador é incentivado a:
+Dessa forma, o jogador é incentivado a:
 
-* aprender;
-* errar menos;
-* pensar antes de agir;
-* explorar de maneira eficiente;
+* aprender os conceitos;
+* acertar os quizzes;
 * solucionar os puzzles;
-* utilizar os recursos disponíveis estrategicamente.
+* tomar decisões de forma consciente.
 
 ### 🏆 Ranking
 
@@ -283,11 +279,10 @@ O ranking poderá considerar:
 
 * pontuação;
 * quantidade de vidas restantes;
-* quantidade de tokens utilizados;
 * desempenho nos quizzes;
 * desempenho nos puzzles;
 * resultado da batalha final.
-
+* 
 ---
 
 # 👾 Bloco 3 — A Batalha Final

@@ -653,10 +653,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 </p>
 
 </details>
----
-## 📋 Organização e Acompanhamento do Projeto
 
-O desenvolvimento do Utop.IA foi acompanhado ao longo das semanas por meio do Jira, permitindo organizar as atividades, acompanhar o progresso e visualizar a evolução do projeto durante o desenvolvimento.
+### 📅 Organização e Acompanhamento do projeto
+
+O desenvolvimento do UtopIA foi acompanhado ao longo das semanas por meio do Jira, permitindo organizar as atividades, acompanhar o progresso e visualizar a evolução do projeto durante o desenvolvimento.
 
 ### 📅 Evolução do desenvolvimento
 

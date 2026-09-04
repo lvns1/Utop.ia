@@ -471,6 +471,261 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 
 ---
 
+### 📝 User Stories
+
+As User Stories foram utilizadas para representar as funcionalidades, necessidades e objetivos do projeto a partir da perspectiva dos usuários e do desenvolvimento do UtopIA.
+
+<p align="center">
+  <img src="assets/trello/board.png" alt="Board geral" width="900">
+</p>
+
+<p align="center">
+  <em>Board geral de organização das Users Storys.</em>
+</p>
+
+<details>
+<summary><strong>US01</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us01.png" alt="User Story 01" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US02</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us02.png" alt="User Story 02" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US03</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us03.png" alt="User Story 03" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US04</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us04.png" alt="User Story 04" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US05</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us05.png" alt="User Story 05" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US06</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us06.png" alt="User Story 06" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US07</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us07.png" alt="User Story 07" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US08</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us08.png" alt="User Story 08" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US09</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us09.png" alt="User Story 09" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US10</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us10.png" alt="User Story 10" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US11</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us11.png" alt="User Story 11" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US12</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us12.png" alt="User Story 12" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US13</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us13.png" alt="User Story 13" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US14</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us14.png" alt="User Story 14" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US15</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us15.png" alt="User Story 15" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US16</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us16.png" alt="User Story 16" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US17</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us17.png" alt="User Story 17" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US18</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us18.png" alt="User Story 1" width="900">
+</p>
+
+</details>
+
+<details>
+<summary><strong>US19</strong></summary>
+
+<p align="center">
+  <img src="assets/trello/us19.png" alt="User Story 19" width="900">
+</p>
+
+</details>
+---
+## 📋 Organização e Acompanhamento do Projeto
+
+O desenvolvimento do Utop.IA foi acompanhado ao longo das semanas por meio do Jira, permitindo organizar as atividades, acompanhar o progresso e visualizar a evolução do projeto durante o desenvolvimento.
+
+### 📅 Evolução do desenvolvimento
+
+<p align="center">
+  <img src="assets/jira/week04e05.png" alt="Acompanhamento do projeto nas semanas 4 e 5" width="900">
+</p>
+
+<p align="center">
+  <em>Organização das atividades e andamento do projeto — semanas 4 e 5.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week06e07.png" alt="Acompanhamento do projeto nas semanas 6 e 7" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 6 e 7.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week08e09.png" alt="Acompanhamento do projeto nas semanas 8 e 9" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 8 e 9.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week10e11.png" alt="Acompanhamento do projeto nas semanas 10 e 11" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 10 e 11.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week12.png" alt="Acompanhamento do projeto na semana 12" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semana 12.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week13e14.png" alt="Acompanhamento do projeto nas semanas 13 e 14" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 13 e 14.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week15e16.png" alt="Acompanhamento do projeto nas semanas 15 e 16" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 15 e 16.</em>
+</p>
+
+<p align="center">
+  <img src="assets/jira/week17e18.png" alt="Acompanhamento do projeto nas semanas 17 e 18" width="900">
+</p>
+
+<p align="center">
+  <em>Acompanhamento do desenvolvimento — semanas 17 e 18.</em>
+</p>
+
+---
+
 ## 👥 Equipe
 
 1. **🎨 Interface Humano-Computador (IHC)**

@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>UtopIA — Storyboard (US01–US19)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b1b1b;
+    --paper:#f7f6f3;
+    --card:#ffffff;
+    --rule:#1b1b1b;
+    --muted:#8b8985;
+    --cap:#3a3936;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.45;
+  }
+
+  header{max-width:1120px;margin:0 auto;padding:52px 26px 18px;}
+  .sheet-no{font-family:'Caveat',cursive;font-size:22px;color:var(--muted);}
+  header h1{font-size:32px;font-weight:600;margin:2px 0 6px;letter-spacing:-.015em;}
+  header .sub{margin:0;color:var(--muted);font-size:14px;max-width:580px;}
+  .rule{max-width:1120px;margin:16px auto 0;padding:0 26px;}
+  .rule div{border-top:2px solid var(--rule);}
+  header .hint{max-width:1120px;margin:12px auto 0;padding:0 26px;font-size:12.5px;color:var(--muted);}
+  header .hint b{color:var(--ink);font-weight:600;}
+
+  main{max-width:1120px;margin:0 auto;padding:0 26px 90px;}
+
+  .act-head{display:flex;align-items:baseline;gap:12px;margin:52px 0 20px;}
+  .act-head .n{font-family:'Caveat',cursive;font-size:26px;line-height:1;color:var(--ink);}
+  .act-head .t{font-size:15px;font-weight:600;}
+  .act-head .r{color:var(--muted);font-size:12.5px;margin-left:auto;}
+  .act-head::after{content:"";}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:30px 26px;}
+  @media(max-width:760px){ .grid{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--card);
+    border:1.5px solid var(--ink);
+    cursor:pointer;
+    position:relative;
+    transition:box-shadow .16s ease, transform .16s ease;
+  }
+  .panel:hover{box-shadow:6px 6px 0 rgba(0,0,0,.06);transform:translate(-1.5px,-1.5px);}
+  .panel:focus-visible{outline:2px solid #000;outline-offset:3px;}
+
+  .shot{position:relative;border-bottom:1.5px solid var(--ink);}
+  .shot svg{display:block;width:100%;height:auto;}
+  .idx{
+    position:absolute;top:-1px;left:-1px;
+    background:var(--ink);color:#fff;
+    font-family:'Caveat',cursive;font-size:17px;line-height:1;
+    padding:5px 9px 6px;
+  }
+  .us{
+    position:absolute;top:8px;right:10px;
+    font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--muted);
+  }
+
+  .cap{padding:10px 12px 12px;display:flex;gap:10px;align-items:flex-start;}
+  .cam{
+    font-family:'Caveat',cursive;font-size:19px;line-height:1.1;
+    white-space:nowrap;padding-top:1px;
+  }
+  .cap p{margin:0;font-size:12.5px;color:var(--cap);}
+  .plus{
+    margin-left:auto;flex:none;width:19px;height:19px;border:1px solid #c9c7c2;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);
+    transition:transform .2s ease;
+  }
+  .panel.open .plus{transform:rotate(45deg);}
+
+  .more{max-height:0;overflow:hidden;transition:max-height .26s ease;border-top:1px dashed #d6d4cf;}
+  .panel.open .more{max-height:240px;}
+  .more-in{padding:11px 12px 13px;}
+  .more-in p{margin:0 0 9px;font-size:11.5px;color:var(--cap);}
+  .tags{display:flex;flex-wrap:wrap;gap:5px;}
+  .tag{font-size:10px;padding:3px 8px;border:1px solid #d6d4cf;border-radius:20px;color:#6b6965;}
+
+  footer{max-width:1120px;margin:0 auto;padding:22px 26px 70px;border-top:2px solid var(--rule);color:var(--muted);font-size:12px;}
+
+  /* traço */
+  .ln{fill:none;stroke:#1b1b1b;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}
+  .ln-t{fill:none;stroke:#1b1b1b;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+  .ln-h{fill:none;stroke:#1b1b1b;stroke-width:3.6;stroke-linecap:round;stroke-linejoin:round;}
+  .fl{fill:#1b1b1b;stroke:none;}
+  .fl-s{fill:#1b1b1b;opacity:.72;stroke:none;}
+  .pencil{filter:url(#pencil);}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="pencil" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.026" numOctaves="3" seed="11" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.7" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <pattern id="hL" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <line x1="0" y1="0" x2="0" y2="7" stroke="#1b1b1b" stroke-width=".55" opacity=".33"/>
+    </pattern>
+    <pattern id="hM" width="4.4" height="4.4" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <line x1="0" y1="0" x2="0" y2="4.4" stroke="#1b1b1b" stroke-width=".7" opacity=".5"/>
+    </pattern>
+    <pattern id="hD" width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <line x1="0" y1="0" x2="0" y2="3.4" stroke="#1b1b1b" stroke-width=".95" opacity=".62"/>
+      <line x1="0" y1="0" x2="3.4" y2="0" stroke="#1b1b1b" stroke-width=".7" opacity=".4"/>
+    </pattern>
+    <pattern id="dots" width="9" height="9" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r=".85" fill="#1b1b1b" opacity=".3"/>
+      <circle cx="6.5" cy="6" r=".6" fill="#1b1b1b" opacity=".22"/>
+    </pattern>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1b1b1b"/>
+    </marker>
+    <clipPath id="fr"><rect x="7" y="7" width="386" height="211"/></clipPath>
+  </defs>
+</svg>
+
+<header>
+  <div class="sheet-no">UtopIA / storyboard</div>
+  <h1>Sequência de jogo — US01 a US19</h1>
+  <p class="sub">Dezenove quadros na ordem de execução, da abertura do menu ao ranking final.</p>
+</header>
+<div class="rule"><div></div></div>
+<div class="hint">Toque em um quadro para abrir os <b>critérios de aceite</b> da história correspondente.</div>
+
+<main id="main"></main>
+<footer>UtopIA — documento de apoio ao sprint · jogo em C com raylib</footer>
+
+<script>
+/* ============ helpers de desenho ============ */
+const VB = {w:400, h:225};
+
+function frameEdge(){
+  return `<path class="ln-t" d="M6 6 L394 7 L393 219 L7 218 Z" opacity=".85"/>`;
+}
+function sky(op){
+  const o = op==null?1:op;
+  return `<rect x="0" y="0" width="400" height="118" fill="url(#hL)" opacity="${o*0.58}"/>
+          <rect x="0" y="0" width="400" height="62" fill="url(#hL)" opacity="${o*0.42}"/>`;
+}
+function band(x,y,w,h,pat,op){ return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${pat})" opacity="${op==null?1:op}"/>`; }
+
+function ground(y, wob){
+  const w = wob||0;
+  return `<path class="ln-t" d="M0 ${y} Q100 ${y-w} 200 ${y} T400 ${y}"/>`;
+}
+function persp(y, cx, n){
+  let s='';
+  for(let i=0;i<n;i++){
+    const t=(i/(n-1))*2-1;
+    s+=`<line class="ln-t" x1="${cx+t*300}" y1="225" x2="${cx+t*26}" y2="${y}" opacity=".3"/>`;
+  }
+  return s;
+}
+function arrow(d, cls){ return `<path class="${cls||'ln'}" d="${d}" marker-end="url(#ah)" fill="none"/>`; }
+
+/* figura humana: poses em sistema local 100x100 (pés em y=100) */
+const HAIR = {
+  none:'',
+  short:`<path class="ln-t" d="M42 9 Q50 1 58 9 Q54 5 50 5 Q46 5 42 9 Z" fill="#1b1b1b" opacity=".85"/>`,
+  mop:`<path class="fl" d="M41 11 Q42 1 50 1 Q59 1 59 11 Q56 6 50 6 Q44 6 41 11 Z" opacity=".9"/>`,
+  back:`<path class="fl" d="M41 12 Q41 2 50 2 Q59 2 59 12 Q56 8 50 8 Q44 8 41 12 Z" opacity=".9"/>`
+};
+function facePlain(){
+  return `<circle class="fl" cx="46.6" cy="12" r="1.15"/><circle class="fl" cx="53.4" cy="12" r="1.15"/>
+          <path class="ln-t" d="M47 16.4 Q50 18 53 16.4" stroke-width="1.2"/>`;
+}
+function faceTense(){
+  return `<path class="ln-t" d="M44.4 9.6 L47.6 10.9 M55.6 9.6 L52.4 10.9" stroke-width="1.2"/>
+          <circle class="fl" cx="46.8" cy="12.4" r="1.15"/><circle class="fl" cx="53.2" cy="12.4" r="1.15"/>
+          <path class="ln-t" d="M47 17.2 Q50 15.6 53 17.2" stroke-width="1.2"/>`;
+}
+function faceOpen(){
+  return `<circle class="fl" cx="46.6" cy="11.6" r="1.3"/><circle class="fl" cx="53.4" cy="11.6" r="1.3"/>
+          <ellipse class="ln-t" cx="50" cy="17" rx="2.4" ry="2.9" stroke-width="1.2"/>`;
+}
+const FACE = {plain:facePlain, tense:faceTense, open:faceOpen, none:()=>''};
+
+const TORSO = `<path class="ln" d="M41.5 27 Q50 23.6 58.5 27 L56.6 57 Q50 60.4 43.4 57 Z"/>`;
+
+const POSES = {
+  stand: (o)=>`
+    <circle class="ln" cx="50" cy="12" r="8.4"/>${HAIR[o.hair||'short']}${FACE[o.face||'plain']()}
+    <line class="ln-t" x1="50" y1="20.4" x2="50" y2="25"/>
+    ${TORSO}
+    <path class="ln" d="M42.6 29.5 Q36.6 41 38 53"/><path class="ln" d="M57.4 29.5 Q63.4 41 62 53"/>
+    <circle class="fl" cx="38" cy="54.4" r="2.1"/><circle class="fl" cx="62" cy="54.4" r="2.1"/>
+    <path class="ln" d="M46 58.6 Q43.4 79 43.4 96"/><path class="ln" d="M54 58.6 Q56.6 79 56.6 96"/>
+    <path class="ln" d="M43.4 96.6 L36.4 99"/><path class="ln" d="M56.6 96.6 L63.6 99"/>`,
+  back: (o)=>`
+    <circle class="ln" cx="50" cy="12" r="8.4"/>${HAIR.back}
+    <line class="ln-t" x1="50" y1="20.4" x2="50" y2="25"/>
+    ${TORSO}<line class="ln-t" x1="50" y1="28" x2="50" y2="56" opacity=".55"/>
+    <path class="ln" d="M42.6 29.5 Q36.6 41 38 53"/><path class="ln" d="M57.4 29.5 Q63.4 41 62 53"/>
+    <circle class="fl" cx="38" cy="54.4" r="2.1"/><circle class="fl" cx="62" cy="54.4" r="2.1"/>
+    <path class="ln" d="M46 58.6 Q43.4 79 43.4 96"/><path class="ln" d="M54 58.6 Q56.6 79 56.6 96"/>
+    <path class="ln" d="M43.4 96.6 L36.4 99"/><path class="ln" d="M56.6 96.6 L63.6 99"/>`,
+  point: (o)=>`
+    <circle class="ln" cx="50" cy="12" r="8.4"/>${HAIR[o.hair||'short']}${FACE[o.face||'plain']()}
+    <line class="ln-t" x1="50" y1="20.4" x2="50" y2="25"/>
+    ${TORSO}
+    <path class="ln" d="M42.6 29.5 Q36.6 41 38 53"/><circle class="fl" cx="38" cy="54.4" r="2.1"/>
+    <path class="ln" d="M57.4 29.5 Q70 27.4 83 25.6"/><circle class="fl" cx="84.6" cy="25.2" r="2.1"/>
+    <path class="ln" d="M46 58.6 Q43.4 79 43.4 96"/><path class="ln" d="M54 58.6 Q56.6 79 56.6 96"/>
+    <path class="ln" d="M43.4 96.6 L36.4 99"/><path class="ln" d="M56.6 96.6 L63.6 99"/>`,
+  walk: (o)=>`
+    <circle class="ln" cx="50" cy="12" r="8.4"/>${HAIR[o.hair||'short']}${FACE[o.face||'plain']()}
+    <line class="ln-t" x1="50" y1="20.4" x2="50" y2="25"/>
+    ${TORSO}
+    <path class="ln" d="M42.6 29.5 Q34.6 38 31.4 48"/><circle class="fl" cx="30.6" cy="49.6" r="2.1"/>
+    <path class="ln" d="M57.4 29.5 Q65.4 40 68.6 47"/><circle class="fl" cx="69.4" cy="48.6" r="2.1"/>
+    <path class="ln" d="M46 58.6 Q39 76 32.4 94"/><path class="ln" d="M54 58.6 Q62 75 69.4 92"/>
+    <path class="ln" d="M32.4 94.4 L25.6 97.6"/><path class="ln" d="M69.4 92.4 L76.6 95.6"/>`,
+  kneel: (o)=>`
+    <circle class="ln" cx="50" cy="30" r="8.4"/>
+    <g transform="translate(0,18)">${HAIR[o.hair||'short']}${FACE[o.face||'plain']()}</g>
+    <line class="ln-t" x1="50" y1="38.4" x2="50" y2="43"/>
+    <path class="ln" d="M41.5 45 Q50 41.6 58.5 45 L56.6 73 Q50 76.4 43.4 73 Z"/>
+    <path class="ln" d="M57.4 47.5 Q70 57 77 68"/><circle class="fl" cx="78.4" cy="69.4" r="2.1"/>
+    <path class="ln" d="M42.6 47.5 Q36 57 39.4 66"/><circle class="fl" cx="40.4" cy="67.6" r="2.1"/>
+    <path class="ln" d="M46 74.6 Q38.6 86 46 97"/><path class="ln" d="M54 74.6 Q65 84 65.4 96.6"/>
+    <path class="ln" d="M46 97 L39 99.4"/><path class="ln" d="M65.4 96.6 L72.4 99"/>`,
+  guard: (o)=>`
+    <circle class="ln" cx="50" cy="14" r="8.4"/>
+    <g transform="translate(0,2)">${HAIR[o.hair||'short']}${FACE[o.face||'tense']()}</g>
+    <line class="ln-t" x1="50" y1="22.4" x2="50" y2="27"/>
+    <path class="ln" d="M41.5 29 Q50 25.6 58.5 29 L56.6 58 Q50 61.4 43.4 58 Z"/>
+    <path class="ln" d="M42.6 31.5 Q33.4 26 35.4 14.6"/><circle class="fl" cx="35.6" cy="13" r="2.1"/>
+    <path class="ln" d="M57.4 31.5 Q66.6 26 64.6 14.6"/><circle class="fl" cx="64.4" cy="13" r="2.1"/>
+    <path class="ln" d="M46 59.6 Q41.4 79 39.4 96"/><path class="ln" d="M54 59.6 Q58.6 79 60.6 96"/>
+    <path class="ln" d="M39.4 96.6 L32.4 99"/><path class="ln" d="M60.6 96.6 L67.6 99"/>`,
+  lunge: (o)=>`
+    <g transform="rotate(9 50 60)">
+      <circle class="ln" cx="50" cy="15" r="8.4"/>
+      <g transform="translate(0,3)">${HAIR[o.hair||'short']}${FACE[o.face||'tense']()}</g>
+      <line class="ln-t" x1="50" y1="23.4" x2="50" y2="28"/>
+      <path class="ln" d="M41.5 30 Q50 26.6 58.5 30 L56.6 59 Q50 62.4 43.4 59 Z"/>
+      <path class="ln" d="M57.4 32.5 Q71 29 85 24.4"/><circle class="fl" cx="86.6" cy="23.8" r="2.1"/>
+      <path class="ln" d="M42.6 32.5 Q33.4 43 31.4 53"/><circle class="fl" cx="30.6" cy="54.6" r="2.1"/>
+      <path class="ln" d="M54 60.6 Q66 76 78 90"/><path class="ln" d="M46 60.6 Q36.6 80 26.6 94"/>
+      <path class="ln" d="M78 90.4 L85.4 92.4"/><path class="ln" d="M26.6 94.4 L19.6 96.6"/>
+    </g>`,
+  awe: (o)=>`
+    <circle class="ln" cx="50" cy="13" r="8.4"/>
+    <g transform="translate(0,1)">${HAIR[o.hair||'short']}${FACE[o.face||'open']()}</g>
+    <line class="ln-t" x1="50" y1="21.4" x2="50" y2="26"/>
+    ${TORSO}
+    <path class="ln" d="M42.6 29.5 Q31.4 37 27.4 45"/><circle class="fl" cx="26.4" cy="46.6" r="2.1"/>
+    <path class="ln" d="M57.4 29.5 Q68.6 37 72.6 45"/><circle class="fl" cx="73.6" cy="46.6" r="2.1"/>
+    <path class="ln" d="M46 58.6 Q43.4 79 43.4 96"/><path class="ln" d="M54 58.6 Q56.6 79 56.6 96"/>
+    <path class="ln" d="M43.4 96.6 L36.4 99"/><path class="ln" d="M56.6 96.6 L63.6 99"/>`
+};
+
+function fig(pose, x, footY, h, o){
+  o = o||{};
+  const s = h/100;
+  const inner = POSES[pose](o);
+  const flip = o.flip ? `<g transform="translate(100,0) scale(-1,1)">${inner}</g>` : inner;
+  const shadow = o.noShadow ? '' :
+    `<ellipse cx="${x}" cy="${footY+2}" rx="${h*0.20}" ry="${h*0.045}" fill="#1b1b1b" opacity=".13"/>`;
+  return shadow + `<g transform="translate(${x-50*s},${footY-100*s}) scale(${s})">${flip}</g>`;
+}
+
+/* silhueta distante */
+function sil(x, footY, h, o){
+  o=o||{};
+  const s=h/100;
+  return `<g transform="translate(${x-50*s},${footY-100*s}) scale(${s})" opacity="${o.op||.8}">
+    <path class="fl" d="M50 2 a8 8 0 0 1 0 16 a8 8 0 0 1 0 -16 Z"/>
+    <path class="fl" d="M42 20 Q50 17 58 20 L57 56 L54 56 L53 96 L47 96 L46 56 L43 56 Z"/>
+  </g>`;
+}
+
+/* Luci — orbe companion */
+function luci(cx, cy, r, mood){
+  const halo = `<circle class="ln-t" cx="${cx}" cy="${cy}" r="${r*1.34}" stroke-dasharray="2.5 5" opacity=".6"/>`;
+  const shade = `<path d="M${cx-r} ${cy} a${r} ${r} 0 0 0 ${r*2} 0 a${r} ${r} 0 0 0 ${-r*2} 0"
+      fill="url(#hL)" opacity=".8"/>`;
+  let face;
+  if(mood==='glitch'){
+    face = `<path class="ln-t" d="M${cx-r*0.46} ${cy-r*0.3} l${r*0.26} ${r*0.26} l${-r*0.26} ${r*0.26}
+                M${cx+r*0.46} ${cy-r*0.3} l${-r*0.26} ${r*0.26} l${r*0.26} ${r*0.26}" stroke-width="1.6"/>
+            <path class="ln-t" d="M${cx-r*0.42} ${cy+r*0.58} Q${cx} ${cy+r*0.1} ${cx+r*0.42} ${cy+r*0.58}" stroke-width="1.6"/>
+            <path class="ln-t" d="M${cx-r*1.5} ${cy-r*0.4} l${r*0.5} ${r*0.16} M${cx+r*1.1} ${cy+r*0.5} l${r*0.5} ${-r*0.16}" opacity=".8"/>`;
+  } else if(mood==='talk'){
+    face = `<circle class="fl" cx="${cx-r*0.3}" cy="${cy-r*0.14}" r="${r*0.11}"/>
+            <circle class="fl" cx="${cx+r*0.3}" cy="${cy-r*0.14}" r="${r*0.11}"/>
+            <ellipse class="ln-t" cx="${cx}" cy="${cy+r*0.42}" rx="${r*0.2}" ry="${r*0.26}" stroke-width="1.4"/>`;
+  } else {
+    face = `<circle class="fl" cx="${cx-r*0.3}" cy="${cy-r*0.14}" r="${r*0.11}"/>
+            <circle class="fl" cx="${cx+r*0.3}" cy="${cy-r*0.14}" r="${r*0.11}"/>
+            <path class="ln-t" d="M${cx-r*0.34} ${cy+r*0.34} Q${cx} ${cy+r*0.72} ${cx+r*0.34} ${cy+r*0.34}" stroke-width="1.4"/>`;
+  }
+  return `${halo}<circle class="ln" cx="${cx}" cy="${cy}" r="${r}"/>${shade}${face}
+          <path class="ln-t" d="M${cx} ${cy-r-3} v-${r*0.42}"/>`;
+}
+
+/* painel flutuante (UI do jogo dentro da cena) */
+function slab(x,y,w,h,lines,o){
+  o=o||{};
+  let s=`<rect class="ln" x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>
+         <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#hL)" opacity="${o.tone==null?.55:o.tone}"/>`;
+  for(let i=0;i<lines;i++){
+    const ly = y + 11 + i*((h-18)/Math.max(lines-1,1));
+    const lw = (i%3===2? w*0.45 : w*0.7);
+    s+=`<line class="ln-t" x1="${x+9}" y1="${ly}" x2="${x+9+lw}" y2="${ly}" opacity=".75"/>`;
+  }
+  return s;
+}
+function vignette(){
+  return `<path d="M0 0 H130 Q60 40 0 62 Z" fill="url(#hM)" opacity=".28"/>
+          <path d="M400 225 H268 Q340 186 400 164 Z" fill="url(#hM)" opacity=".26"/>`;
+}
+
+/* ============ quadros ============ */
+const SHOTS = [];
+
+/* 01 — menu principal: jogador de costas diante do letreiro */
+SHOTS[0] = `
+  ${sky(.55)}
+  ${band(0,0,400,96,'hM',.3)}
+  ${ground(168,5)}${persp(168,200,7)}
+  <g class="pencil">
+    <path class="ln" d="M104 44 H296 V116 H104 Z"/>
+    ${band(104,44,192,72,'hL',.5)}
+    <text x="200" y="80" text-anchor="middle" font-family="Caveat, cursive" font-size="30" fill="#1b1b1b">UtopIA</text>
+    <line class="ln-t" x1="132" y1="92" x2="268" y2="92" opacity=".7"/>
+    <line class="ln-t" x1="146" y1="101" x2="254" y2="101" opacity=".55"/>
+    <line class="ln-t" x1="158" y1="109" x2="242" y2="109" opacity=".45"/>
+    ${sil(52,172,44,{op:.35})}${sil(350,170,40,{op:.3})}
+    ${fig('back',200,214,96,{})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 02 — comando inválido */
+SHOTS[1] = `
+  ${sky(.4)}
+  ${ground(176,4)}
+  <g class="pencil">
+    ${slab(196,30,168,86,4,{tone:.4})}
+    <path class="ln" d="M196 92 L178 116 L214 108" fill="#fff"/>
+    <path class="ln-h" d="M262 56 L300 92 M300 56 L262 92"/>
+    ${fig('guard',104,206,116,{face:'tense'})}
+    <path class="ln-t" d="M150 84 q10 -8 18 2" opacity=".6"/>
+    <path class="ln-t" d="M146 100 q12 -6 20 4" opacity=".45"/>
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 03 — cadastro do nome */
+SHOTS[2] = `
+  ${sky(.45)}${ground(180,3)}${persp(180,210,5)}
+  <g class="pencil">
+    ${slab(206,48,150,74,0,{tone:.35})}
+    <text x="281" y="82" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="#1b1b1b">nome do jogador</text>
+    <rect class="ln" x="238" y="90" width="86" height="22" rx="2"/>
+    <text x="281" y="107" text-anchor="middle" font-family="Caveat, cursive" font-size="20" fill="#1b1b1b">LUC</text>
+    ${fig('point',110,204,112,{face:'plain'})}
+    ${luci(360,150,15,'plain')}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 04 — score */
+SHOTS[3] = `
+  ${sky(.4)}${ground(184,3)}
+  <g class="pencil">
+    <line class="ln" x1="196" y1="164" x2="378" y2="164"/>
+    <line class="ln" x1="196" y1="164" x2="196" y2="40"/>
+    <rect class="ln" x="212" y="122" width="26" height="42"/>${band(212,122,26,42,'hL',.6)}
+    <rect class="ln" x="252" y="96" width="26" height="68"/>${band(252,96,26,68,'hM',.5)}
+    <rect class="ln" x="292" y="62" width="26" height="102"/>${band(292,62,26,102,'hD',.45)}
+    <rect class="ln" x="332" y="44" width="26" height="120"/>${band(332,44,26,120,'hD',.6)}
+    ${arrow('M206 138 Q276 48 350 30','ln-t')}
+    <text x="298" y="26" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="#1b1b1b">+ score</text>
+    ${fig('awe',104,206,110,{face:'open'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 05 — auto-save: pilar de checkpoint */
+SHOTS[4] = `
+  ${sky(.5)}${band(0,120,400,105,'hL',.35)}
+  ${ground(178,4)}${persp(178,190,6)}
+  <g class="pencil">
+    <path class="ln" d="M170 178 L170 92 Q200 76 230 92 L230 178"/>
+    ${band(170,92,60,86,'hM',.35)}
+    <path class="ln" d="M182 112 h36 v30 h-36 Z"/>
+    <path class="ln-t" d="M188 112 v12 h24 v-12"/>
+    <circle class="ln-t" cx="200" cy="134" r="5"/>
+    <circle class="ln-t" cx="200" cy="120" r="34" stroke-dasharray="3 6" opacity=".55"/>
+    <circle class="ln-t" cx="200" cy="120" r="46" stroke-dasharray="2 8" opacity=".35"/>
+    ${fig('stand',306,206,98,{flip:true,face:'plain'})}
+    ${sil(62,176,36,{op:.3})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 06 — HUD sobre o ombro */
+SHOTS[5] = `
+  ${sky(.45)}${ground(172,4)}${persp(172,180,6)}
+  <g class="pencil">
+    <path class="ln-t" d="M18 22 h30 M18 22 v26"/>
+    <path class="ln-t" d="M382 22 h-30 M382 22 v26"/>
+    <path class="ln-t" d="M18 203 h30 M18 203 v-26"/>
+    <path class="ln-t" d="M382 203 h-30 M382 203 v-26"/>
+    <path class="ln" d="M30 36 q-6 -9 -14 -3 q-8 6 0 14 q6 6 14 12 q8 -6 14 -12 q8 -8 0 -14 q-8 -6 -14 3 Z"/>
+    <path class="ln" d="M62 36 q-6 -9 -14 -3 q-8 6 0 14 q6 6 14 12 q8 -6 14 -12 q8 -8 0 -14 q-8 -6 -14 3 Z"/>
+    <path class="ln-t" d="M94 36 q-6 -9 -14 -3 q-8 6 0 14 q6 6 14 12 q8 -6 14 -12 q8 -8 0 -14 q-8 -6 -14 3 Z" opacity=".4"/>
+    <rect class="ln" x="300" y="30" width="22" height="22" rx="2"/>${band(300,30,22,22,'hM',.5)}
+    <rect class="ln" x="330" y="30" width="22" height="22" rx="2"/>
+    <rect class="ln-t" x="360" y="30" width="22" height="22" rx="2" stroke-dasharray="3 3" opacity=".5"/>
+    <text x="200" y="44" text-anchor="middle" font-family="Caveat, cursive" font-size="19" fill="#1b1b1b">score 0350</text>
+    ${fig('back',176,212,104,{})}
+    ${sil(324,170,34,{op:.28})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 07 — quiz do bloco 1 */
+SHOTS[6] = `
+  ${sky(.5)}${ground(182,4)}${persp(182,200,6)}
+  <g class="pencil">
+    ${slab(46,34,142,96,4,{tone:.4})}
+    ${slab(212,34,142,96,4,{tone:.4})}
+    <path class="ln-h" d="M236 58 L262 84 M262 58 L236 84" opacity=".9"/>
+    <path class="ln-t" d="M84 58 q12 -10 24 0" opacity=".7"/>
+    <text x="117" y="126" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">sala 1</text>
+    <text x="283" y="126" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">sala 2</text>
+    ${arrow('M188 150 Q200 132 212 150','ln-t')}
+    ${fig('point',150,212,86,{face:'plain'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 08 — Luci se apresenta */
+SHOTS[7] = `
+  ${sky(.4)}${band(0,0,400,110,'hM',.22)}
+  ${ground(186,5)}
+  <g class="pencil">
+    ${luci(268,84,42,'talk')}
+    <path class="ln" d="M196 78 H108 a7 7 0 0 1 -7 -7 V40 a7 7 0 0 1 7 -7 h88"/>
+    <path class="ln" d="M196 33 v45 l16 -10 Z" fill="#fff"/>
+    <line class="ln-t" x1="114" y1="48" x2="186" y2="48" opacity=".7"/>
+    <line class="ln-t" x1="114" y1="58" x2="176" y2="58" opacity=".6"/>
+    <line class="ln-t" x1="114" y1="68" x2="156" y2="68" opacity=".45"/>
+    ${fig('awe',96,212,96,{face:'open'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 09 — pausa */
+SHOTS[8] = `
+  ${sky(.45)}${ground(178,4)}${persp(178,200,6)}
+  <g class="pencil" opacity=".5">
+    ${fig('walk',62,206,84,{})}
+    ${sil(344,172,36,{op:.3})}
+  </g>
+  <rect x="0" y="0" width="400" height="225" fill="url(#hM)" opacity=".34"/>
+  <g class="pencil">
+    <rect class="ln" x="118" y="52" width="164" height="118" rx="3" fill="#fff" fill-opacity=".92"/>
+    <rect class="ln" x="176" y="70" width="12" height="34"/><rect class="ln" x="212" y="70" width="12" height="34"/>
+    <line class="ln-t" x1="136" y1="122" x2="264" y2="122" opacity=".7"/>
+    <line class="ln-t" x1="136" y1="136" x2="264" y2="136" opacity=".6"/>
+    <line class="ln-t" x1="136" y1="150" x2="222" y2="150" opacity=".5"/>
+  </g>
+  ${frameEdge()}`;
+
+/* 10 — confirmação de reinício */
+SHOTS[9] = `
+  ${sky(.4)}${ground(184,3)}
+  <g class="pencil">
+    <path class="ln" d="M266 60 a44 44 0 1 0 14 -30" />
+    <path class="ln" d="M266 24 v30 h30"/>
+    <rect class="ln" x="206" y="122" width="150" height="54" rx="3" fill="#fff" fill-opacity=".9"/>
+    <text x="281" y="145" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="#1b1b1b">apagar progresso?</text>
+    <text x="281" y="166" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="#1b1b1b">S / N</text>
+    ${fig('stand',96,204,110,{face:'tense'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 11 — encerrar: porta de luz */
+SHOTS[10] = `
+  ${sky(.55)}${band(0,110,400,115,'hL',.4)}
+  ${ground(176,4)}${persp(176,236,7)}
+  <g class="pencil">
+    <path class="ln" d="M196 176 V64 q40 -22 80 0 V176 Z"/>
+    <rect x="204" y="70" width="64" height="106" fill="#fff"/>
+    <path class="ln-t" d="M212 176 V80 M228 176 V74 M244 176 V74 M260 176 V80" opacity=".35"/>
+    ${arrow('M132 150 Q168 146 190 148','ln-t')}
+    ${fig('walk',110,208,92,{face:'plain'})}
+    ${sil(348,174,34,{op:.25})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 12 — janela de contexto */
+SHOTS[11] = `
+  ${sky(.45)}${ground(180,4)}${persp(180,200,8)}
+  <g class="pencil">
+    <rect class="ln" x="120" y="30" width="196" height="30" rx="4"/>
+    <rect x="126" y="36" width="118" height="18" fill="url(#hD)" opacity=".75"/>
+    <rect class="ln-t" x="320" y="37" width="8" height="16" rx="2"/>
+    <text x="218" y="78" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="#1b1b1b">14 / 15 ações</text>
+    <path class="ln-h" d="M300 96 l14 18 l-14 18" opacity=".55"/>
+    <path class="ln-h" d="M328 96 l14 18 l-14 18" opacity=".3"/>
+    ${fig('walk',134,208,102,{face:'tense'})}
+    ${arrow('M186 196 Q232 192 272 194','ln-t')}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 13 — mapa de salas */
+SHOTS[12] = `
+  ${sky(.5)}${ground(172,4)}${persp(172,200,8)}
+  <g class="pencil">
+    <path class="ln" d="M54 156 V86 q30 -18 60 0 V156 Z"/>${band(58,92,52,64,'hL',.5)}
+    <path class="ln" d="M170 152 V78 q30 -18 60 0 V152 Z"/>${band(174,84,52,68,'hM',.4)}
+    <path class="ln" d="M286 156 V86 q30 -18 60 0 V156 Z"/>${band(290,92,52,64,'hL',.5)}
+    <text x="84" y="128" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">ética</text>
+    <text x="200" y="122" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">viés</text>
+    <text x="316" y="128" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">fake news</text>
+    ${arrow('M182 206 Q136 194 104 168','ln-t')}
+    ${arrow('M218 206 Q264 194 296 168','ln-t')}
+    ${fig('stand',200,220,52,{face:'plain'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 14 — investigar baú */
+SHOTS[13] = `
+  ${sky(.4)}${band(0,0,400,80,'hM',.25)}
+  ${ground(186,4)}${persp(186,220,6)}
+  <g class="pencil">
+    <path class="ln" d="M236 190 h108 v-46 h-108 Z"/>
+    ${band(236,144,108,46,'hL',.45)}
+    <path class="ln" d="M236 144 q54 -40 108 0"/>
+    <path class="ln-t" d="M236 160 h108" opacity=".55"/>
+    <line class="ln-t" x1="262" y1="144" x2="262" y2="190" opacity=".4"/>
+    <line class="ln-t" x1="318" y1="144" x2="318" y2="190" opacity=".4"/>
+    <rect class="ln" x="282" y="152" width="16" height="18" rx="2" fill="#fff"/>
+    <circle class="fl" cx="290" cy="161" r="2.2"/>
+    <path class="ln-t" d="M252 124 l8 -18 l8 18 M316 128 l7 -16 l7 16" opacity=".6"/>
+    <path class="ln" d="M282 96 l6 -17 l6 17 l17 5 l-15 11 l4 18 l-17 -10 l-17 10 l4 -18 l-15 -11 Z" fill="#fff"/>
+    ${fig('kneel',150,204,118,{face:'open'})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 15 — instruções */
+SHOTS[14] = `
+  ${sky(.35)}<rect x="0" y="0" width="400" height="225" fill="url(#hM)" opacity=".2"/>
+  <g class="pencil">
+    <path class="ln" d="M200 58 Q140 34 76 52 V166 Q140 148 200 172 Z" fill="#fff" fill-opacity=".95"/>
+    <path class="ln" d="M200 58 Q260 34 324 52 V166 Q260 148 200 172 Z" fill="#fff" fill-opacity=".95"/>
+    <line class="ln" x1="200" y1="58" x2="200" y2="172"/>
+    <g opacity=".7">
+      <line class="ln-t" x1="96" y1="74" x2="182" y2="82"/><line class="ln-t" x1="96" y1="90" x2="176" y2="97"/>
+      <line class="ln-t" x1="96" y1="106" x2="182" y2="113"/><line class="ln-t" x1="96" y1="122" x2="160" y2="128"/>
+      <line class="ln-t" x1="218" y1="82" x2="304" y2="74"/><line class="ln-t" x1="224" y1="97" x2="298" y2="90"/>
+      <line class="ln-t" x1="218" y1="113" x2="304" y2="106"/><line class="ln-t" x1="224" y1="128" x2="286" y2="122"/>
+    </g>
+    <text x="200" y="202" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="#1b1b1b">regras da partida</text>
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 16 — Luci corrompida (close) */
+SHOTS[15] = `
+  <rect x="0" y="0" width="400" height="225" fill="url(#hM)" opacity=".3"/>
+  ${band(0,0,400,225,'hL',.5)}
+  <g class="pencil">
+    ${luci(214,108,74,'glitch')}
+    <path class="ln-t" d="M96 62 l26 8 M92 148 l26 -8 M318 70 l-24 10 M322 150 l-26 -8" opacity=".75"/>
+    <path class="ln-t" d="M140 30 l14 -14 M292 30 l-14 -14" opacity=".5"/>
+    ${sil(52,206,74,{op:.5})}
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 17 — portal do bloco 3 (contra-plongée) */
+SHOTS[16] = `
+  ${sky(.6)}${band(0,0,400,124,'hM',.3)}
+  ${ground(190,3)}${persp(190,200,9)}
+  <g class="pencil">
+    <path class="ln" d="M120 190 V72 L200 24 L280 72 V190"/>
+    ${band(126,78,148,112,'hL',.55)}
+    <path class="ln" d="M164 190 V104 q36 -24 72 0 V190 Z" fill="#fff"/>
+    ${luci(200,120,26,'glitch')}
+    <path class="ln-t" d="M164 190 H236" opacity=".5"/>
+    ${fig('stand',66,212,84,{face:'tense'})}
+    ${arrow('M104 176 Q132 172 152 176','ln-t')}
+    <rect class="ln-t" x="40" y="108" width="14" height="14" rx="2"/>${band(40,108,14,14,'hM',.5)}
+    <rect class="ln-t" x="60" y="108" width="14" height="14" rx="2"/>${band(60,108,14,14,'hM',.5)}
+    <path class="ln-t" d="M47 104 v-6 M67 104 v-6" opacity=".5"/>
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 18 — combate final */
+SHOTS[17] = `
+  ${band(0,0,400,225,'hL',.45)}${band(0,0,400,96,'hM',.22)}
+  ${ground(190,4)}
+  <g class="pencil">
+    ${luci(300,90,52,'glitch')}
+    ${fig('lunge',106,206,120,{face:'tense'})}
+    <path class="ln-h" d="M150 116 L232 86"/>
+    <path class="ln" d="M232 86 l18 -8 l-4 20 Z"/>
+    <path class="ln-t" d="M250 96 l16 6 M252 78 l14 -4 M246 110 l14 10" opacity=".7"/>
+    <path class="ln-t" d="M262 128 q16 10 30 4" opacity=".5"/>
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* 19 — ranking */
+SHOTS[18] = `
+  ${sky(.5)}${ground(180,4)}${persp(180,200,7)}
+  <g class="pencil">
+    <path class="ln" d="M104 30 H296 V140 H104 Z"/>
+    ${band(104,30,192,110,'hL',.45)}
+    <text x="200" y="52" text-anchor="middle" font-family="Caveat, cursive" font-size="19" fill="#1b1b1b">ranking</text>
+    <line class="ln-t" x1="120" y1="60" x2="280" y2="60" opacity=".6"/>
+    <text x="126" y="79" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">1. LUC</text>
+    <text x="246" y="79" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">120</text>
+    <text x="126" y="101" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">2. ANA</text>
+    <text x="252" y="101" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">98</text>
+    <text x="126" y="123" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">3. BOB</text>
+    <text x="252" y="123" font-family="Caveat, cursive" font-size="15" fill="#1b1b1b">76</text>
+    <g opacity=".45">
+      <line class="ln-t" x1="120" y1="86" x2="280" y2="86"/>
+      <line class="ln-t" x1="120" y1="108" x2="280" y2="108"/>
+    </g>
+    ${fig('awe',200,216,62,{face:'open'})}
+    <path class="ln-t" d="M158 178 l6 -12 l6 12 M230 180 l6 -12 l6 12" opacity=".5"/>
+  </g>
+  ${vignette()}${frameEdge()}`;
+
+/* ============ conteúdo ============ */
+const ACTS = [
+ {name:"Fundação do sistema", range:"US01 – US06"},
+ {name:"Bloco 1 — tutorial de alucinação", range:"US07 – US08"},
+ {name:"Sistema de pausa", range:"US09 – US11"},
+ {name:"Bloco 2 — exploração e puzzles", range:"US12 – US15"},
+ {name:"Transformação da Luci", range:"US16"},
+ {name:"Bloco 3 — confronto final", range:"US17 – US18"},
+ {name:"Encerramento", range:"US19"}
+];
+
+const DATA = [
+[
+{code:"US 01", cam:"WIDE", cap:"O jogador abre o jogo e encara o menu principal com as quatro opções.",
+ desc:"Título UtopIA e as opções Cadastro, Novo Jogo, Instruções e Encerrar; seleção fora do intervalo pede nova escolha.",
+ tags:["Título + 4 opções","Validação de seleção"]},
+{code:"US 02", cam:"MED", cap:"Uma entrada inválida devolve o aviso e o jogo segue aguardando.",
+ desc:"A leitura de teclado descarta o valor incorreto e exibe a mensagem sem encerrar a sessão.",
+ tags:["Mensagem de erro","Sem loops ou crash"]},
+{code:"US 03", cam:"MED WIDE", cap:"O jogador registra um nome de até três letras para se identificar.",
+ desc:"O nome é único, aparece durante a partida, é usado por Luci e vai para o ranking.",
+ tags:["Até 3 letras","Nomes não repetem"]},
+{code:"US 04", cam:"MED", cap:"Acertos e erros movem a pontuação exibida em tela.",
+ desc:"Score = pontuação dos puzzles + bônus do Bloco 1 − erros, apresentado ao fim da partida.",
+ tags:["Puzzles + bônus − erros","Score final ao concluir"]},
+{code:"US 05", cam:"WIDE", cap:"Ao cruzar um checkpoint, o progresso é gravado sozinho.",
+ desc:"O save é atualizado ao concluir o Bloco 1 e ao obter item após resolver puzzle no Bloco 2.",
+ tags:["Ao fim do Bloco 1","Ao obter item"]},
+{code:"US 06", cam:"OTS", cap:"Vidas, itens e score acompanham o jogador em todas as telas.",
+ desc:"O painel é redesenhado a cada ação; perdas e ganhos aparecem de imediato e zerar as vidas encerra a partida.",
+ tags:["Máx. 3 vidas","Máx. 3 itens","Game over em 0 vidas"]}
+],
+[
+{code:"US 07", cam:"MED WIDE", cap:"Duas salas trazem conversas de IA para o jogador achar a alucinação.",
+ desc:"Acertos concedem bônus inicial, erros não custam vidas e a conclusão libera o Bloco 2.",
+ tags:["2 salas obrigatórias","Erros não custam vidas"]},
+{code:"US 08", cam:"MED", cap:"Luci aparece e explica a abdução e o objetivo da jornada.",
+ desc:"Os diálogos antecedem os desafios e avançam por confirmação simples do jogador.",
+ tags:["Diálogo introdutório","Avanço por confirmação"]}
+],
+[
+{code:"US 09", cam:"WIDE", cap:"A cena congela e o menu de pausa cobre a partida em andamento.",
+ desc:"Reiniciar, instruções e encerrar ficam disponíveis; o estado é gravado sem corromper o arquivo.",
+ tags:["Salva ao pausar","Retoma no mesmo ponto"]},
+{code:"US 10", cam:"MED", cap:"O reinício só acontece depois da confirmação do jogador.",
+ desc:"Confirmada a ação, vidas, score e inventário voltam ao padrão e o jogo retorna ao menu principal.",
+ tags:["Confirmação S/N","Reset da struct"]},
+{code:"US 11", cam:"WIDE", cap:"Confirmado o encerramento, o jogador deixa o mundo do jogo.",
+ desc:"Os recursos de memória são liberados e o executável finaliza com a mensagem de despedida.",
+ tags:["Confirmação obrigatória","Sem memory leaks"]}
+],
+[
+{code:"US 12", cam:"MED WIDE", cap:"Cada passo consome a janela de contexto até o limite da fase.",
+ desc:"O contador sobe a cada interação; atingir o limite custa uma vida e a terceira perda encerra o jogo.",
+ tags:["Contador por interação","Limite = −1 vida","3 perdas = game over"]},
+{code:"US 13", cam:"WIDE", cap:"O jogador escolhe entre as salas temáticas do Bloco 2.",
+ desc:"Até três salas conectadas; cada transição incrementa o contador global de ações.",
+ tags:["Até 3 salas","Transição consome 1 ação"]},
+{code:"US 14", cam:"MED", cap:"Investigar o baú abre o puzzle que recompensa com um item.",
+ desc:"A resolução correta adiciona o item ao inventário, com nível proporcional ao desempenho.",
+ tags:["Puzzle ao investigar","Item proporcional ao acerto"]},
+{code:"US 15", cam:"CU", cap:"O box de instruções resume regras, limites e uso das vidas.",
+ desc:"Acionado pela pausa em qualquer turno; ao fechar, a partida volta exatamente ao ponto anterior.",
+ tags:["Acesso via pausa","Retomada sem perdas"]}
+],
+[
+{code:"US 16", cam:"CU", cap:"O mau desempenho corrompe Luci, que passa a sabotar o jogador.",
+ desc:"Pontuação baixa e muitas vidas gastas mudam o estado da companion para agressivo e alucinado.",
+ tags:["Bom desempenho = colaborativa","Baixo desempenho = corrompida"]}
+],
+[
+{code:"US 17", cam:"LOW ANGLE", cap:"Com os itens exigidos, o portal do Bloco 3 se abre.",
+ desc:"A vida e o ataque do Boss são definidos pelo histórico de acertos e vidas restantes do jogador.",
+ tags:["Itens mínimos para liberar","Dificuldade adaptativa"]},
+{code:"US 18", cam:"MED WIDE", cap:"O jogador ataca com o item certo do inventário.",
+ desc:"Opções especiais só aparecem com o item correspondente; o uso correto reduz a alucinação do Boss.",
+ tags:["Opções ligadas ao inventário","Item certo = mais dano"]}
+],
+[
+{code:"US 19", cam:"WIDE", cap:"O ranking fecha a partida com nomes e pontuações ordenados.",
+ desc:"Lista da maior para a menor pontuação, legível no terminal, com retorno claro ao menu principal.",
+ tags:["Ordenado por score","Retorno ao menu"]}
+]
+];
+
+/* ============ montagem ============ */
+const main = document.getElementById('main');
+let n = 0;
+DATA.forEach((group, i) => {
+  const head = document.createElement('div');
+  head.className = 'act-head';
+  head.innerHTML = `<span class="n">${i+1}</span><span class="t">${ACTS[i].name}</span><span class="r">${ACTS[i].range}</span>`;
+  main.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  group.forEach(p => {
+    n++;
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.setAttribute('tabindex','0');
+    panel.setAttribute('role','button');
+    panel.innerHTML = `
+      <div class="shot">
+        <svg viewBox="0 0 400 225" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#fr)">${SHOTS[n-1]}</g></svg>
+        <span class="idx">${n}</span>
+        <span class="us">${p.code}</span>
+      </div>
+      <div class="cap">
+        <span class="cam">${p.cam} —</span>
+        <p>${p.cap}</p>
+        <span class="plus">+</span>
+      </div>
+      <div class="more"><div class="more-in">
+        <p>${p.desc}</p>
+        <div class="tags">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+      </div></div>`;
+    const toggle = () => panel.classList.toggle('open');
+    panel.addEventListener('click', toggle);
+    panel.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+    });
+    grid.appendChild(panel);
+  });
+  main.appendChild(grid);
+});
+</script>
+
+</body>
+</html>

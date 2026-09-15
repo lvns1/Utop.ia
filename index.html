@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>UtopIA — Storyboard das Histórias de Usuário</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --line:#603813;
+    --ink:#3d2814;
+    --orange:#f7931e;
+    --orange-soft:#fdead2;
+    --paper:#fbf8f4;
+    --panel:#ffffff;
+    --gray:#e8e2d9;
+    --muted:#8a7b6b;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  svg{shape-rendering:crispEdges;}
+  .pix{font-family:'Silkscreen',monospace;}
+
+  /* ---------- topo ---------- */
+  header{max-width:1180px;margin:0 auto;padding:44px 24px 0;}
+  .hero{display:flex;align-items:center;gap:22px;flex-wrap:wrap;}
+  .hero svg{width:88px;height:88px;flex:none;}
+  .hero h1{font-family:'Silkscreen',monospace;font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:.01em;}
+  .hero h1 span{color:var(--orange);}
+  .hero p{margin:0;color:var(--muted);font-size:13.5px;max-width:520px;}
+
+  .map{
+    display:flex;gap:8px;margin:26px 0 0;padding-bottom:26px;
+    border-bottom:3px solid var(--line);flex-wrap:wrap;
+  }
+  .ph{
+    flex:1 1 150px;border:2px solid var(--line);background:var(--panel);
+    padding:9px 11px;cursor:pointer;text-align:left;font:inherit;color:inherit;
+  }
+  .ph:hover,.ph:focus-visible{background:var(--orange-soft);outline:none;}
+  .ph b{display:block;font-family:'Silkscreen',monospace;font-size:10px;margin-bottom:4px;}
+  .ph i{display:block;font-style:normal;font-size:10.5px;color:var(--muted);}
+
+  main{max-width:1180px;margin:0 auto;padding:0 24px 80px;}
+
+  .sec-head{display:flex;align-items:center;gap:12px;margin:44px 0 16px;}
+  .sec-head .tag{
+    background:var(--line);color:#fff;font-family:'Silkscreen',monospace;
+    font-size:10px;padding:6px 9px;
+  }
+  .sec-head h2{font-size:15px;font-weight:600;margin:0;}
+  .sec-head .rng{margin-left:auto;font-size:11px;color:var(--muted);}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media(max-width:1000px){ .grid{grid-template-columns:repeat(2,1fr);} }
+  @media(max-width:660px){ .grid{grid-template-columns:1fr;} }
+
+  .card{
+    background:var(--panel);border:2px solid var(--line);
+    display:flex;flex-direction:column;cursor:pointer;
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .card:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--line);}
+  .card:focus-visible{outline:3px solid var(--orange);outline-offset:2px;}
+  .card .top{
+    display:flex;align-items:center;gap:7px;padding:8px 10px;
+    border-bottom:2px solid var(--line);background:var(--orange-soft);
+  }
+  .card .code{font-family:'Silkscreen',monospace;font-size:10px;}
+  .card .st{
+    margin-left:auto;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 6px;border:1px solid var(--line);color:var(--line);background:#fff;
+  }
+  .card .st.dev{background:var(--orange);color:#fff;border-color:var(--orange);}
+  .card .art{border-bottom:2px solid var(--line);}
+  .card .art svg{display:block;width:100%;height:auto;}
+  .card .body{padding:11px 12px 13px;}
+  .card .body h3{margin:0 0 4px;font-size:13.5px;font-weight:600;line-height:1.35;}
+  .card .body p{margin:0;font-size:11.5px;color:var(--muted);line-height:1.45;}
+
+  /* ---------- modo foco ---------- */
+  .ov{
+    position:fixed;inset:0;background:rgba(61,40,20,.62);
+    display:none;align-items:center;justify-content:center;padding:20px;z-index:50;
+  }
+  .ov.on{display:flex;}
+  .ov-in{
+    background:var(--panel);border:3px solid var(--line);
+    max-width:760px;width:100%;max-height:92vh;overflow:auto;
+  }
+  .ov-top{
+    display:flex;align-items:center;gap:9px;padding:11px 14px;
+    border-bottom:2px solid var(--line);background:var(--orange-soft);
+    position:sticky;top:0;
+  }
+  .ov-top .code{font-family:'Silkscreen',monospace;font-size:11px;}
+  .ov-top .st{font-size:9px;letter-spacing:.05em;text-transform:uppercase;padding:3px 6px;border:1px solid var(--line);background:#fff;}
+  .ov-top .st.dev{background:var(--orange);color:#fff;border-color:var(--orange);}
+  .ov-top .ep{font-size:10px;color:var(--muted);}
+  .ov-top .x{
+    margin-left:auto;border:2px solid var(--line);background:#fff;cursor:pointer;
+    font-family:'Silkscreen',monospace;font-size:11px;padding:4px 8px;color:var(--ink);
+  }
+  .ov-art{border-bottom:2px solid var(--line);}
+  .ov-art svg{display:block;width:100%;height:auto;}
+  .ov-body{padding:16px 18px 6px;}
+  .ov-body h3{margin:0 0 6px;font-size:17px;font-weight:700;}
+  .ov-body .lead{margin:0 0 4px;font-size:13px;color:var(--muted);}
+  .ov-body h4{
+    margin:18px 0 8px;font-family:'Silkscreen',monospace;font-size:9.5px;
+    color:var(--line);letter-spacing:.02em;
+  }
+  .ov-body ul{margin:0;padding:0;list-style:none;}
+  .ov-body li{position:relative;padding:5px 0 5px 20px;font-size:12.5px;line-height:1.5;}
+  .ov-body li::before{
+    content:"";position:absolute;left:0;top:10px;width:9px;height:9px;
+    border:2px solid var(--orange);
+  }
+  .ov-nav{
+    display:flex;align-items:center;gap:10px;padding:14px 18px 18px;
+  }
+  .ov-nav button{
+    border:2px solid var(--line);background:#fff;cursor:pointer;color:var(--ink);
+    font-family:'Silkscreen',monospace;font-size:10px;padding:8px 12px;
+  }
+  .ov-nav button:hover:not(:disabled){background:var(--orange-soft);}
+  .ov-nav button:disabled{opacity:.35;cursor:default;}
+  .ov-nav .pos{margin-left:auto;font-size:11px;color:var(--muted);}
+
+  footer{
+    max-width:1180px;margin:0 auto;padding:20px 24px 60px;
+    border-top:3px solid var(--line);color:var(--muted);font-size:11.5px;
+  }
+  footer b{color:var(--ink);font-weight:600;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="sp-front" viewBox="0 0 32 32"><rect x="12" y="2" width="8" height="1" fill="#603813"/><rect x="10" y="3" width="12" height="1" fill="#603813"/><rect x="9" y="4" width="14" height="1" fill="#603813"/><rect x="8" y="5" width="13" height="1" fill="#603813"/><rect x="21" y="5" width="1" height="1" fill="#8C6239"/><rect x="22" y="5" width="2" height="1" fill="#603813"/><rect x="7" y="6" width="2" height="1" fill="#603813"/><rect x="9" y="6" width="1" height="1" fill="#8C6239"/><rect x="10" y="6" width="13" height="1" fill="#603813"/><rect x="23" y="6" width="1" height="1" fill="#8C6239"/><rect x="24" y="6" width="1" height="1" fill="#603813"/><rect x="7" y="7" width="3" height="1" fill="#603813"/><rect x="10" y="7" width="1" height="1" fill="#8C6239"/><rect x="11" y="7" width="9" height="1" fill="#603813"/><rect x="20" y="7" width="4" height="1" fill="#8C6239"/><rect x="24" y="7" width="1" height="1" fill="#603813"/><rect x="7" y="8" width="2" height="1" fill="#603813"/><rect x="9" y="8" width="3" height="1" fill="#8C6239"/><rect x="12" y="8" width="1" height="1" fill="#603813"/><rect x="13" y="8" width="1" height="1" fill="#8C6239"/><rect x="14" y="8" width="7" height="1" fill="#603813"/><rect x="21" y="8" width="2" height="1" fill="#8C6239"/><rect x="23" y="8" width="2" height="1" fill="#603813"/><rect x="7" y="9" width="11" height="1" fill="#603813"/><rect x="18" y="9" width="1" height="1" fill="#DAA56C"/><rect x="19" y="9" width="6" height="1" fill="#603813"/><rect x="7" y="10" width="10" height="1" fill="#603813"/><rect x="17" y="10" width="3" height="1" fill="#DAA56C"/><rect x="20" y="10" width="5" height="1" fill="#603813"/><rect x="7" y="11" width="1" height="1" fill="#603813"/><rect x="8" y="11" width="1" height="1" fill="#DAA56C"/><rect x="9" y="11" width="5" height="1" fill="#603813"/><rect x="14" y="11" width="7" height="1" fill="#DAA56C"/><rect x="21" y="11" width="2" height="1" fill="#603813"/><rect x="23" y="11" width="1" height="1" fill="#DAA56C"/><rect x="24" y="11" width="1" height="1" fill="#603813"/><rect x="7" y="12" width="1" height="1" fill="#603813"/><rect x="8" y="12" width="1" height="1" fill="#F2D4A2"/><rect x="9" y="12" width="2" height="1" fill="#603813"/><rect x="11" y="12" width="10" height="1" fill="#DAA56C"/><rect x="21" y="12" width="2" height="1" fill="#603813"/><rect x="23" y="12" width="1" height="1" fill="#F2D4A2"/><rect x="24" y="12" width="1" height="1" fill="#603813"/><rect x="7" y="13" width="1" height="1" fill="#603813"/><rect x="8" y="13" width="2" height="1" fill="#F2D4A2"/><rect x="10" y="13" width="2" height="1" fill="#DAA56C"/><rect x="12" y="13" width="2" height="1" fill="#603813"/><rect x="14" y="13" width="4" height="1" fill="#DAA56C"/><rect x="18" y="13" width="2" height="1" fill="#603813"/><rect x="20" y="13" width="2" height="1" fill="#DAA56C"/><rect x="22" y="13" width="2" height="1" fill="#F2D4A2"/><rect x="24" y="13" width="1" height="1" fill="#603813"/><rect x="8" y="14" width="1" height="1" fill="#603813"/><rect x="9" y="14" width="4" height="1" fill="#F2D4A2"/><rect x="13" y="14" width="1" height="1" fill="#8C6239"/><rect x="14" y="14" width="4" height="1" fill="#F2D4A2"/><rect x="18" y="14" width="1" height="1" fill="#8C6239"/><rect x="19" y="14" width="1" height="1" fill="#DAA56C"/><rect x="20" y="14" width="3" height="1" fill="#F2D4A2"/><rect x="23" y="14" width="1" height="1" fill="#603813"/><rect x="9" y="15" width="2" height="1" fill="#603813"/><rect x="11" y="15" width="1" height="1" fill="#F2D4A2"/><rect x="12" y="15" width="1" height="1" fill="#DAA56C"/><rect x="13" y="15" width="6" height="1" fill="#F2D4A2"/><rect x="19" y="15" width="1" height="1" fill="#DAA56C"/><rect x="20" y="15" width="1" height="1" fill="#F2D4A2"/><rect x="21" y="15" width="2" height="1" fill="#603813"/><rect x="11" y="16" width="1" height="1" fill="#603813"/><rect x="12" y="16" width="8" height="1" fill="#F2D4A2"/><rect x="20" y="16" width="1" height="1" fill="#603813"/><rect x="12" y="17" width="8" height="1" fill="#603813"/><rect x="11" y="18" width="1" height="1" fill="#603813"/><rect x="12" y="18" width="1" height="1" fill="#999999"/><rect x="13" y="18" width="1" height="1" fill="#F7931E"/><rect x="14" y="18" width="1" height="1" fill="#603813"/><rect x="15" y="18" width="2" height="1" fill="#DAA56C"/><rect x="17" y="18" width="1" height="1" fill="#603813"/><rect x="18" y="18" width="1" height="1" fill="#F7931E"/><rect x="19" y="18" width="1" height="1" fill="#999999"/><rect x="20" y="18" width="1" height="1" fill="#603813"/><rect x="10" y="19" width="1" height="1" fill="#603813"/><rect x="11" y="19" width="3" height="1" fill="#CCCCCC"/><rect x="14" y="19" width="1" height="1" fill="#F2D4A2"/><rect x="15" y="19" width="2" height="1" fill="#603813"/><rect x="17" y="19" width="1" height="1" fill="#CCCCCC"/><rect x="18" y="19" width="1" height="1" fill="#F7931E"/><rect x="19" y="19" width="2" height="1" fill="#CCCCCC"/><rect x="21" y="19" width="1" height="1" fill="#603813"/><rect x="9" y="20" width="1" height="1" fill="#603813"/><rect x="10" y="20" width="4" height="1" fill="#CCCCCC"/><rect x="14" y="20" width="1" height="1" fill="#F7931E"/><rect x="15" y="20" width="1" height="1" fill="#CCCCCC"/><rect x="16" y="20" width="1" height="1" fill="#999999"/><rect x="17" y="20" width="1" height="1" fill="#F7931E"/><rect x="18" y="20" width="4" height="1" fill="#CCCCCC"/><rect x="22" y="20" width="1" height="1" fill="#603813"/><rect x="9" y="21" width="1" height="1" fill="#603813"/><rect x="10" y="21" width="4" height="1" fill="#CCCCCC"/><rect x="14" y="21" width="1" height="1" fill="#F7931E"/><rect x="15" y="21" width="1" height="1" fill="#CCCCCC"/><rect x="16" y="21" width="1" height="1" fill="#999999"/><rect x="17" y="21" width="1" height="1" fill="#F7931E"/><rect x="18" y="21" width="4" height="1" fill="#CCCCCC"/><rect x="22" y="21" width="1" height="1" fill="#603813"/><rect x="8" y="22" width="1" height="1" fill="#603813"/><rect x="9" y="22" width="2" height="1" fill="#999999"/><rect x="11" y="22" width="1" height="1" fill="#CCCCCC"/><rect x="12" y="22" width="1" height="1" fill="#603813"/><rect x="13" y="22" width="2" height="1" fill="#CCCCCC"/><rect x="15" y="22" width="2" height="1" fill="#F7931E"/><rect x="17" y="22" width="2" height="1" fill="#CCCCCC"/><rect x="19" y="22" width="1" height="1" fill="#603813"/><rect x="20" y="22" width="1" height="1" fill="#CCCCCC"/><rect x="21" y="22" width="2" height="1" fill="#999999"/><rect x="23" y="22" width="1" height="1" fill="#603813"/><rect x="8" y="23" width="1" height="1" fill="#603813"/><rect x="9" y="23" width="1" height="1" fill="#F2D4A2"/><rect x="10" y="23" width="1" height="1" fill="#DAA56C"/><rect x="11" y="23" width="1" height="1" fill="#603813"/><rect x="12" y="23" width="1" height="1" fill="#666666"/><rect x="13" y="23" width="2" height="1" fill="#CCCCCC"/><rect x="15" y="23" width="2" height="1" fill="#FFFFFF"/><rect x="17" y="23" width="2" height="1" fill="#CCCCCC"/><rect x="19" y="23" width="1" height="1" fill="#666666"/><rect x="20" y="23" width="1" height="1" fill="#603813"/><rect x="21" y="23" width="1" height="1" fill="#DAA56C"/><rect x="22" y="23" width="1" height="1" fill="#F2D4A2"/><rect x="23" y="23" width="1" height="1" fill="#603813"/><rect x="9" y="24" width="3" height="1" fill="#603813"/><rect x="12" y="24" width="1" height="1" fill="#866656"/><rect x="13" y="24" width="2" height="1" fill="#603813"/><rect x="15" y="24" width="2" height="1" fill="#FFFFFF"/><rect x="17" y="24" width="2" height="1" fill="#603813"/><rect x="19" y="24" width="1" height="1" fill="#866656"/><rect x="20" y="24" width="3" height="1" fill="#603813"/><rect x="11" y="25" width="1" height="1" fill="#603813"/><rect x="12" y="25" width="8" height="1" fill="#866656"/><rect x="20" y="25" width="1" height="1" fill="#603813"/><rect x="11" y="26" width="1" height="1" fill="#603813"/><rect x="12" y="26" width="2" height="1" fill="#866656"/><rect x="14" y="26" width="4" height="1" fill="#603813"/><rect x="18" y="26" width="2" height="1" fill="#866656"/><rect x="20" y="26" width="1" height="1" fill="#603813"/><rect x="11" y="27" width="1" height="1" fill="#603813"/><rect x="12" y="27" width="2" height="1" fill="#866656"/><rect x="14" y="27" width="1" height="1" fill="#603813"/><rect x="17" y="27" width="1" height="1" fill="#603813"/><rect x="18" y="27" width="2" height="1" fill="#866656"/><rect x="20" y="27" width="1" height="1" fill="#603813"/><rect x="11" y="28" width="1" height="1" fill="#603813"/><rect x="12" y="28" width="2" height="1" fill="#866656"/><rect x="14" y="28" width="1" height="1" fill="#603813"/><rect x="17" y="28" width="1" height="1" fill="#603813"/><rect x="18" y="28" width="2" height="1" fill="#866656"/><rect x="20" y="28" width="1" height="1" fill="#603813"/><rect x="11" y="29" width="4" height="1" fill="#603813"/><rect x="17" y="29" width="4" height="1" fill="#603813"/><rect x="12" y="30" width="2" height="1" fill="#000000"/><rect x="18" y="30" width="2" height="1" fill="#000000"/></symbol><symbol id="sp-side" viewBox="0 0 32 32"><rect x="12" y="1" width="8" height="1" fill="#603813"/><rect x="10" y="2" width="12" height="1" fill="#603813"/><rect x="9" y="3" width="13" height="1" fill="#603813"/><rect x="8" y="4" width="1" height="1" fill="#603813"/><rect x="9" y="4" width="2" height="1" fill="#8C6239"/><rect x="11" y="4" width="12" height="1" fill="#603813"/><rect x="7" y="5" width="2" height="1" fill="#603813"/><rect x="9" y="5" width="4" height="1" fill="#8C6239"/><rect x="13" y="5" width="9" height="1" fill="#603813"/><rect x="22" y="5" width="1" height="1" fill="#8C6239"/><rect x="23" y="5" width="1" height="1" fill="#603813"/><rect x="7" y="6" width="5" height="1" fill="#603813"/><rect x="12" y="6" width="1" height="1" fill="#8C6239"/><rect x="13" y="6" width="6" height="1" fill="#603813"/><rect x="19" y="6" width="3" height="1" fill="#8C6239"/><rect x="22" y="6" width="2" height="1" fill="#603813"/><rect x="7" y="7" width="17" height="1" fill="#603813"/><rect x="7" y="8" width="17" height="1" fill="#603813"/><rect x="7" y="9" width="16" height="1" fill="#603813"/><rect x="7" y="10" width="13" height="1" fill="#603813"/><rect x="20" y="10" width="2" height="1" fill="#DAA56C"/><rect x="22" y="10" width="1" height="1" fill="#603813"/><rect x="7" y="11" width="6" height="1" fill="#603813"/><rect x="13" y="11" width="2" height="1" fill="#DAA56C"/><rect x="15" y="11" width="4" height="1" fill="#603813"/><rect x="19" y="11" width="3" height="1" fill="#DAA56C"/><rect x="22" y="11" width="1" height="1" fill="#603813"/><rect x="8" y="12" width="5" height="1" fill="#603813"/><rect x="13" y="12" width="3" height="1" fill="#F2D4A2"/><rect x="16" y="12" width="2" height="1" fill="#603813"/><rect x="18" y="12" width="2" height="1" fill="#DAA56C"/><rect x="20" y="12" width="1" height="1" fill="#A87C4A"/><rect x="21" y="12" width="1" height="1" fill="#DAA56C"/><rect x="22" y="12" width="1" height="1" fill="#603813"/><rect x="8" y="13" width="5" height="1" fill="#603813"/><rect x="13" y="13" width="7" height="1" fill="#F2D4A2"/><rect x="20" y="13" width="1" height="1" fill="#8C6239"/><rect x="21" y="13" width="1" height="1" fill="#F2D4A2"/><rect x="22" y="13" width="1" height="1" fill="#603813"/><rect x="9" y="14" width="4" height="1" fill="#603813"/><rect x="13" y="14" width="2" height="1" fill="#8C6239"/><rect x="15" y="14" width="4" height="1" fill="#F2D4A2"/><rect x="19" y="14" width="2" height="1" fill="#DAA56C"/><rect x="21" y="14" width="1" height="1" fill="#F2D4A2"/><rect x="22" y="14" width="1" height="1" fill="#603813"/><rect x="10" y="15" width="4" height="1" fill="#603813"/><rect x="14" y="15" width="8" height="1" fill="#F2D4A2"/><rect x="22" y="15" width="1" height="1" fill="#603813"/><rect x="10" y="16" width="4" height="1" fill="#603813"/><rect x="14" y="16" width="8" height="1" fill="#F2D4A2"/><rect x="22" y="16" width="1" height="1" fill="#603813"/><rect x="12" y="17" width="10" height="1" fill="#603813"/><rect x="13" y="18" width="2" height="1" fill="#F7931E"/><rect x="15" y="18" width="3" height="1" fill="#DAA56C"/><rect x="18" y="18" width="1" height="1" fill="#603813"/><rect x="12" y="19" width="1" height="1" fill="#603813"/><rect x="13" y="19" width="1" height="1" fill="#CCCCCC"/><rect x="14" y="19" width="1" height="1" fill="#603813"/><rect x="15" y="19" width="2" height="1" fill="#F7931E"/><rect x="17" y="19" width="1" height="1" fill="#603813"/><rect x="18" y="19" width="1" height="1" fill="#CCCCCC"/><rect x="19" y="19" width="1" height="1" fill="#603813"/><rect x="12" y="20" width="1" height="1" fill="#603813"/><rect x="13" y="20" width="2" height="1" fill="#CCCCCC"/><rect x="15" y="20" width="2" height="1" fill="#999999"/><rect x="17" y="20" width="2" height="1" fill="#F7931E"/><rect x="19" y="20" width="1" height="1" fill="#603813"/><rect x="12" y="21" width="1" height="1" fill="#603813"/><rect x="13" y="21" width="1" height="1" fill="#CCCCCC"/><rect x="14" y="21" width="1" height="1" fill="#603813"/><rect x="15" y="21" width="2" height="1" fill="#CCCCCC"/><rect x="17" y="21" width="1" height="1" fill="#603813"/><rect x="18" y="21" width="1" height="1" fill="#CCCCCC"/><rect x="19" y="21" width="1" height="1" fill="#F7931E"/><rect x="20" y="21" width="1" height="1" fill="#FFFFFF"/><rect x="12" y="22" width="1" height="1" fill="#603813"/><rect x="13" y="22" width="1" height="1" fill="#CCCCCC"/><rect x="14" y="22" width="1" height="1" fill="#603813"/><rect x="15" y="22" width="2" height="1" fill="#CCCCCC"/><rect x="17" y="22" width="1" height="1" fill="#603813"/><rect x="18" y="22" width="2" height="1" fill="#CCCCCC"/><rect x="20" y="22" width="1" height="1" fill="#FFFFFF"/><rect x="12" y="23" width="1" height="1" fill="#603813"/><rect x="13" y="23" width="1" height="1" fill="#CCCCCC"/><rect x="14" y="23" width="1" height="1" fill="#603813"/><rect x="15" y="23" width="2" height="1" fill="#999999"/><rect x="17" y="23" width="1" height="1" fill="#603813"/><rect x="18" y="23" width="2" height="1" fill="#CCCCCC"/><rect x="20" y="23" width="1" height="1" fill="#603813"/><rect x="12" y="24" width="3" height="1" fill="#603813"/><rect x="15" y="24" width="2" height="1" fill="#F2D4A2"/><rect x="17" y="24" width="4" height="1" fill="#603813"/><rect x="12" y="25" width="1" height="1" fill="#603813"/><rect x="13" y="25" width="2" height="1" fill="#866656"/><rect x="15" y="25" width="2" height="1" fill="#603813"/><rect x="17" y="25" width="2" height="1" fill="#866656"/><rect x="19" y="25" width="1" height="1" fill="#603813"/><rect x="13" y="26" width="1" height="1" fill="#603813"/><rect x="14" y="26" width="5" height="1" fill="#866656"/><rect x="19" y="26" width="1" height="1" fill="#603813"/><rect x="14" y="27" width="1" height="1" fill="#603813"/><rect x="15" y="27" width="3" height="1" fill="#866656"/><rect x="18" y="27" width="1" height="1" fill="#603813"/><rect x="14" y="28" width="1" height="1" fill="#603813"/><rect x="15" y="28" width="3" height="1" fill="#866656"/><rect x="18" y="28" width="1" height="1" fill="#603813"/><rect x="14" y="29" width="4" height="1" fill="#603813"/><rect x="15" y="30" width="4" height="1" fill="#000000"/></symbol><symbol id="sp-top" viewBox="0 0 32 32"><rect x="13" y="3" width="6" height="1" fill="#603813"/><rect x="11" y="4" width="10" height="1" fill="#603813"/><rect x="10" y="5" width="12" height="1" fill="#603813"/><rect x="9" y="6" width="14" height="1" fill="#603813"/><rect x="8" y="7" width="12" height="1" fill="#603813"/><rect x="20" y="7" width="2" height="1" fill="#8C6239"/><rect x="22" y="7" width="2" height="1" fill="#603813"/><rect x="8" y="8" width="1" height="1" fill="#603813"/><rect x="9" y="8" width="1" height="1" fill="#8C6239"/><rect x="10" y="8" width="14" height="1" fill="#603813"/><rect x="8" y="9" width="2" height="1" fill="#603813"/><rect x="10" y="9" width="1" height="1" fill="#8C6239"/><rect x="11" y="9" width="11" height="1" fill="#603813"/><rect x="22" y="9" width="1" height="1" fill="#8C6239"/><rect x="23" y="9" width="1" height="1" fill="#603813"/><rect x="7" y="10" width="2" height="1" fill="#603813"/><rect x="9" y="10" width="3" height="1" fill="#8C6239"/><rect x="12" y="10" width="2" height="1" fill="#603813"/><rect x="14" y="10" width="1" height="1" fill="#8C6239"/><rect x="15" y="10" width="3" height="1" fill="#603813"/><rect x="18" y="10" width="5" height="1" fill="#8C6239"/><rect x="23" y="10" width="2" height="1" fill="#603813"/><rect x="7" y="11" width="12" height="1" fill="#603813"/><rect x="19" y="11" width="3" height="1" fill="#8C6239"/><rect x="22" y="11" width="3" height="1" fill="#603813"/><rect x="7" y="12" width="18" height="1" fill="#603813"/><rect x="7" y="13" width="11" height="1" fill="#603813"/><rect x="18" y="13" width="1" height="1" fill="#DAA56C"/><rect x="19" y="13" width="6" height="1" fill="#603813"/><rect x="7" y="14" width="10" height="1" fill="#603813"/><rect x="17" y="14" width="2" height="1" fill="#DAA56C"/><rect x="19" y="14" width="6" height="1" fill="#603813"/><rect x="7" y="15" width="1" height="1" fill="#603813"/><rect x="8" y="15" width="1" height="1" fill="#DAA56C"/><rect x="9" y="15" width="7" height="1" fill="#603813"/><rect x="16" y="15" width="3" height="1" fill="#DAA56C"/><rect x="19" y="15" width="4" height="1" fill="#603813"/><rect x="23" y="15" width="1" height="1" fill="#DAA56C"/><rect x="24" y="15" width="1" height="1" fill="#603813"/><rect x="7" y="16" width="1" height="1" fill="#603813"/><rect x="8" y="16" width="1" height="1" fill="#DAA56C"/><rect x="9" y="16" width="6" height="1" fill="#603813"/><rect x="15" y="16" width="5" height="1" fill="#DAA56C"/><rect x="20" y="16" width="3" height="1" fill="#603813"/><rect x="23" y="16" width="1" height="1" fill="#DAA56C"/><rect x="24" y="16" width="1" height="1" fill="#603813"/><rect x="8" y="17" width="3" height="1" fill="#603813"/><rect x="11" y="17" width="1" height="1" fill="#8C6239"/><rect x="12" y="17" width="8" height="1" fill="#DAA56C"/><rect x="20" y="17" width="4" height="1" fill="#603813"/><rect x="9" y="18" width="1" height="1" fill="#603813"/><rect x="10" y="18" width="12" height="1" fill="#DAA56C"/><rect x="22" y="18" width="1" height="1" fill="#603813"/><rect x="9" y="19" width="1" height="1" fill="#603813"/><rect x="10" y="19" width="3" height="1" fill="#F2D4A2"/><rect x="13" y="19" width="1" height="1" fill="#603813"/><rect x="14" y="19" width="4" height="1" fill="#F2D4A2"/><rect x="18" y="19" width="1" height="1" fill="#603813"/><rect x="19" y="19" width="3" height="1" fill="#F2D4A2"/><rect x="22" y="19" width="1" height="1" fill="#603813"/><rect x="9" y="20" width="1" height="1" fill="#603813"/><rect x="10" y="20" width="3" height="1" fill="#F2D4A2"/><rect x="13" y="20" width="1" height="1" fill="#8C6239"/><rect x="14" y="20" width="4" height="1" fill="#F2D4A2"/><rect x="18" y="20" width="1" height="1" fill="#8C6239"/><rect x="19" y="20" width="3" height="1" fill="#F2D4A2"/><rect x="22" y="20" width="1" height="1" fill="#603813"/><rect x="8" y="21" width="1" height="1" fill="#603813"/><rect x="9" y="21" width="1" height="1" fill="#999999"/><rect x="10" y="21" width="1" height="1" fill="#866656"/><rect x="11" y="21" width="1" height="1" fill="#603813"/><rect x="12" y="21" width="1" height="1" fill="#DAA56C"/><rect x="13" y="21" width="6" height="1" fill="#F2D4A2"/><rect x="19" y="21" width="1" height="1" fill="#DAA56C"/><rect x="20" y="21" width="1" height="1" fill="#603813"/><rect x="21" y="21" width="2" height="1" fill="#999999"/><rect x="23" y="21" width="1" height="1" fill="#603813"/><rect x="8" y="22" width="1" height="1" fill="#603813"/><rect x="9" y="22" width="2" height="1" fill="#CCCCCC"/><rect x="11" y="22" width="1" height="1" fill="#999999"/><rect x="12" y="22" width="1" height="1" fill="#603813"/><rect x="13" y="22" width="1" height="1" fill="#F7931E"/><rect x="14" y="22" width="4" height="1" fill="#603813"/><rect x="18" y="22" width="1" height="1" fill="#F7931E"/><rect x="19" y="22" width="1" height="1" fill="#603813"/><rect x="20" y="22" width="3" height="1" fill="#CCCCCC"/><rect x="23" y="22" width="1" height="1" fill="#603813"/><rect x="8" y="23" width="1" height="1" fill="#603813"/><rect x="9" y="23" width="1" height="1" fill="#999999"/><rect x="10" y="23" width="4" height="1" fill="#CCCCCC"/><rect x="14" y="23" width="1" height="1" fill="#F7931E"/><rect x="15" y="23" width="2" height="1" fill="#CCCCCC"/><rect x="17" y="23" width="1" height="1" fill="#F7931E"/><rect x="18" y="23" width="4" height="1" fill="#CCCCCC"/><rect x="22" y="23" width="1" height="1" fill="#999999"/><rect x="23" y="23" width="1" height="1" fill="#603813"/><rect x="8" y="24" width="1" height="1" fill="#603813"/><rect x="9" y="24" width="1" height="1" fill="#F2D4A2"/><rect x="10" y="24" width="1" height="1" fill="#603813"/><rect x="11" y="24" width="1" height="1" fill="#8C6239"/><rect x="12" y="24" width="2" height="1" fill="#CCCCCC"/><rect x="14" y="24" width="4" height="1" fill="#F7931E"/><rect x="18" y="24" width="2" height="1" fill="#CCCCCC"/><rect x="20" y="24" width="2" height="1" fill="#603813"/><rect x="22" y="24" width="1" height="1" fill="#F2D4A2"/><rect x="23" y="24" width="1" height="1" fill="#603813"/><rect x="9" y="25" width="3" height="1" fill="#603813"/><rect x="12" y="25" width="1" height="1" fill="#8C6239"/><rect x="13" y="25" width="1" height="1" fill="#999999"/><rect x="14" y="25" width="1" height="1" fill="#F7931E"/><rect x="15" y="25" width="2" height="1" fill="#FFFFFF"/><rect x="17" y="25" width="1" height="1" fill="#F7931E"/><rect x="18" y="25" width="1" height="1" fill="#999999"/><rect x="19" y="25" width="1" height="1" fill="#8C6239"/><rect x="20" y="25" width="3" height="1" fill="#603813"/><rect x="10" y="26" width="1" height="1" fill="#603813"/><rect x="11" y="26" width="1" height="1" fill="#8C6239"/><rect x="12" y="26" width="1" height="1" fill="#999999"/><rect x="13" y="26" width="1" height="1" fill="#866656"/><rect x="14" y="26" width="1" height="1" fill="#F7931E"/><rect x="15" y="26" width="2" height="1" fill="#FFFFFF"/><rect x="17" y="26" width="1" height="1" fill="#F7931E"/><rect x="18" y="26" width="1" height="1" fill="#866656"/><rect x="19" y="26" width="1" height="1" fill="#999999"/><rect x="20" y="26" width="2" height="1" fill="#603813"/><rect x="12" y="27" width="1" height="1" fill="#603813"/><rect x="13" y="27" width="1" height="1" fill="#866656"/><rect x="14" y="27" width="4" height="1" fill="#F7931E"/><rect x="18" y="27" width="1" height="1" fill="#866656"/><rect x="19" y="27" width="1" height="1" fill="#603813"/><rect x="12" y="28" width="8" height="1" fill="#603813"/><rect x="13" y="29" width="1" height="1" fill="#000000"/><rect x="18" y="29" width="1" height="1" fill="#000000"/></symbol>
+</defs></svg>
+
+<header>
+  <div class="hero">
+    <svg viewBox="0 0 32 32"><use href="#sp-front" x="0" y="0" width="32" height="32"/></svg>
+    <div>
+      <h1>Utop<span>IA</span> — storyboard</h1>
+      <p>As 19 histórias de usuário na ordem em que o jogador as encontra. Cada quadro mostra o que a história resolve; abra um card para ver os critérios de aceite e percorrer a sequência.</p>
+    </div>
+  </div>
+  <div class="map" id="map"></div>
+</header>
+
+<main id="main"></main>
+
+<footer>
+  Fonte: board <b>Histórias de Usuário Utop.ia</b> (Trello) · critérios conforme a checklist “Confirmation” de cada card · personagem em pixel art do próprio projeto.
+</footer>
+
+<div class="ov" id="ov">
+  <div class="ov-in" id="ovIn"></div>
+</div>
+
+<script>
+/* ===== paleta ===== */
+const L='#603813', O='#f7931e', OS='#fde7cc', W='#ffffff',
+      G='#e8e2d9', GD='#bdb2a4', K='#3d2814', SK='#f2d4a2';
+
+/* ===== primitivas pixel (grade de 100 x 60 células, célula = 4u) ===== */
+const U=4;
+const P=(x,y,w,h,c)=>`<rect x="${x*U}" y="${y*U}" width="${w*U}" height="${h*U}" fill="${c}"/>`;
+
+function frame(x,y,w,h,o){
+  o=o||{};
+  const t=o.t||1;
+  return P(x,y,w,h,o.line||L) + P(x+t,y+t,w-2*t,h-2*t,o.fill||W);
+}
+/* texto: coordenadas em unidades svg */
+function TX(x,y,s,txt,o){
+  o=o||{};
+  const fam = o.pix ? "'Silkscreen', monospace" : "'VT323', monospace";
+  return `<text x="${x}" y="${y}" font-size="${s}" text-anchor="${o.a||'start'}"
+    font-family="${fam}" font-weight="${o.w||400}" fill="${o.f||K}"
+    style="shape-rendering:auto">${txt}</text>`;
+}
+/* seta pixelada */
+function arrR(x,y,n,c){
+  c=c||L;
+  return P(x,y,n,2,c) + P(x+n,y-2,2,6,c) + P(x+n+2,y-1,2,4,c) + P(x+n+4,y,2,2,c);
+}
+function arrD(x,y,n,c){
+  c=c||L;
+  return P(x,y,2,n,c) + P(x-2,y+n,6,2,c) + P(x-1,y+n+2,4,2,c) + P(x,y+n+4,2,2,c);
+}
+function arrL(x,y,n,c){
+  c=c||L;
+  return P(x,y,n,2,c) + P(x-2,y-2,2,6,c) + P(x-4,y-1,2,4,c) + P(x-6,y,2,2,c);
+}
+/* coração pixelado */
+function heart(x,y,filled){
+  const c = filled?O:'#ffffff', e = filled?O:GD;
+  return P(x+1,y,2,1,e)+P(x+4,y,2,1,e)
+       + P(x,y+1,7,2,c) + P(x+1,y+3,5,1,c) + P(x+2,y+4,3,1,c) + P(x+3,y+5,1,1,c)
+       + (filled?'':P(x,y+1,7,2,'#fff')+P(x+1,y+3,5,1,'#fff')+P(x+2,y+4,3,1,'#fff')
+          +P(x,y+1,1,2,GD)+P(x+6,y+1,1,2,GD)+P(x+1,y+3,1,1,GD)+P(x+5,y+3,1,1,GD)
+          +P(x+2,y+4,1,1,GD)+P(x+4,y+4,1,1,GD)+P(x+3,y+5,1,1,GD));
+}
+
+/* check e cross pixelados */
+function ok(x,y,c){
+  c=c||O;
+  return P(x+5,y,1,1,c)+P(x+4,y+1,2,1,c)+P(x+3,y+2,2,1,c)
+       + P(x,y+2,1,1,c)+P(x+1,y+3,2,1,c)+P(x+2,y+4,2,1,c)+P(x+2,y+3,2,1,c);
+}
+function no(x,y,c){
+  c=c||GD;
+  let s='';
+  for(let i=0;i<5;i++){ s+=P(x+i,y+i,1,1,c)+P(x+4-i,y+i,1,1,c); }
+  return s;
+}
+
+/* slot de inventário */
+function slot(x,y,o){
+  o=o||{};
+  let s = o.empty ? P(x,y,7,7,GD)+P(x+1,y+1,5,5,W) : P(x,y,7,7,L)+P(x+1,y+1,5,5,OS);
+  if(o.item) s += P(x+3,y+1,1,5,O)+P(x+1,y+3,5,1,O)+P(x+2,y+2,3,3,O);
+  return s;
+}
+/* Luci — orbe companion em pixel */
+function luci(x,y,s,mood){
+  const c = v=>P(x+v[0]*s, y+v[1]*s, (v[2]||1)*s, (v[3]||1)*s, v[4]);
+  let o='';
+  // corpo 9x9
+  [[3,0,3,1,L],[2,1,5,1,L],[1,2,7,1,L],[0,3,9,3,L],[1,6,7,1,L],[2,7,5,1,L],[3,8,3,1,L]]
+    .forEach(v=>o+=c(v));
+  [[3,1,3,1,W],[2,2,5,1,W],[1,3,7,2,W],[2,5,5,1,W],[3,6,3,1,W]].forEach(v=>c(v)&&(o+=c(v)));
+  if(mood==='bad'){
+    o += c([2,3,1,1,L])+c([3,4,1,1,L])+c([2,5,1,1,L]);
+    o += c([6,3,1,1,L])+c([5,4,1,1,L])+c([6,5,1,1,L]);
+    o += c([3,6,3,1,O]);
+    o += c([-2,2,1,1,O])+c([10,5,1,1,O])+c([-1,6,1,1,O])+c([9,1,1,1,O]);
+  } else {
+    o += c([3,3,1,1,L])+c([5,3,1,1,L]);
+    o += c([3,5,3,1,O]);
+  }
+  o += c([4,-2,1,2,O]);
+  return o;
+}
+/* barra de título de janela */
+function win(x,y,w,h,title){
+  return frame(x,y,w,h) + P(x+1,y+1,w-2,7,O)
+       + TX((x+3)*U, (y+6.4)*U, 10, title, {pix:true,f:'#fff'});
+}
+/* legenda inferior padrão */
+const CAP = t => TX(200,232,15,t,{a:'middle',f:'#8a7b6b'});
+const TOP = t => TX(200,20,15,t,{a:'middle',f:'#8a7b6b'});
+/* personagem */
+const hero = (view,x,y,s)=>`<use href="#sp-${view}" xlink:href="#sp-${view}" x="${x}" y="${y}" width="${s}" height="${s}"/>`;
+
+/* ===== 19 quadros ===== */
+const ART={};
+
+/* US01 — menu principal */
+ART[1] = `
+  ${win(3,4,56,46,'UTOPIA')}
+  ${[['1','Cadastro'],['2','Novo jogo'],['3','Instruções'],['4','Encerrar']].map((r,i)=>{
+     const y=15+i*8;
+     return frame(7,y,48,6,{fill:i===1?OS:W,line:i===1?O:GD})
+          + P(9,y+1,4,4,O) + TX(11*U,(y+3.9)*U,11,r[0],{a:'middle',pix:true,f:'#fff'})
+          + TX(16*U,(y+4.2)*U,16,r[1]);
+   }).join('')}
+  ${TX(9*U,47.6*U,16,'&gt; _',{f:L})}
+  ${hero('front',248,44,124)}
+  ${CAP('fora de 1–4 → aviso e nova tentativa')}`;
+
+/* US02 — captura de teclas */
+ART[2] = `
+  ${TOP('campo numérico recebe texto')}
+  ${frame(4,8,34,10,{fill:W})}
+  ${TX(7*U,14.6*U,18,'abc',{f:K})}
+  ${arrR(40,12,6,L)}
+  ${no(52,10,O)}
+  ${frame(4,24,50,15,{fill:OS,line:O})}
+  ${TX(7*U,30*U,16,'Comando inválido.',{f:K})}
+  ${TX(7*U,36.4*U,16,'Tente novamente.',{f:K})}
+  ${arrL(10,44,14,L)}
+  ${TX(26*U,46.4*U,15,'buffer descartado',{f:'#8a7b6b'})}
+  ${hero('front',292,40,104)}
+  ${CAP('a sessão continua aberta')}`;
+
+/* US03 — cadastrar nome */
+ART[3] = `
+  ${TOP('nome do jogador — até 3 letras')}
+  ${['L','U','C'].map((ch,i)=>
+     frame(10+i*11,8,9,11,{fill:W}) + TX((14.5+i*11)*U,16.6*U,22,ch,{a:'middle',f:K})
+   ).join('')}
+  ${arrD(22,22,6,L)}
+  ${frame(4,34,30,12,{fill:W})}
+  ${TX(6*U,38.6*U,13,'novo',{f:'#8a7b6b'})}
+  ${TX(6*U,44*U,19,'LUC',{f:K})}
+  ${ok(26,38,O)}
+  ${frame(38,34,30,12,{fill:G,line:GD})}
+  ${TX(40*U,38.6*U,13,'já cadastrado',{f:'#8a7b6b'})}
+  ${TX(40*U,44*U,19,'LUC',{f:'#bdb2a4'})}
+  ${no(61,38,GD)}
+  ${hero('front',292,44,104)}
+  ${CAP('o nome vai para a partida e o ranking')}`;
+
+/* US04 — computar score */
+ART[4] = `
+  ${TOP('score = puzzles + bônus B1 − erros')}
+  ${[['puzzles','240',6],['bônus B1','150',28],['erros','40',50]].map(([lb,vl,x],i)=>
+     frame(x,9,18,13,{fill:i===2?G:W,line:i===2?GD:L})
+     + TX((x+9)*U,14*U,14,lb,{a:'middle',f:'#8a7b6b'})
+     + TX((x+9)*U,20*U,19,vl,{a:'middle',f:i===2?'#8a7b6b':K})
+   ).join('')}
+  ${TX(26*U,17.6*U,20,'+',{a:'middle',f:L})}
+  ${TX(48*U,17.6*U,20,'−',{a:'middle',f:L})}
+  ${arrD(34,25,6,L)}
+  ${frame(16,36,42,12,{fill:OS,line:O})}
+  ${TX(19*U,41*U,13,'SCORE FINAL',{f:'#8a7b6b'})}
+  ${TX(19*U,46.4*U,21,'0350',{f:K})}
+  ${hero('front',292,44,104)}
+  ${CAP('exibido ao concluir a partida')}`;
+
+/* US05 — auto-save */
+ART[5] = `
+  ${TOP('gravação automática em 3 momentos')}
+  ${P(6,22,64,1,GD)}
+  ${[['bloco 1',12],['item obtido',36],['boss',60]].map(([lb,x])=>
+     P(x-1,21,3,3,O)
+     + TX(x*U,18*U,13,lb,{a:'middle',f:K})
+     + arrD(x,26,6,L)
+   ).join('')}
+  ${[12,36,60].map(x=>
+     frame(x-7,36,14,12,{fill:W})
+     + P(x-4,38,8,4,L) + P(x-3,39,4,2,W)
+     + P(x-5,43,10,4,L) + P(x-4,44,8,2,W)
+   ).join('')}
+  ${TX(144,208,16,'save.dat atualizado',{a:'middle',f:K})}
+  ${hero('side',296,52,96)}
+  ${CAP('nada se perde em fechamento inesperado')}`;
+
+/* US06 — painel de status */
+ART[6] = `
+  ${TOP('cabeçalho fixo, redesenhado a cada ação')}
+  ${frame(3,8,72,14,{fill:W})}
+  ${TX(6*U,13*U,13,'VIDAS',{f:'#8a7b6b'})}
+  ${heart(6,15,true)}${heart(14,15,true)}${heart(22,15,false)}
+  ${P(31,9,1,12,G)}
+  ${TX(34*U,13*U,13,'ITENS',{f:'#8a7b6b'})}
+  ${slot(34,14,{item:true})}${slot(42,14,{})}${slot(50,14,{empty:true})}
+  ${P(59,9,1,12,G)}
+  ${TX(62*U,13*U,13,'SCORE',{f:'#8a7b6b'})}
+  ${TX(62*U,20*U,18,'0350',{f:K})}
+  ${arrD(38,26,5,L)}
+  ${frame(6,36,64,11,{fill:OS,line:O})}
+  ${heart(9,39,false)}
+  ${TX(18*U,43.4*U,15,'0 vidas',{f:K})}
+  ${arrR(37,41,3,L)}
+  ${TX(47*U,43.4*U,15,'fim de jogo',{f:K})}
+  ${hero('front',296,44,100)}
+  ${CAP('perdas e ganhos aparecem na hora')}`;
+
+/* US07 — quizzes do bloco 1 */
+ART[7] = `
+  ${TOP('trecho de conversa com a IA')}
+  ${frame(4,7,66,11,{fill:G,line:GD})}
+  ${TX(7*U,14.4*U,14,'A capital da França é Berlim.',{f:K})}
+  ${frame(4,22,36,10,{fill:W,line:O})}
+  ${TX(7*U,28.6*U,15,'alucinação',{f:K})}
+  ${ok(32,25,O)}
+  ${frame(42,22,28,10,{fill:W,line:GD})}
+  ${TX(45*U,28.6*U,15,'correto',{f:'#bdb2a4'})}
+  ${['sala 1','sala 2','Bloco 2'].map((s,i)=>{
+     const x=4+i*24;
+     return frame(x,38,20,9,{fill:i===2?OS:W,line:i===2?O:L})
+          + TX((x+10)*U,44.4*U,15,s,{a:'middle',f:K})
+          + (i<2? P(x+21,42,2,2,L) : '');
+   }).join('')}
+  ${hero('front',300,44,96)}
+  ${CAP('errar aqui não consome vidas')}`;
+
+/* US08 — instruções da Luci */
+ART[8] = `
+  ${luci(5,24,2,'good')}
+  ${TX(14*U,46*U,14,'Luci',{a:'middle',f:'#8a7b6b'})}
+  ${frame(26,6,46,30,{fill:W})}
+  ${P(24,18,2,2,L)}${P(22,20,2,2,L)}${P(24,22,2,2,L)}
+  ${TX(29*U,13.4*U,14,'Você foi levado para',{f:K})}
+  ${TX(29*U,19.4*U,14,'dentro de UtopIA.',{f:K})}
+  ${TX(29*U,27.4*U,14,'Precisamos restaurar',{f:K})}
+  ${TX(29*U,33.4*U,14,'a lógica daqui.',{f:K})}
+  ${frame(26,40,24,9,{fill:OS,line:O})}
+  ${TX(38*U,46.4*U,15,'[ enter ]',{a:'middle',f:K})}
+  ${arrR(52,44,2,L)}
+  ${TX(62*U,46.6*U,15,'avança',{f:K})}
+  ${hero('front',300,44,96)}
+  ${CAP('os diálogos antecedem os quizzes')}`;
+
+/* US09 — pausar */
+ART[9] = `
+  ${P(4,6,92,42,G)}
+  ${TX(7*U,12*U,14,'partida congelada',{f:'#8a7b6b'})}
+  ${hero('side',28,64,72)}
+  ${frame(30,16,44,30,{fill:W,t:2})}
+  ${P(32,18,40,7,O)}
+  ${TX(52*U,23.4*U,11,'PAUSADO',{a:'middle',pix:true,f:'#fff'})}
+  ${[['1','Reiniciar'],['2','Instruções'],['3','Encerrar']].map((r,i)=>{
+     const y=28+i*6;
+     return TX(35*U,(y+3.4)*U,15,r[0]+'.',{f:O})
+          + TX(39*U,(y+3.4)*U,15,r[1],{f:K});
+   }).join('')}
+  ${frame(4,51,64,8,{fill:OS,line:O})}
+  ${TX(36*U,56.8*U,15,'progresso salvo ao pausar',{a:'middle',f:K})}`;
+
+/* US10 — reiniciar */
+ART[10] = `
+  ${frame(8,6,60,13,{fill:W,t:2})}
+  ${TX(38*U,11.6*U,15,'Apagar progresso atual?',{a:'middle',f:K})}
+  ${TX(38*U,17.4*U,18,'S / N',{a:'middle',f:O})}
+  ${arrD(37,22,6,L)}
+  ${frame(4,32,70,15,{fill:W})}
+  ${TX(7*U,37.4*U,13,'VIDAS',{f:'#8a7b6b'})}
+  ${heart(7,39,true)}${heart(15,39,true)}${heart(23,39,true)}
+  ${P(32,33,1,13,G)}
+  ${TX(35*U,37.4*U,13,'SCORE',{f:'#8a7b6b'})}
+  ${TX(35*U,44.6*U,18,'0',{f:K})}
+  ${P(47,33,1,13,G)}
+  ${TX(50*U,37.4*U,13,'ITENS',{f:'#8a7b6b'})}
+  ${slot(50,39,{empty:true})}${slot(58,39,{empty:true})}${slot(66,39,{empty:true})}
+  ${hero('front',304,52,88)}
+  ${CAP('valores padrão → volta ao menu')}`;
+
+/* US11 — encerrar */
+ART[11] = `
+  ${frame(8,6,56,13,{fill:W,t:2})}
+  ${TX(36*U,11.6*U,16,'Encerrar o jogo?',{a:'middle',f:K})}
+  ${TX(36*U,17.4*U,18,'S / N',{a:'middle',f:O})}
+  ${arrD(35,22,5,L)}
+  ${frame(8,31,56,10,{fill:OS,line:O})}
+  ${TX(36*U,37.6*U,15,'Até a próxima, jogador.',{a:'middle',f:K})}
+  ${frame(4,45,35,9,{fill:W})}
+  ${ok(7,47,O)}
+  ${TX(14*U,51.4*U,13,'memória livre',{f:K})}
+  ${frame(41,45,35,9,{fill:W})}
+  ${ok(44,47,O)}
+  ${TX(51*U,51.4*U,13,'terminal livre',{f:K})}
+  ${hero('side',304,36,88)}`;
+
+/* US12 — janela de contexto */
+ART[12] = `
+  ${TOP('cada movimento consome 1 ação')}
+  ${frame(4,8,64,10,{fill:W})}
+  ${Array.from({length:15},(_,i)=>P(6+i*4,10,3,6, i<14?O:'#f0ece6')).join('')}
+  ${TX(144,88,18,'14 / 15 ações',{a:'middle',f:K})}
+  ${arrD(34,26,5,L)}
+  ${frame(4,35,30,10,{fill:G,line:GD})}
+  ${TX(19*U,41.6*U,15,'no limite',{a:'middle',f:K})}
+  ${arrR(36,39,3,L)}
+  ${frame(46,35,28,10,{fill:OS,line:O})}
+  ${heart(49,37,false)}
+  ${TX(58*U,41.6*U,15,'−1 vida',{f:K})}
+  ${P(4,50,68,1,G)}
+  ${heart(10,54,false)}${heart(18,54,false)}${heart(26,54,false)}
+  ${arrR(36,55,3,L)}
+  ${TX(47*U,58.4*U,15,'game over',{f:K})}
+  ${hero('side',304,44,88)}`;
+
+/* US13 — navegar entre salas */
+ART[13] = `
+  ${TOP('até 3 salas temáticas conectadas')}
+  ${[['Ética',2,true],['Viés',31,false],['Fake news',60,false]].map(([nm,x,cur])=>
+     frame(x,10,22,14,{fill:cur?OS:W,line:cur?O:L})
+     + TX((x+11)*U,19*U,14,nm,{a:'middle',f:K})
+   ).join('')}
+  ${arrR(25,16,1,L)}
+  ${arrR(54,16,1,L)}
+  ${TX(13*U,29*U,13,'está aqui',{a:'middle',f:O})}
+  ${hero('top',292,120,84)}
+  ${frame(4,44,46,10,{fill:W})}
+  ${TX(7*U,50.6*U,15,'1 mudança de sala',{f:K})}
+  ${TX(47*U,50.6*U,18,'+1',{a:'end',f:O})}
+  ${CAP('cada transição gasta 1 ação')}`;
+
+/* US14 — resolver puzzles */
+ART[14] = `
+  ${frame(4,8,22,16,{fill:G,line:L})}
+  ${P(5,13,20,1,L)}${P(9,9,12,4,'#d8cfc2')}${P(13,15,4,5,O)}${P(14,16,2,2,L)}
+  ${TX(15*U,29*U,14,'investigar',{a:'middle',f:'#8a7b6b'})}
+  ${arrR(28,15,3,L)}
+  ${frame(40,8,36,16,{fill:W})}
+  ${TX(43*U,14.4*U,13,'qual é a falha?',{f:K})}
+  ${TX(43*U,21*U,15,'A    B    C',{f:'#8a7b6b'})}
+  ${P(51,18,3,3,O)}
+  ${arrD(10,30,4,L)}
+  ${TX(4*U,186,14,'item vai para o inventário',{f:'#8a7b6b'})}
+  ${slot(4,48,{item:true})}${slot(14,48,{empty:true})}${slot(24,48,{empty:true})}
+  ${hero('side',296,120,96)}
+  ${CAP('o nível do item segue o desempenho')}`;
+
+/* US15 — instruções */
+ART[15] = `
+  ${P(4,5,92,7,G)}
+  ${TX(7*U,10*U,14,'pausa durante a partida',{f:'#8a7b6b'})}
+  ${frame(6,15,58,32,{fill:W,t:2})}
+  ${P(8,17,54,7,O)}
+  ${TX(35*U,22.4*U,10,'REGRAS',{a:'middle',pix:true,f:'#fff'})}
+  ${[['Vidas','máximo 3'],['Ações','por bloco'],['Itens','até 3']].map((r,i)=>{
+     const y=30+i*5.5;
+     return TX(10*U,y*U,15,r[0],{f:K}) + TX(24*U,y*U,15,r[1],{f:'#8a7b6b'});
+   }).join('')}
+  ${frame(6,50,58,8,{fill:OS,line:O})}
+  ${TX(35*U,55.8*U,15,'qualquer tecla retoma',{a:'middle',f:K})}
+  ${hero('front',292,52,96)}`;
+
+/* US16 — comportamento da Luci */
+ART[16] = `
+  ${TOP('a postura muda conforme o desempenho')}
+  ${frame(3,8,44,44,{fill:W})}
+  ${TX(25*U,14*U,14,'bom desempenho',{a:'middle',f:'#8a7b6b'})}
+  ${luci(16,18,2,'good')}
+  ${frame(7,38,36,12,{fill:OS,line:O})}
+  ${TX(25*U,43*U,13,'Confere a fonte',{a:'middle',f:K})}
+  ${TX(25*U,48.4*U,13,'antes de usar.',{a:'middle',f:K})}
+  ${frame(53,8,44,44,{fill:W})}
+  ${TX(75*U,14*U,14,'desempenho ruim',{a:'middle',f:'#8a7b6b'})}
+  ${luci(66,18,2,'bad')}
+  ${frame(57,38,36,12,{fill:G,line:GD})}
+  ${TX(75*U,43*U,13,'Confia em mim,',{a:'middle',f:K})}
+  ${TX(75*U,48.4*U,13,'pode ir ali.',{a:'middle',f:K})}
+  ${CAP('as dicas passam a sabotar o jogador')}`;
+
+/* US17 — liberar o bloco 3 */
+ART[17] = `
+  ${TOP('entrada no Bloco 3')}
+  ${frame(4,8,34,12,{fill:W})}
+  ${slot(8,11,{item:true})}
+  ${TX(18*U,17*U,18,'≥ 1',{f:K})}
+  ${arrR(42,13,4,L)}
+  ${frame(56,8,34,12,{fill:OS,line:O})}
+  ${TX(73*U,16.4*U,13,'portal liberado',{a:'middle',f:K})}
+  ${P(4,26,86,1,G)}
+  ${TX(200,128,15,'a dificuldade segue o histórico',{a:'middle',f:'#8a7b6b'})}
+  ${frame(4,36,64,9,{fill:W})}
+  ${TX(7*U,42.4*U,13,'bom desempenho',{f:K})}
+  ${TX(65*U,42.4*U,13,'boss fraco',{a:'end',f:O})}
+  ${frame(4,48,64,9,{fill:G,line:GD})}
+  ${TX(7*U,54.4*U,13,'mau desempenho',{f:K})}
+  ${TX(65*U,54.4*U,13,'boss forte',{a:'end',f:K})}
+  ${hero('front',300,150,80)}`;
+
+/* US18 — usar itens na batalha */
+ART[18] = `
+  ${TX(4*U,18,15,'MENU DE COMBATE',{f:'#8a7b6b'})}
+  ${[['Pergaminho',true],['Poção lógica',true],['Espada',false]].map((r,i)=>{
+     const y=8+i*10;
+     return frame(4,y,40,8,{fill:r[1]?W:G,line:r[1]?L:GD})
+          + TX(7*U,(y+5.6)*U,15,r[0],{f:r[1]?K:'#bdb2a4'})
+          + (r[1]? ok(38,y+2,O) : '');
+   }).join('')}
+  ${arrR(46,20,3,L)}
+  ${luci(58,10,2,'bad')}
+  ${TX(67*U,34*U,14,'boss',{a:'middle',f:'#8a7b6b'})}
+  ${TX(4*U,180,15,'item correto reduz a alucinação',{f:'#8a7b6b'})}
+  ${frame(4,47,68,8,{fill:W})}
+  ${P(6,49,34,4,O)}${P(40,49,30,4,'#f0ece6')}
+  ${CAP('opções dependem do inventário')}`;
+
+/* US19 — ranking */
+ART[19] = `
+  ${win(4,5,60,42,'RANKING')}
+  ${TX(7*U,19*U,13,'#',{f:'#8a7b6b'})}
+  ${TX(13*U,19*U,13,'JOGADOR',{f:'#8a7b6b'})}
+  ${TX(61*U,19*U,13,'SCORE',{a:'end',f:'#8a7b6b'})}
+  ${P(6,20,56,1,G)}
+  ${[['1','LUC','120',true],['2','ANA','98',false],['3','BOB','76',false]].map((r,i)=>{
+     const y=23+i*7;
+     return (r[3]? P(6,y,56,6,OS) : '')
+          + TX(7*U,(y+4.6)*U,18,r[0],{f:r[3]?O:K})
+          + TX(13*U,(y+4.6)*U,18,r[1],{f:K})
+          + TX(61*U,(y+4.6)*U,18,r[2],{a:'end',f:K});
+   }).join('')}
+  ${frame(4,48,32,8,{fill:W})}
+  ${TX(20*U,54*U,15,'voltar ao menu',{a:'middle',f:K})}
+  ${hero('front',276,44,116)}
+  ${TX(284,228,14,'ordenado do maior',{a:'middle',f:'#8a7b6b'})}`;
+
+/* ===== dados do board ===== */
+const PHASES=[
+ {id:'p1',tag:'MENU',name:'Abertura e sessão',rng:'US 01 – 06',us:[1,2,3,4,5,6],
+  hint:'Menu, entrada, cadastro, score, save e painel'},
+ {id:'p2',tag:'BLOCO 1',name:'Tutorial de alucinação',rng:'US 07 – 08',us:[7,8],
+  hint:'Quizzes conceituais e a chegada da Luci'},
+ {id:'p3',tag:'PAUSA',name:'Controle da partida',rng:'US 09 – 11, 15',us:[9,10,11,15],
+  hint:'Pausar, reiniciar, encerrar e consultar regras'},
+ {id:'p4',tag:'BLOCO 2',name:'Exploração e puzzles',rng:'US 12 – 14, 16',us:[12,13,14,16],
+  hint:'Janela de contexto, salas, itens e a Luci mudando'},
+ {id:'p5',tag:'BLOCO 3',name:'Confronto e ranking',rng:'US 17 – 19',us:[17,18,19],
+  hint:'Liberação do boss, combate e pontuação final'}
+];
+
+const EPICS={1:'Épico 01 · Core Engine',2:'Épico 02 · Estado e Score',
+             3:'Épico 03 · Bloco 1',4:'Épico 04 · Bloco 2',5:'Épico 05 · Bloco 3'};
+
+const US={
+1:{code:'US 01',ep:1,st:'Desenvolvimento',t:'Exibir o menu principal',
+ d:'O jogo abre com o título e quatro opções numeradas.',
+ ac:['Exibe o título "UtopIA" e as 4 opções claras ao iniciar a aplicação.',
+     'Digitar 1 exibe o local para registrar o nome escolhido pelo jogador.',
+     'Digitar 2 inicia a introdução da narrativa e o Bloco 1 (Tutorial).',
+     'Digitar 3 exibe os conceitos básicos de usabilidade e regras.',
+     'Digitar 4 exibe a opção de encerrar o jogo.',
+     'Entradas fora do intervalo 1-4 exibem mensagem de orientação e solicitam nova opção sem fechar o programa.']},
+2:{code:'US 02',ep:1,st:'Desenvolvimento',t:'Capturar teclas digitadas no console',
+ d:'Entrada inválida vira aviso, não travamento.',
+ ac:['Caso o usuário digite texto em campos estritamente numéricos ou uma opção inexistente, o sistema exibe: "Comando inválido. Tente novamente."',
+     'O sistema descarta o buffer incorreto e aguarda a nova digitação sem encerrar a sessão.']},
+3:{code:'US 03',ep:2,st:'Desenvolvimento',t:'Cadastrar o nome do jogador',
+ d:'Nome de até 3 letras, sem repetição, ligado ao progresso.',
+ ac:['O nome escolhido aparecer durante a partida.',
+     'A Luci se referir ao jogador pelo nome escolhido.',
+     'O cadastramento não pode permitir nomes repetidos.',
+     'O nome aparecer no ranking junto à pontuação.']},
+4:{code:'US 04',ep:2,st:'Desenvolvimento',t:'Computar o score',
+ d:'Pontuação dos puzzles, mais o bônus do Bloco 1, menos os erros.',
+ ac:['A pontuação aumenta ao acertar quizzes e puzzles.',
+     'A pontuação diminui ao errar os puzzles.',
+     'O score final acumulado é exibido ao concluir a partida.']},
+5:{code:'US 05',ep:2,st:'Desenvolvimento',t:'Salvar automaticamente o progresso',
+ d:'Gravação em arquivo nos três pontos de virada da partida.',
+ ac:['O arquivo de save é atualizado automaticamente ao concluir o Bloco 1.',
+     'O arquivo de save é atualizado automaticamente ao obter um item após resolver um puzzle no Bloco 2.',
+     'O arquivo de save é atualizado automaticamente ao obter o resultado da batalha com o boss.']},
+6:{code:'US 06',ep:2,st:'Desenvolvimento',t:'Acessar painel com vida, itens e pontuação',
+ d:'Cabeçalho fixo com vidas, inventário e score atual.',
+ ac:['O cabeçalho é atualizado e exibido a cada nova renderização de tela.',
+     'Perdas de vida ou aquisição de novos itens refletem no painel imediatamente.',
+     'Se o contador de vidas chegar a 0, aciona a tela de derrota/fim de jogo.']},
+7:{code:'US 07',ep:3,st:'Desenvolvimento',t:'Aprender com os quizzes sobre alucinação',
+ d:'Duas salas obrigatórias com falas de IA para identificar.',
+ ac:['Apresenta 2 salas sequenciais obrigatórias com perguntas educativas sobre IA.',
+     'Respostas corretas concedem bônus de score inicial.',
+     'Respostas incorretas no Bloco 1 não consomem vidas do jogador.',
+     'Concluir os quizzes do Bloco 1 libera a passagem para o Bloco 2.']},
+8:{code:'US 08',ep:3,st:'Desenvolvimento',t:'Receber instruções da Luci no Bloco 1',
+ d:'A companion apresenta a abdução e orienta o avanço.',
+ ac:['Diálogos em texto de Luci introduzem a história antes dos quizzes.',
+     'O avanço dos diálogos exige uma confirmação simples por teclado pelo jogador.']},
+9:{code:'US 09',ep:1,st:'Backlog',t:'Pausar o jogo no estado atual',
+ d:'Menu próprio sobre a partida, sem perder progresso.',
+ ac:['A opção "Pausar" grava os dados atuais no arquivo sem corromper a estrutura do texto.',
+     'A opção "Reiniciar" permite voltar ao início do jogo, mas o progresso não ficará salvo.',
+     'A opção "Instruções" mostra um box de texto com as principais regras do jogo.',
+     'A opção "Encerrar" permite sair do jogo.']},
+10:{code:'US 10',ep:1,st:'Backlog',t:'Reiniciar a partida',
+ d:'Confirmação antes de apagar e restaurar os valores padrão.',
+ ac:['A opção "Reiniciar Partida" está disponível no menu de pausa durante o jogo.',
+     'O sistema exige uma confirmação do jogador (ex.: S/N) antes de apagar o progresso atual.',
+     'A confirmação da ação restaura os valores padrões da struct do jogador (vidas, pontuação e inventário) e redireciona para o menu principal no início.']},
+11:{code:'US 11',ep:1,st:'Backlog',t:'Encerrar o jogo',
+ d:'Saída limpa, devolvendo o terminal sem travar.',
+ ac:['A opção de encerrar o jogo está visível e acessível no Menu Principal e no menu de pausa.',
+     'O acionamento do comando abre um box para confirmar a escolha.',
+     'Todos os recursos de memória da aplicação são liberados corretamente (sem memory leaks).',
+     'O sistema exibe uma mensagem de despedida e finaliza o executável com sucesso.']},
+12:{code:'US 12',ep:2,st:'Backlog',t:'Contabilizar ações da janela de contexto',
+ d:'Cada passo gasta um token; estourar o limite custa vida.',
+ ac:['O contador de ações é incrementado a cada interação/movimento.',
+     'Atingir o limite de ações estipulado para a fase resulta na perda de 1 vida do jogador.',
+     'A perda de 3 vidas implica no game over.']},
+13:{code:'US 13',ep:4,st:'Backlog',t:'Navegar entre salas no Bloco 2',
+ d:'Transição entre até três salas temáticas pelo teclado.',
+ ac:['Apresenta opções de navegação baseadas nos caminhos disponíveis a partir da sala atual.',
+     'Cada mudança de ambiente incrementa o contador global de ações/tokens consumidos.']},
+14:{code:'US 14',ep:4,st:'Backlog',t:'Resolver puzzles de IA no Bloco 2',
+ d:'Investigar abre um puzzle que concede itens para o confronto.',
+ ac:['Ação de investigação exibe o enunciado e as opções de resolução do puzzle.',
+     'A resolução correta adiciona o item correspondente ao inventário do jogador.',
+     'O nível do item concedido é proporcional ao desempenho na resolução do puzzle.']},
+15:{code:'US 15',ep:1,st:'Backlog',t:'Acessar as instruções do jogo',
+ d:'Box com o resumo das regras, aberto pela pausa.',
+ ac:['O comando de pausa é acionado durante qualquer turno do jogo sem fechar o executável.',
+     'A tela exibe um box de texto claro resumindo as regras, dinâmicas permitidas e restrições da partida.',
+     'A confirmação de saída da tela de pausa restabelece o estado do jogo sem perdas de progresso ou falhas de memória.']},
+16:{code:'US 16',ep:4,st:'Backlog',t:'Alterar o comportamento da Luci',
+ d:'O desempenho ruim corrompe a companion, que passa a sabotar.',
+ ac:['Bom desempenho mantém diálogos colaborativos de Luci.',
+     'Baixa pontuação e alto consumo de vidas altera o estado de Luci para "agressivo/alucinado", modificando seus textos em tela.']},
+17:{code:'US 17',ep:5,st:'Backlog',t:'Adaptar o confronto final com o boss',
+ d:'O Bloco 3 exige itens e ajusta o boss ao histórico.',
+ ac:['Bloqueia a entrada no Bloco 3 caso o jogador possua apenas 1 item.',
+     'Define os parâmetros de vida e ataque do Boss com base no histórico de acertos e vidas restantes do jogador.']},
+18:{code:'US 18',ep:5,st:'Backlog',t:'Usar itens e conhecimentos na batalha final',
+ d:'O menu de combate libera opções conforme o inventário.',
+ ac:['Opções especiais de combate só ficam disponíveis se o item correspondente estiver no inventário.',
+     'O uso do item correto reduz os pontos de vida/alucinação do Boss.']},
+19:{code:'US 19',ep:2,st:'Backlog',t:'Acessar ranking com a pontuação',
+ d:'Tela final com as pontuações ordenadas e volta ao menu.',
+ ac:['A tela de ranking exibe a lista de pontuações ordenadas juntamente com os respectivos nomes dos jogadores.',
+     'A visualização da tabela no terminal é legível e oferece uma opção clara para retornar ao menu principal e encerrar a partida.']}
+};
+
+/* ordem de percurso = ordem das fases */
+const SEQ = PHASES.reduce((a,p)=>a.concat(p.us),[]);
+
+const svgOf = n => `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="400" height="240" fill="#ffffff"/>${ART[n]}</svg>`;
+
+/* ===== montagem ===== */
+const map=document.getElementById('map');
+PHASES.forEach(p=>{
+  const b=document.createElement('button');
+  b.className='ph'; b.type='button';
+  b.innerHTML=`<b>${p.tag}</b><i>${p.name} · ${p.rng}</i>`;
+  b.addEventListener('click',()=>{
+    document.getElementById(p.id).scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  map.appendChild(b);
+});
+
+const main=document.getElementById('main');
+PHASES.forEach(p=>{
+  const h=document.createElement('div');
+  h.className='sec-head'; h.id=p.id;
+  h.innerHTML=`<span class="tag">${p.tag}</span><h2>${p.name}</h2><span class="rng">${p.hint}</span>`;
+  main.appendChild(h);
+
+  const g=document.createElement('div');
+  g.className='grid';
+  p.us.forEach(n=>{
+    const u=US[n];
+    const c=document.createElement('div');
+    c.className='card'; c.tabIndex=0; c.setAttribute('role','button');
+    c.innerHTML=`
+      <div class="top">
+        <span class="code">${u.code}</span>
+        <span class="st ${u.st==='Desenvolvimento'?'dev':''}">${u.st==='Desenvolvimento'?'em dev':'backlog'}</span>
+      </div>
+      <div class="art">${svgOf(n)}</div>
+      <div class="body"><h3>${u.t}</h3><p>${u.d}</p></div>`;
+    const open=()=>show(n);
+    c.addEventListener('click',open);
+    c.addEventListener('keydown',e=>{
+      if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}
+    });
+    g.appendChild(c);
+  });
+  main.appendChild(g);
+});
+
+/* ===== modo foco ===== */
+const ov=document.getElementById('ov'), ovIn=document.getElementById('ovIn');
+let cur=null;
+
+function show(n){
+  cur=n;
+  const u=US[n], i=SEQ.indexOf(n);
+  ovIn.innerHTML=`
+    <div class="ov-top">
+      <span class="code">${u.code}</span>
+      <span class="st ${u.st==='Desenvolvimento'?'dev':''}">${u.st==='Desenvolvimento'?'em dev':'backlog'}</span>
+      <span class="ep">${EPICS[u.ep]}</span>
+      <button class="x" id="ovX" type="button">fechar</button>
+    </div>
+    <div class="ov-art">${svgOf(n)}</div>
+    <div class="ov-body">
+      <h3>${u.t}</h3>
+      <p class="lead">${u.d}</p>
+      <h4>CRITERIOS DE ACEITE</h4>
+      <ul>${u.ac.map(a=>`<li>${a}</li>`).join('')}</ul>
+    </div>
+    <div class="ov-nav">
+      <button type="button" id="ovPrev" ${i===0?'disabled':''}>&lt; anterior</button>
+      <button type="button" id="ovNext" ${i===SEQ.length-1?'disabled':''}>próxima &gt;</button>
+      <span class="pos">${i+1} de ${SEQ.length}</span>
+    </div>`;
+  ov.classList.add('on');
+  document.getElementById('ovX').onclick=close_;
+  const pv=document.getElementById('ovPrev'), nx=document.getElementById('ovNext');
+  if(pv) pv.onclick=()=>step(-1);
+  if(nx) nx.onclick=()=>step(1);
+  ovIn.scrollTop=0;
+}
+function step(d){
+  const i=SEQ.indexOf(cur)+d;
+  if(i>=0 && i<SEQ.length) show(SEQ[i]);
+}
+function close_(){ ov.classList.remove('on'); cur=null; }
+
+ov.addEventListener('click',e=>{ if(e.target===ov) close_(); });
+document.addEventListener('keydown',e=>{
+  if(cur===null) return;
+  if(e.key==='Escape') close_();
+  if(e.key==='ArrowRight') step(1);
+  if(e.key==='ArrowLeft') step(-1);
+});
+
+</script>
+</body>
+</html>

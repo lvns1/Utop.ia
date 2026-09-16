@@ -490,7 +490,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US01](assets/diagramas/US_01_diagrama.png)
 
-[✏️ Sketch — US01](assets/sketches/us01_sketch.png)
+[✏️ Sketch — US01](assets/sketches/us01_sketche.png)
 
 </details>
 
@@ -510,7 +510,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US03](assets/diagramas/US_03_diagrama.png)
 
-[✏️ Sketch — US03](assets/sketches/us03_sketch.png)
+[✏️ Sketch — US03](assets/sketches/us03_sketche.png)
 
 </details>
 
@@ -521,7 +521,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US04](assets/diagramas/US_04_diagrama.png)
 
-[✏️ Sketch — US04](assets/sketches/us04_sketch.png)
+[✏️ Sketch — US04](assets/sketches/us04_sketche.png)
 
 </details>
 
@@ -532,7 +532,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US05](assets/diagramas/US_05_diagrama.png)
 
-[✏️ Sketch — US05](assets/sketches/us05_sketch.png)
+[✏️ Sketch — US05](assets/sketches/us05_sketche.png)
 
 </details>
 
@@ -543,7 +543,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US06](assets/diagramas/US_06_diagrama.png)
 
-[✏️ Sketch — US06](assets/sketches/us06_sketch.png)
+[✏️ Sketch — US06](assets/sketches/us06_sketche.png)
 
 </details>
 
@@ -554,7 +554,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US07](assets/diagramas/US_07_diagrama.png)
 
-[✏️ Sketch — US07](assets/sketches/us07_sketch.png)
+[✏️ Sketch — US07](assets/sketches/us07_sketche.png)
 
 </details>
 
@@ -565,7 +565,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US08](assets/diagramas/US_08_diagrama.png)
 
-[✏️ Sketch — US08](assets/sketches/us08_sketch.png)
+[✏️ Sketch — US08](assets/sketches/us08_sketche.png)
 
 </details>
 
@@ -576,7 +576,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US09](assets/diagramas/US_09_diagrama.png)
 
-[✏️ Sketch — US09](assets/sketches/us09_sketch.png)
+[✏️ Sketch — US09](assets/sketches/us09_sketche.png)
 
 </details>
 
@@ -587,7 +587,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US10](assets/diagramas/US_10_diagrama.png)
 
-[✏️ Sketch — US10](assets/sketches/us10_sketch.png)
+[✏️ Sketch — US10](assets/sketches/us10_sketche.png)
 
 </details>
 
@@ -598,7 +598,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US11](assets/diagramas/US_11_diagrama.png)
 
-[✏️ Sketch — US11](assets/sketches/us11_sketch.png)
+[✏️ Sketch — US11](assets/sketches/us11_sketche.png)
 
 </details>
 
@@ -609,7 +609,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US12](assets/diagramas/US_12_diagrama.png)
 
-[✏️ Sketch — US12](assets/sketches/us12_sketch.png)
+[✏️ Sketch — US12](assets/sketches/us12_sketche.png)
 
 </details>
 
@@ -620,7 +620,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US13](assets/diagramas/US_13_diagrama.png)
 
-[✏️ Sketch — US13](assets/sketches/us13_sketch.png)
+[✏️ Sketch — US13](assets/sketches/us13_sketche.png)
 
 </details>
 
@@ -631,7 +631,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US14](assets/diagramas/US_14_diagrama.png)
 
-[✏️ Sketch — US14](assets/sketches/us14_sketch.png)
+[✏️ Sketch — US14](assets/sketches/us14_sketche.png)
 
 </details>
 
@@ -642,7 +642,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US15](assets/diagramas/US_15_diagrama.png)
 
-[✏️ Sketch — US15](assets/sketches/us15_sketch.png)
+[✏️ Sketch — US15](assets/sketches/us15_sketche.png)
 
 </details>
 
@@ -653,7 +653,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US16](assets/diagramas/US_16_diagrama.png)
 
-[✏️ Sketch — US16](assets/sketches/us16_sketch.png)
+[✏️ Sketch — US16](assets/sketches/us16_sketche.png)
 
 </details>
 
@@ -664,7 +664,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US17](assets/diagramas/US_17_diagrama.png)
 
-[✏️ Sketch — US17](assets/sketches/us17_sketch.png)
+[✏️ Sketch — US17](assets/sketches/us17_sketche.png)
 
 </details>
 
@@ -675,7 +675,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US18](assets/diagramas/US_18_diagrama.png)
 
-[✏️ Sketch — US18](assets/sketches/us18_sketch.png)
+[✏️ Sketch — US18](assets/sketches/us18_sketche.png)
 
 </details>
 
@@ -686,7 +686,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [📐 Diagrama — US19](assets/diagramas/US_19_diagrama.png)
 
-[✏️ Sketch — US19](assets/sketches/us19_sketch.png)
+[✏️ Sketch — US19](assets/sketches/us19_sketche.png)
 
 </details>
 

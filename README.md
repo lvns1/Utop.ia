@@ -473,8 +473,6 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 
 ### 📝 User Stories
 
-[svg](https://github.com/lvns1/Utop.ia#-user-stories)
-
 As User Stories foram utilizadas para representar as funcionalidades, necessidades e objetivos do projeto a partir da perspectiva dos usuários e do desenvolvimento do UtopIA.
 
 <a href="assets/trello/board.png">

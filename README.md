@@ -688,6 +688,16 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 </details>
 
+--- 
+
+### 🎥 Screen Cast
+
+Apresentação em vídeo do protótipo de baixa fidelidade e das principais funcionalidades do UtopIA.
+
+[▶️ Assistir ao Screen Cast — UtopIA](https://youtu.be/dCDFLTai1D8?si=o-KndwSv8ooUi0Bw)
+
+---
+
 ### 📅 Organização e Acompanhamento do projeto
 
 O desenvolvimento do UtopIA foi acompanhado ao longo das semanas por meio do Jira, permitindo organizar as atividades, acompanhar o progresso e visualizar a evolução do projeto durante o desenvolvimento.

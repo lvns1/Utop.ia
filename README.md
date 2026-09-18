@@ -476,12 +476,15 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 As User Stories foram utilizadas para representar as funcionalidades, necessidades e objetivos do projeto a partir da perspectiva dos usuários e do desenvolvimento do UtopIA.
 
 <a href="assets/trello/board.png">
+
   <img src="assets/trello/board.png" width="600">
+
 </a>
 
 *Board geral de organização das User Stories.*
 
 <details>
+
 <summary><strong>US01 — Exibir o menu principal</strong></summary>
 
 <img src="assets/trello/us01.png" width="400">
@@ -490,18 +493,24 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US01](assets/sketches/us01_sketche.png)
 
+[🎬 Storyboard — US01](assets/storyboards/US_01_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US02 — Capturar teclas digitadas no console</strong></summary>
 
 <img src="assets/trello/us02.png" width="400">
 
 [📐 Diagrama — US02](assets/diagramas/US_02_diagrama.png)
 
+[🎬 Storyboard — US02](assets/storyboards/US_02_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US03 — Cadastrar o nome do jogador</strong></summary>
 
 <img src="assets/trello/us03.png" width="400">
@@ -510,9 +519,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US03](assets/sketches/us03_sketche.png)
 
+[🎬 Storyboard — US03](assets/storyboards/US_03_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US04 — Computar o Score</strong></summary>
 
 <img src="assets/trello/us04.png" width="400">
@@ -521,9 +533,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US04](assets/sketches/us04_sketche.png)
 
+[🎬 Storyboard — US04](assets/storyboards/US_04_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US05 — Salvar Automaticamente o Progresso (Auto-Save)</strong></summary>
 
 <img src="assets/trello/us05.png" width="400">
@@ -532,9 +547,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US05](assets/sketches/us05_sketche.png)
 
+[🎬 Storyboard — US05](assets/storyboards/US_05_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US06 — Acessar painel com vida, itens e pontuação do jogador</strong></summary>
 
 <img src="assets/trello/us06.png" width="400">
@@ -543,9 +561,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US06](assets/sketches/us06_sketche.png)
 
+[🎬 Storyboard — US06](assets/storyboards/US_06_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US07 — Aprender com os Quizzes sobre Alucinação no Bloco 1</strong></summary>
 
 <img src="assets/trello/us07.png" width="400">
@@ -554,9 +575,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US07](assets/sketches/us07_sketche.png)
 
+[🎬 Storyboard — US07](assets/storyboards/US_07_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US08 — Receber instruções da Luci (companion) no Bloco 1</strong></summary>
 
 <img src="assets/trello/us08.png" width="400">
@@ -565,9 +589,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US08](assets/sketches/us08_sketche.png)
 
+[🎬 Storyboard — US08](assets/storyboards/US_08_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US09 — Pausar o jogo no estado atual</strong></summary>
 
 <img src="assets/trello/us09.png" width="400">
@@ -576,9 +603,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US09](assets/sketches/us09_sketche.png)
 
+[🎬 Storyboard — US09](assets/storyboards/US_09_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US10 — Reiniciar a partida</strong></summary>
 
 <img src="assets/trello/us10.png" width="400">
@@ -587,9 +617,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US10](assets/sketches/us10_sketche.png)
 
+[🎬 Storyboard — US10](assets/storyboards/US_10_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US11 — Encerrar o jogo</strong></summary>
 
 <img src="assets/trello/us11.png" width="400">
@@ -598,9 +631,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US11](assets/sketches/us11_sketche.png)
 
+[🎬 Storyboard — US11](assets/storyboards/US_11_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US12 — Contabilizar ações para simular Janela de Contexto</strong></summary>
 
 <img src="assets/trello/us12.png" width="400">
@@ -609,9 +645,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US12](assets/sketches/us12_sketche.png)
 
+[🎬 Storyboard — US12](assets/storyboards/US_12_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US13 — Navegar entre Salas no Bloco 2</strong></summary>
 
 <img src="assets/trello/us13.png" width="400">
@@ -620,9 +659,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US13](assets/sketches/us13_sketche.png)
 
+[🎬 Storyboard — US13](assets/storyboards/US_13_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US14 — Resolver Puzzles de IA no Bloco 2</strong></summary>
 
 <img src="assets/trello/us14.png" width="400">
@@ -631,9 +673,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US14](assets/sketches/us14_sketche.png)
 
+[🎬 Storyboard — US14](assets/storyboards/US_14_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US15 — Acessar as instruções do jogo</strong></summary>
 
 <img src="assets/trello/us15.png" width="400">
@@ -642,9 +687,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US15](assets/sketches/us15_sketche.png)
 
+[🎬 Storyboard — US15](assets/storyboards/US_15_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US16 — Alterar o Comportamento da Companion (Luci)</strong></summary>
 
 <img src="assets/trello/us16.png" width="400">
@@ -653,9 +701,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US16](assets/sketches/us16_sketche.png)
 
+[🎬 Storyboard — US16](assets/storyboards/US_16_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US17 — Adaptar o Confronto Final com Boss no Bloco 3</strong></summary>
 
 <img src="assets/trello/us17.png" width="400">
@@ -664,9 +715,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US17](assets/sketches/us17_sketche.png)
 
+[🎬 Storyboard — US17](assets/storyboards/US_17_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US18 — Usar Itens e Conhecimentos na Batalha Final</strong></summary>
 
 <img src="assets/trello/us18.png" width="400">
@@ -675,9 +729,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [✏️ Sketch — US18](assets/sketches/us18_sketche.png)
 
+[🎬 Storyboard — US18](assets/storyboards/US_18_storyboard.png)
+
 </details>
 
 <details>
+
 <summary><strong>US19 — Acessar ranking com a pontuação</strong></summary>
 
 <img src="assets/trello/us19.png" width="400">
@@ -685,6 +742,8 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [📐 Diagrama — US19](assets/diagramas/US_19_diagrama.png)
 
 [✏️ Sketch — US19](assets/sketches/us19_sketche.png)
+
+[🎬 Storyboard — US19](assets/storyboards/US_19_storyboard.png)
 
 </details>
 

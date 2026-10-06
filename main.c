@@ -16,9 +16,6 @@ int main(void) {
 
     Texture2D imagem_titulo = LoadTexture("titulo.png");
 
-    //Image imagem_jogar = LoadImage("jogar.png");
-    //ImageResize(&imagem_jogar, 250, 50);
-    //Texture2D textura_jogar = LoadTextureFromImage(imagem_jogar);
 
     float tempo = 0.0f;
 
@@ -42,11 +39,10 @@ int main(void) {
     float companionAngulo = 0.0f;
     float velocidadeJogador = 220.0f;
 
-    const char *textosIntro[4] = {
-        "Tudo comeca em um lugar onde nada e o que parece.",
-        "Os acontecimentos dessa historia comecam a se revelar.",
-        "Agora voce precisa descobrir o que existe por tras desse mundo.",
-        "Sua jornada esta prestes a comecar."
+    const char *textosIntro[3] = {
+        "O uso da Inteligência Artificial tornou-se parte da nossa rotina, utilizada para\nescrever textos, gerar imagens e auxiliar em tomadas de decisão.",
+        "Contudo, quando dados incorretos ou perguntas enviesadas são inseridos no sistema,\nsurge um problema real: a alucinação de IA.",
+        "Bem-vindo a UtopIA, o universo interior que sustenta essa inteligência. O sistema está\ncolapsando internamente por conta dessas alucinações e se essa falha não for \ncorrigida a tempo, o impacto afetará todas as IAs do mundo real...",
     };
 
     // =========================================================

@@ -11,16 +11,19 @@ int main(void) {
 
     const int screenWidth = 800;
     const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "UtopIA - Game");
+    InitWindow(screenWidth, screenHeight, "UtopIA - Game"); 
 
     TelaAtual tela = MENU;
 
     Color cor_de_fundo_menu = {2, 0, 12, 255};
 
-    Texture2D imagem_titulo = LoadTexture("titulo.png");
-    Texture2D texFrente = LoadTexture("person.frente.png");
-    Texture2D texCostas = LoadTexture("person.cima.png");
-    Texture2D texLado = LoadTexture("person.lado.png");
+    Texture2D imagem_titulo = LoadTexture("resources\\ui\\titulo.png");
+
+    Texture2D texFrente = LoadTexture("resources\\sprites\\player\\person.frente.png");
+
+    Texture2D texCostas = LoadTexture("resources\\sprites\\player\\person.cima.png");
+
+    Texture2D texLado = LoadTexture("resources\\sprites\\player\\person.lado.png");
 
     Vector2 playerPos = {400, 300};
     float playerSpeed = 5.0f;

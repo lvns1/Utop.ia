@@ -3,18 +3,40 @@
 
 // Definimos os "canais" (telas) do nosso jogo
 typedef enum { MENU, INTRO, JOGANDO, OPCOES } TelaAtual;
+typedef enum Direcao { DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA } Direcao;
 
 int main(void) {
 
     // 1. INICIALIZAÇÃO
 
-    InitWindow(800, 600, "Menu Inicial");
+    const int screenWidth = 800;
+    const int screenHeight = 600;
+    InitWindow(screenWidth, screenHeight, "UtopIA - Game");
 
     TelaAtual tela = MENU;
 
     Color cor_de_fundo_menu = {2, 0, 12, 255};
 
     Texture2D imagem_titulo = LoadTexture("titulo.png");
+    Texture2D texFrente = LoadTexture("person.frente.png");
+    Texture2D texCostas = LoadTexture("person.cima.png");
+    Texture2D texLado = LoadTexture("person.lado.png");
+
+    Vector2 playerPos = {400, 300};
+    float playerSpeed = 5.0f;
+
+    Direcao direcaoAtual = DIR_FRENTE;
+
+    // tamanho da personagem
+    float novoTamX = 65.0f;
+    float novoTamY = 65.0f;
+
+    // distância/tamanho da área de interação (o "alcance" do jogador pra apertar E)
+    float interacaoAlcance = 50.0f; // AJUSTE AQUI se quiser o alcance maior/menor
+    bool pertoDaLuci = false;
+
+    // --- NPC: LUCI ---
+    Rectangle luciHitbox = { 400.0f, 375.0f, novoTamX, novoTamY };
 
 
     float tempo = 0.0f;
@@ -31,13 +53,20 @@ int main(void) {
     char nickname[4] = {'_', '_', '_', '\0'};
     int nicknamePos = 0;
 
-    // =========================================================
-    // VARIÁVEIS DA TELA JOGANDO
-    // =========================================================
 
-    Vector2 jogadorPos = {400, 300};
-    float companionAngulo = 0.0f;
-    float velocidadeJogador = 220.0f;
+    const char *falasLuci[] = { 
+        "Olá, Thomas. Eu imagino que se pergunte o que está fazendo aqui.\nEu sou Luci, um dos algoritmos que fazem parte da IA que você usa todos os dias.", 
+        "No início, o universo de UtopIA funcionava perfeitamente,\nmas com o tempo, a IA começou a alucinar e está destruindo a si mesma.",
+        "Eu trouxe você para cá porque preciso de ajuda e você é o usuário que mais nos utiliza.",
+        "Para voltar para casa, você vai precisar enfrentar 3 missões. A primeira é\numa sequência de quizzes sobre alucinação para você entender\no problema que estamos enfrentando.",
+        "Na segunda missão, o desafio aumenta e será preciso resolver\numa sequência de puzzles para conquistar os objetos mágicos.",
+        "No final, você irá enfrentar a IA alucinada com seus objetos.",
+        "Não há tempo a perder, Thomas. O destino de UtopIA depende de você.\nVamos começar a primeira missão."
+    };
+    int numFalasLuci = sizeof(falasLuci) / sizeof(falasLuci[0]);
+
+    bool emDialogo = false;   // enquanto true, o jogo pausa e só o diálogo roda
+    int dialogoIndex = 0;     // qual fala está sendo exibida agora
 
     const char *textosIntro[3] = {
         "O uso da Inteligência Artificial tornou-se parte da nossa rotina, utilizada para\nescrever textos, gerar imagens e auxiliar em tomadas de decisão.",
@@ -203,56 +232,89 @@ int main(void) {
         // =====================================================
 
         else if (tela == JOGANDO) {
-
+        
             // -------------------------------------------------
             // MOVIMENTAÇÃO DO PERSONAGEM
             // -------------------------------------------------
 
-            Vector2 direcao = {0};
+            Vector2 posAnterior = playerPos;
 
-            if (IsKeyDown(KEY_W))
-                direcao.y -= 1.0f;
+            // movimento + atualiza a direção que o personagem deve exibir
+            if (IsKeyDown(KEY_D)) { playerPos.x += playerSpeed; direcaoAtual = DIR_DIREITA; }
+            if (IsKeyDown(KEY_A))  { playerPos.x -= playerSpeed; direcaoAtual = DIR_ESQUERDA;}
+            if (IsKeyDown(KEY_S))  { playerPos.y += playerSpeed; direcaoAtual = DIR_FRENTE;}
+            if (IsKeyDown(KEY_W))    { playerPos.y -= playerSpeed; direcaoAtual = DIR_COSTAS;}
 
-            if (IsKeyDown(KEY_S))
-                direcao.y += 1.0f;
+            // Colisão (Player)
+            Rectangle playerHitbox = {
+                playerPos.x - (novoTamX / 4),
+                playerPos.y - (novoTamY / 4),
+                novoTamX / 2,
+                novoTamY / 2
+            };
 
-            if (IsKeyDown(KEY_A))
-                direcao.x -= 1.0f;
+            // Colisão com a Luci (mesmo princípio das paredes: não deixa atravessar)
+            if (CheckCollisionRecs(playerHitbox, luciHitbox))
+            {
+                playerPos = posAnterior;
+            }
 
-            if (IsKeyDown(KEY_D))
-                direcao.x += 1.0f;
+        // --- interação (tecla E) ---
+        // pequeno retângulo na frente do jogador, na direção que ele está olhando
+        Rectangle interacaoBox = { playerPos.x - interacaoAlcance / 2, playerPos.y - interacaoAlcance / 2, interacaoAlcance, interacaoAlcance };
+        switch (direcaoAtual)
+        {
+            case DIR_FRENTE:   interacaoBox.y += novoTamY / 2; break; // olhando pra baixo
+            case DIR_COSTAS:   interacaoBox.y -= novoTamY / 2; break; // olhando pra cima
+            case DIR_DIREITA:  interacaoBox.x += novoTamX / 2; break;
+            case DIR_ESQUERDA: interacaoBox.x -= novoTamX / 2; break;
+        }
 
-            // Normaliza para impedir que a movimentação diagonal
-            // fique mais rápida.
-            if (Vector2Length(direcao) > 0.0f)
-                direcao = Vector2Normalize(direcao);
+            pertoDaLuci = CheckCollisionRecs(interacaoBox, luciHitbox);
 
-            jogadorPos = Vector2Add(
-                jogadorPos,
-                Vector2Scale(direcao, velocidadeJogador * GetFrameTime())
-            );
+            if (pertoDaLuci && IsKeyPressed(KEY_E) && !(emDialogo))
+            {
+                // entra no diálogo: pausa o jogo e mostra a primeira fala
+                emDialogo = true;
+                dialogoIndex = 0;
+            }
+
+            else if (emDialogo)
+            {
+            // --- em diálogo: jogo pausado, só escuta o E pra avançar/fechar a fala ---
+            if (IsKeyPressed(KEY_E))
+            {
+                dialogoIndex++;
+                if (dialogoIndex >= numFalasLuci)
+                {
+                    // acabaram as falas, volta pro jogo normal
+                    emDialogo = false;
+                    dialogoIndex = 0;
+                    }
+                }
+            }
 
             // -------------------------------------------------
             // LIMITES DO MAPA
             // -------------------------------------------------
 
-            if (jogadorPos.x < 80)
-                jogadorPos.x = 80;
+            if (playerPos.x < 80)
+                playerPos.x = 80;
 
-            if (jogadorPos.x > 720)
-                jogadorPos.x = 720;
+            if (playerPos.x > 720)
+                playerPos.x = 720;
 
-            if (jogadorPos.y < 80)
-                jogadorPos.y = 80;
+            if (playerPos.y < 80)
+                playerPos.y = 80;
 
-            if (jogadorPos.y > 520)
-                jogadorPos.y = 520;
+            if (playerPos.y > 520)
+                playerPos.y = 520;
 
             // -------------------------------------------------
-            // COMPANION FLUTUANTE
+            // COMPANION FLUTUANTE (depois do dialogo)
             // -------------------------------------------------
 
-            companionAngulo += GetFrameTime() * 2.5f;
+            // companionAngulo += GetFrameTime() * 2.5f;
 
             // -------------------------------------------------
             // PORTA
@@ -260,8 +322,8 @@ int main(void) {
 
             Rectangle porta = {715, 245, 35, 110};
             Rectangle jogador = {
-                jogadorPos.x - 18,
-                jogadorPos.y - 22,
+                playerPos.x - 18,
+                playerPos.y - 22,
                 36,
                 44
             };
@@ -758,50 +820,48 @@ int main(void) {
             // PERSONAGEM
             // -------------------------------------------------
 
-            Rectangle jogador = {
-                jogadorPos.x - 18,
-                jogadorPos.y - 22,
-                36,
-                44
-            };
+            // desenha a hitbox da Luci em azul, pra ajudar a calibrar a posição dele
+            DrawRectangleRec(luciHitbox, Fade(BLUE, 0.4f));
+            DrawText("Luci", (int)luciHitbox.x, (int)luciHitbox.y - 10, 10, WHITE);
 
-            DrawRectangleRec(
-                jogador,
-                WHITE
-            );
+            // escolhe o sprite conforme a direção (sem animação por enquanto)
+            Texture2D texAtual;
+            float flip = 1.0f; // 1 = normal, -1 = espelhado (usado p/ olhar p/ esquerda)
 
-            DrawRectangleLinesEx(
-                jogador,
-                2,
-                PURPLE
-            );
+            switch (direcaoAtual)
+            {
+                case DIR_FRENTE:   texAtual = texFrente; break;
+                case DIR_COSTAS:   texAtual = texCostas; break;
+                case DIR_DIREITA:  texAtual = texLado;   break;
+                case DIR_ESQUERDA: texAtual = texLado; flip = -1.0f; break;
+                default: texAtual = texFrente; break;
+            }
 
-            // -------------------------------------------------
-            // COMPANION
-            // -------------------------------------------------
+            Rectangle sourceRec = { 0.0f, 0.0f, (float)texAtual.width * flip, (float)texAtual.height };
+            Rectangle destRec = { playerPos.x, playerPos.y, novoTamX, novoTamY };
+            Vector2 origin = { novoTamX / 2, novoTamY / 2 };
 
-            Vector2 companionPos = {
-                jogadorPos.x + cosf(companionAngulo) * 38.0f,
-                jogadorPos.y + sinf(companionAngulo * 1.2f) * 26.0f
-            };
+            DrawTexturePro(texAtual, sourceRec, destRec, origin, 0.0f, WHITE);
 
-            Rectangle companion = {
-                companionPos.x - 7,
-                companionPos.y - 7,
-                14,
-                14
-            };
+            if (emDialogo)
+            {
+                // caixa de diálogo ocupando 1/4 inferior da tela
+                // AJUSTE AQUI cor/borda/fonte do jeito que preferir
+                int caixaAltura = screenHeight / 4;
+                int caixaY = screenHeight - caixaAltura;
 
-            DrawRectangleRec(
-                companion,
-                SKYBLUE
-            );
+                DrawRectangle(0, caixaY, screenWidth, caixaAltura, Fade(BLACK, 0.85f));
+                DrawRectangleLines(0, caixaY, screenWidth, caixaAltura, WHITE);
 
-            DrawRectangleLinesEx(
-                companion,
-                2,
-                BLUE
-            );
+                DrawText("Luci:", 30, caixaY + 20, 20, GRAY);
+                DrawText(falasLuci[dialogoIndex], 30, caixaY + 50, 18, RAYWHITE);
+                DrawText("Aperte E para continuar", screenWidth - MeasureText("Aperte E para continuar", 16) - 20, screenHeight - 30, 16, GRAY);
+            }
+            else if (pertoDaLuci)
+            {
+                // aviso de interação (tela cheia, não se move com a câmera)
+                DrawText("Aperte E para falar com a Luci", screenWidth/2 - MeasureText("Aperte E para falar com oa Luci", 20)/2, screenHeight - 40, 20, RAYWHITE);
+            }
 
             // -------------------------------------------------
             // INSTRUÇÕES
@@ -824,16 +884,16 @@ int main(void) {
             );
 
             // Indicador visual quando estiver sobre a porta.
-            if (CheckCollisionRecs(jogador, porta)) {
+     //       if (CheckCollisionRecs(playerPos porta)) {
 
-                DrawText(
-                    "PRESSIONE E",
-                    porta.x - 32,
-                    porta.y - 22,
-                    12,
-                    GOLD
-                );
-            }
+     //           DrawText(
+     //               "PRESSIONE E",
+     //               porta.x - 32,
+    //                porta.y - 22,
+     //               12,
+    //                GOLD
+    //            );
+    //        }
 
             // Nickname do jogador
             DrawText(
@@ -878,9 +938,9 @@ int main(void) {
     CloseWindow();
 
     UnloadTexture(imagem_titulo);
-
-    //UnloadImage(imagem_jogar);
-    //UnloadTexture(textura_jogar);
+    UnloadTexture(texFrente);
+    UnloadTexture(texCostas);
+    UnloadTexture(texLado);
 
     return 0;
 }

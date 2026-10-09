@@ -36,9 +36,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 2. Compile o projeto via Makefile:
    
    
-    ```bash
-    make
-// ctrl + shift + b
+       pressione ctrl + shift + b
 
 
 4. Execute o jogo:

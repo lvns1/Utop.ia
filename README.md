@@ -34,11 +34,11 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
    git clone https://github.com/seu-usuario/utopia-game.git
    cd utopia-game
 2. Compile o projeto via Makefile:
-   // ctrl + shift + b
+   
    
     ```bash
     make
-
+// ctrl + shift + b
 
 
 4. Execute o jogo:

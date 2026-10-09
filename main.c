@@ -17,12 +17,10 @@ int main(void) {
 
     Color cor_de_fundo_menu = {2, 0, 12, 255};
 
+    // caminhos das imagens (sprites) do jogo e carregamento delas 
     Texture2D imagem_titulo = LoadTexture("resources\\ui\\titulo.png");
-
     Texture2D texFrente = LoadTexture("resources\\sprites\\player\\person.frente.png");
-
     Texture2D texCostas = LoadTexture("resources\\sprites\\player\\person.cima.png");
-
     Texture2D texLado = LoadTexture("resources\\sprites\\player\\person.lado.png");
 
     Vector2 playerPos = {400, 300};

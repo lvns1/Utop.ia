@@ -26,6 +26,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 ### 📋 Requisitos
 * GCC instalado e configurado no PATH do sistema.
 * Biblioteca Raylib configurada (ou o ambiente `w64devkit` da Raylib no Windows).
+* Ter o VS Code instalado e com as extensões C/C++ instaladas
 
 ### 🔨 Compilação e Execução
 
@@ -33,7 +34,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
    ```bash
    git clone https://github.com/seu-usuario/utopia-game.git
    cd utopia-game
-2. Compile no VScode:
+2. Compile no VS Code:
    
    
        pressione ctrl + shift + b

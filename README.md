@@ -19,7 +19,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 * **Biblioteca Gráfica**: [Raylib 5.1](https://www.raylib.com/) (renderização 2D, janela $800 \times 600$, sprites, colisões e gerenciamento de entradas)
 * **Automação de Build**: GNU Make / Makefile
 * **Compilador**: GCC (w64devkit / MinGW no Windows)
-* ---
+---
 
 ## 🎮 Como Executar o Jogo
 
@@ -36,17 +36,17 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 2. Compile o projeto via Makefile:
 
     ```bash
-      make
+    make
 3. Execute o jogo:
 
-  Windows:
-  
-    Bash
-    .\game.exe
-  Linux/macOS:
-  
-    Bash
-    ./game   
+     Windows:
+     
+       ```bash
+       .\game.exe
+     Linux/macOS:
+     
+       ```bash
+       ./game   
   ---
 
 # 🌐 A história

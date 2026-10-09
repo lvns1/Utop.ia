@@ -33,7 +33,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
    ```bash
    git clone https://github.com/seu-usuario/utopia-game.git
    cd utopia-game
-2. Compile o projeto via Makefile:
+2. Compile no VScode:
    
    
        pressione ctrl + shift + b

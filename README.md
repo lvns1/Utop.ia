@@ -33,12 +33,22 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
    ```bash
    git clone https://github.com/seu-usuario/utopia-game.git
    cd utopia-game
-2. Compile no VS Code:
+2.0. Compile no VS Code:
    
    
        pressione ctrl + shift + b
 
+2.1. Compile o código-fonte via GCC:
 
+   Windows (MinGW / Prompt / PowerShell):
+   
+      Bash
+      gcc main.c -o game.exe -std=c99 -Wall
+   Linux / macOS (Terminal):
+      
+      Bash
+      gcc main.c -o game -std=c99 -Wall
+      
 4. Execute o jogo:
 
      Windows:

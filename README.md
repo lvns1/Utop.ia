@@ -13,6 +13,41 @@
 Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador é colocado dentro de uma representação do interior de uma IA, onde precisa **resolver quizzes, interpretar informações, tomar decisões, solucionar puzzles e enfrentar as consequências de seus próprios hábitos de uso da tecnologia**.
 
 ---
+## 🛠️ Tecnologias Utilizadas
+
+* **Linguagem**: C.
+* **Biblioteca Gráfica**: [Raylib 5.1](https://www.raylib.com/) (renderização 2D, janela $800 \times 600$, sprites, colisões e gerenciamento de entradas)
+* **Automação de Build**: GNU Make / Makefile
+* **Compilador**: GCC (w64devkit / MinGW no Windows)
+* ---
+
+## 🎮 Como Executar o Jogo
+
+### 📋 Requisitos
+* GCC instalado e configurado no PATH do sistema.
+* Biblioteca Raylib configurada (ou o ambiente `w64devkit` da Raylib no Windows).
+
+### 🔨 Compilação e Execução
+
+1. **Clone o repositório**:
+   ```bash
+   git clone https://github.com/seu-usuario/utopia-game.git
+   cd utopia-game
+2. Compile o projeto via Makefile:
+
+    ```bash
+      make
+3. Execute o jogo:
+
+  Windows:
+  
+    Bash
+    .\game.exe
+  Linux/macOS:
+  
+    Bash
+    ./game   
+  ---
 
 # 🌐 A história
 

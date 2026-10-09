@@ -26,8 +26,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 ### 📋 Requisitos
 * GCC instalado e configurado no PATH do sistema.
 * Biblioteca Raylib configurada (ou o ambiente `w64devkit` da Raylib no Windows).
-* Ter o VS Code instalado e com as extensões C/C++ instaladas
-
+* Ter o VS Code instalado e com C/C++ Extension Pack.
 ### 🔨 Compilação e Execução
 
 1. **Clone o repositório**:

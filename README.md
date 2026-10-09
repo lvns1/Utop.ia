@@ -41,11 +41,11 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 
      Windows:
      
-       Bash
+       
        .\game.exe
      Linux/macOS:
      
-       Bash
+       
        ./game   
   ---
 

@@ -26,27 +26,39 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 ### 📋 Requisitos
 * GCC instalado e configurado no PATH do sistema.
 * Biblioteca Raylib configurada (ou o ambiente `w64devkit` da Raylib no Windows).
-
+* Ter o VS Code instalado e com C/C++ Extension Pack.
 ### 🔨 Compilação e Execução
 
 1. **Clone o repositório**:
    ```bash
    git clone https://github.com/seu-usuario/utopia-game.git
    cd utopia-game
-2. Compile o projeto via Makefile:
+2.0. Compile no VS Code:
+   
+   
+       pressione ctrl + shift + b
 
-    ```bash
-    make
-3. Execute o jogo:
+2.1. Compile o código-fonte via GCC:
+
+   Windows (MinGW / Prompt / PowerShell):
+   
+      Bash
+      gcc main.c -o game.exe -std=c99 -Wall
+   Linux / macOS (Terminal):
+      
+      Bash
+      gcc main.c -o game -std=c99 -Wall
+      
+4. Execute o jogo:
 
      Windows:
      
        
-       .\game.exe
+       .\main.exe
      Linux/macOS:
      
        
-       ./game   
+       ./main   
   ---
 
 # 🌐 A história

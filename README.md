@@ -1,8 +1,14 @@
-# UtopIA
+<p align="center">
+  <img src="assets/logo/logo_utopIA.1.png" alt="Logo UtopIA" width="700">
+</p>
 
-> **Um RPG educativo sobre Inteligência Artificial, alucinação, senso crítico e uso consciente de IA.**
+<p align="center">
+  <strong>Um RPG educativo sobre Inteligência Artificial, alucinação, senso crítico e uso consciente de IA.</strong>
+</p>
 
-🎮 **Aprenda. Explore. Questione. Sobreviva à alucinação.**
+<p align="center">
+  🎮 <strong>Aprenda. Explore. Questione. Sobreviva à alucinação.</strong>
+</p>
 
 ---
 
@@ -796,13 +802,44 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 </details>
 
---- 
+---
+
+### 📂 Documentação do Projeto
+
+Os documentos abaixo reúnem os principais registros de pesquisa, análise, especificação e desenvolvimento do UtopIA.
+
+<details>
+<summary><strong>📋 Requisitos e Planejamento</strong></summary>
+
+- [Definição de Pronto (DoD)](docs/definição_de_pronto_dod.pdf)
+- [Documento de Requisitos do UtopIA](docs/documento_de_requisitos_utopia.pdf)
+
+</details>
+
+<details>
+<summary><strong>🔍 Pesquisa e Análise</strong></summary>
+
+- [Pesquisa de Alucinação de IA](docs/pesquisa_alucinação_de_ia.pdf)
+- [Avaliação Heurística do Wireframe](docs/avaliação_heurística_do_wireframe.pdf)
+
+</details>
+
+<details>
+<summary><strong>⚙️ Desenvolvimento e Entregas</strong></summary>
+
+- [Entregável de Lógica](docs/entregável_lógica_utopia.pdf)
+- [Relatório de Contribuições](docs/relatorio_contribuicoes_utopia.pdf)
+
+</details>
+
+---
 
 ### 🎥 Screen Cast
 
-Apresentação em vídeo do protótipo de baixa fidelidade e das principais funcionalidades do UtopIA.
+Apresentações em vídeo do protótipo de baixa fidelidade e do MVP do UtopIA.
 
-[▶️ Assistir ao Screen Cast — UtopIA](https://youtu.be/dCDFLTai1D8?si=o-KndwSv8ooUi0Bw)
+- [▶️ Assistir ao Screen Cast — Protótipo Lo-Fi](https://youtu.be/dCDFLTai1D8?si=o-KndwSv8ooUi0Bw)
+- [▶️ Assistir ao Screen Cast — MVP](https://youtu.be/CMliOCfOi9g)
 
 ---
 

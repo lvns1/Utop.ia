@@ -25,7 +25,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 
 ### 📋 Requisitos
 * GCC instalado e configurado no PATH do sistema.
-* Biblioteca Raylib configurada (ou o ambiente `w64devkit` da Raylib no Windows).
+* Caminho da biblioteca Raylib adicionada ao PATH (ou o ambiente `w64devkit` da Raylib no Windows).
 * Ter o VS Code instalado e com C/C++ Extension Pack.
 ### 🔨 Compilação e Execução
 
@@ -58,7 +58,9 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
      Linux/macOS:
      
        
-       ./main   
+       ./main
+
+* Ou após compilação rodar o executável dentro do diretório do projeto no explorador de arquivos do Windows 
   ---
 
 # 🌐 A história

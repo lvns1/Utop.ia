@@ -30,44 +30,80 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 ## 🎮 Como Executar o Jogo
 
 ### 📋 Requisitos
-* GCC instalado e configurado no PATH do sistema.
-* Caminho da biblioteca Raylib adicionada ao PATH (ou o ambiente `w64devkit` da Raylib no Windows).
-* Ter o VS Code instalado e com C/C++ Extension Pack.
+
+Antes de executar o UtopIA, verifique se você possui:
+
+- **GCC** instalado e configurado no `PATH` do sistema.
+- **Raylib** configurada no ambiente de desenvolvimento, com os caminhos necessários, ou o `w64devkit` da Raylib no Windows.
+- **Visual Studio Code** instalado, com a extensão **C/C++ Extension Pack**.
+
 ### 🔨 Compilação e Execução
 
-1. **Clone o repositório**:
-   ```bash
-   git clone https://github.com/seu-usuario/utopia-game.git
-   cd utopia-game
-2.0. Compile no VS Code:
-   
-   
-       pressione ctrl + shift + b
+#### 1. Clone o repositório
 
-2.1. Compile o código-fonte via GCC:
+```bash
+git clone https://github.com/seu-usuario/utopia-game.git
+cd utopia-game
+```
 
-   Windows (MinGW / Prompt / PowerShell):
-   
-      Bash
-      gcc main.c -o game.exe -std=c99 -Wall
-   Linux / macOS (Terminal):
-      
-      Bash
-      gcc main.c -o game -std=c99 -Wall
-      
-4. Execute o jogo:
+#### 2. Compile o código
 
-     Windows:
-     
-       
-       .\main.exe
-     Linux/macOS:
-     
-       
-       ./main
+**Opção A — Pelo VS Code**
 
-Ou após compilação rodar o executável dentro do diretório do projeto no explorador de arquivos do Windows 
-  ---
+Com o projeto aberto no VS Code, pressione:
+
+`Ctrl + Shift + B`
+
+**Opção B — Pelo terminal com GCC**
+
+Escolha o comando correspondente ao seu sistema operacional:
+
+<details>
+<summary><strong>🪟 Windows (MinGW / PowerShell)</strong></summary>
+
+```bash
+gcc main.c -o main.exe -std=c99 -Wall
+```
+
+</details>
+
+<details>
+<summary><strong>🐧 Linux</strong></summary>
+
+```bash
+gcc main.c -o main -std=c99 -Wall
+```
+
+</details>
+
+<details>
+<summary><strong>🍎 macOS</strong></summary>
+
+```bash
+gcc main.c -o main -std=c99 -Wall
+```
+
+</details>
+
+#### 3. Execute o jogo
+
+Após a compilação, execute o comando correspondente no terminal, dentro do diretório do projeto.
+
+**Windows (PowerShell):**
+
+```powershell
+.\main.exe
+```
+
+**Linux / macOS:**
+
+```bash
+./main
+```
+
+> 💡 **Dica:** no Windows, você também pode executar o arquivo `main.exe` diretamente pelo Explorador de Arquivos, acessando a pasta do projeto.
+
+---
 
 # 🌐 A história
 
@@ -809,26 +845,32 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 Os documentos abaixo reúnem os principais registros de pesquisa, análise, especificação e desenvolvimento do UtopIA.
 
 <details>
+
 <summary><strong>📋 Requisitos e Planejamento</strong></summary>
 
-- [Definição de Pronto (DoD)](docs/definição_de_pronto_dod.pdf)
-- [Documento de Requisitos do UtopIA](docs/documento_de_requisitos_utopia.pdf)
+- [Definição de Pronto (DoD)](assets/docs/definição_de_pronto_dod.pdf)
+
+- [Documento de Requisitos do UtopIA](assets/docs/documento_de_requisitos_utopia.pdf)
 
 </details>
 
 <details>
+
 <summary><strong>🔍 Pesquisa e Análise</strong></summary>
 
-- [Pesquisa de Alucinação de IA](docs/pesquisa_alucinação_de_ia.pdf)
-- [Avaliação Heurística do Wireframe](docs/avaliação_heurística_do_wireframe.pdf)
+- [Pesquisa de Alucinação de IA](assets/docs/pesquisa_alucinação_de_ia.pdf)
+
+- [Avaliação Heurística do Wireframe](assets/docs/avaliação_heurística_do_wireframe.pdf)
 
 </details>
 
 <details>
+
 <summary><strong>⚙️ Desenvolvimento e Entregas</strong></summary>
 
-- [Entregável de Lógica](docs/entregável_lógica_utopia.pdf)
-- [Relatório de Contribuições](docs/relatorio_contribuicoes_utopia.pdf)
+- [Entregável de Lógica](assets/docs/entregável_lógica_utopia.pdf)
+
+- [Relatório de Contribuições](assets/docs/relatorio_contribuicoes_utopia.pdf)
 
 </details>
 

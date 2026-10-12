@@ -60,7 +60,7 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
        
        ./main
 
-* Ou após compilação rodar o executável dentro do diretório do projeto no explorador de arquivos do Windows 
+Ou após compilação rodar o executável dentro do diretório do projeto no explorador de arquivos do Windows 
   ---
 
 # 🌐 A história

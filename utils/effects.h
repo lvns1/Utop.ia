@@ -1,3 +1,5 @@
+// effects.h - Efeitos visuais pequenos: ruído (chiados/glitches) e o coração do Undertale.
+
 #ifndef EFFECTS_H
 #define EFFECTS_H
 

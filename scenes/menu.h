@@ -1,3 +1,5 @@
+// menu.h - Cena do menu principal.
+
 #ifndef SCENE_MENU_H
 #define SCENE_MENU_H
 

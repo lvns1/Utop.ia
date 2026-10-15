@@ -1,8 +1,14 @@
+// monitor.c - Desenho dos monitores nos 4 estados (com sprite ou com formas simples).
+
 #include "monitor.h"
 #include "../utils/effects.h"
 #include <math.h>
 
+// ---------- Desenho dos monitores (4 estados) ----------
+// Quando a arte final ficar pronta, é só colocar os PNGs nos caminhos
+// SPRITE_MONITOR_* lá em cima: o jogo passa a usá-los automaticamente.
 void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo, const Texture2D sprites[4]) {
+    // Com sprite: desenha a imagem ocupando a tela + o pé do monitor
     if (sprites[estado].id > 0) {
         Texture2D t = sprites[estado];
         DrawTexturePro(
@@ -16,14 +22,18 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
         return;
     }
 
+    // Sem sprite: formas simples
     int cx = (int)(a.x + a.width / 2);
     float pulso = 0.5f + 0.5f * sinf(tempo * 5.0f);
 
     Color corBorda = GRAY;
     Color corLed = DARKGRAY;
 
+    // Pé do monitor
     DrawRectangle(cx - 6, (int)(a.y + a.height), 12, 12, (Color){45, 40, 62, 255});
     DrawRectangle(cx - 24, (int)(a.y + a.height) + 12, 48, 6, (Color){45, 40, 62, 255});
+
+    // Carcaça
     DrawRectangleRec(a, (Color){30, 28, 44, 255});
 
     Rectangle visor = { a.x + 7, a.y + 7, a.width - 14, a.height - 18 };
@@ -34,6 +44,7 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
     int cy = vy + vh / 2;
 
     switch (estado) {
+        // ---------- NEUTRO: desligado, esperando o jogador ----------
         case MON_NEUTRO: {
             DrawRectangleRec(visor, (Color){10, 12, 20, 255});
             const char *num = TextFormat("%d", indice + 1);
@@ -46,8 +57,11 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
             corLed = (Color){70, 70, 70, 255};
         } break;
 
+        // ---------- ATIVO: durante a interação / quiz ----------
         case MON_ATIVO: {
             DrawRectangleRec(visor, (Color){12, 40, 75, 255});
+
+            // Linhas de varredura
             for (int yy = 0; yy < vh; yy += 4)
                 DrawLine(vx, vy + yy, vx + vw, vy + yy, Fade(BLACK, 0.25f));
 
@@ -59,6 +73,7 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
             corLed = (pulso > 0.5f) ? YELLOW : ORANGE;
         } break;
 
+        // ---------- ACERTOU ----------
         case MON_ACERTOU: {
             DrawRectangleRec(visor, (Color){8, 48, 22, 255});
             DrawLineEx((Vector2){ (float)cx - 16, (float)cy }, (Vector2){ (float)cx - 4, (float)cy + 12 }, 5, LIME);
@@ -68,6 +83,7 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
             corLed = LIME;
         } break;
 
+        // ---------- ERROU: chiado de alucinação ----------
         case MON_ERROU: {
             DrawRectangleRec(visor, (Color){55, 8, 14, 255});
             unsigned int quadro = (unsigned int)(tempo * 12.0f) + (unsigned int)indice * 97u;
@@ -92,5 +108,7 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
     }
 
     DrawRectangleLinesEx(a, 3, corBorda);
+
+    // LED de energia
     DrawCircle((int)(a.x + a.width - 10), (int)(a.y + a.height - 6), 2, corLed);
 }

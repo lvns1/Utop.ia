@@ -1,3 +1,5 @@
+// dialogues.h - Falas da Luci e textos da intro (conteúdo do jogo, separado da lógica).
+
 #ifndef DATA_DIALOGUES_H
 #define DATA_DIALOGUES_H
 

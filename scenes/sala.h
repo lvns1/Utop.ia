@@ -1,3 +1,5 @@
+// sala.h - Cena da sala inicial (JOGANDO).
+
 #ifndef SCENE_SALA_H
 #define SCENE_SALA_H
 

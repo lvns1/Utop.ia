@@ -1,3 +1,5 @@
+// text.h - Texto: quebra de linha automática, desenho multilinha e máquina de escrever.
+
 #ifndef TEXT_H
 #define TEXT_H
 

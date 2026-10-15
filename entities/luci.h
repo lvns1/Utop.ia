@@ -1,3 +1,5 @@
+// luci.h - Luci: NPC na sala inicial e companion que flutua em volta do jogador.
+
 #ifndef LUCI_H
 #define LUCI_H
 

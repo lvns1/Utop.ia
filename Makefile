@@ -1,6 +1,14 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -I. -Icore -Iutils -Ientities -Isystems -Idata -Iscenes
 
+BUILD_MODE ?= RELEASE
+ifeq ($(BUILD_MODE),DEBUG)
+    CFLAGS += -g -O0
+else
+    CFLAGS += -O2
+endif
+CFLAGS += -MMD -MP
+
 SRCS = main.c \
        core/game.c core/transition.c \
        utils/text.c utils/effects.c \
@@ -33,5 +41,7 @@ $(TARGET): $(OBJS)
 
 clean:
 	$(RM) $(CLEAN_OBJS) $(TARGET)
+
+-include $(OBJS:.o=.d)
 
 .PHONY: all clean

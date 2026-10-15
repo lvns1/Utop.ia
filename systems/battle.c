@@ -1,3 +1,5 @@
+// battle.c - Lógica e desenho da batalha.
+
 #include "battle.h"
 #include "../utils/text.h"
 #include "../utils/effects.h"
@@ -5,11 +7,14 @@
 #include <string.h>
 #include <math.h>
 
+// Define o texto da batalha (já quebrado em linhas) e reinicia a máquina de escrever.
 static void BatalhaTexto(Batalha *b, const char *texto) {
     QuebrarTexto(texto, 640, FONTE_BATALHA, b->texto, (int)sizeof(b->texto));
     b->visiveis = 0.0f;
 }
 
+// Prepara a batalha: tipo (MINIGAME ou COMBATE), HP cheio e dificuldade que cresce
+// com o nível de alucinação (limitado a 10).
 void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao) {
     memset(b, 0, sizeof(*b));
 
@@ -18,6 +23,7 @@ void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao)
     b->fase = FASE_INTRO;
     b->hp = HP_MAX_BATALHA;
 
+    // README: quanto mais o jogador erra, mais forte a alucinação fica
     int nivel = (nivelAlucinacao > 10) ? 10 : nivelAlucinacao;
     float forca = 1.0f + 0.06f * (float)nivel;
 
@@ -36,7 +42,7 @@ void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao)
         b->intervaloBala = 0.32f / forca;
         b->velocidadeBala = 125.0f * forca;
         b->dano = 3;
-        b->padrao = quiz % 3;
+        b->padrao = quiz % 3;               // cada monitor tem um padrão de ataque
 
         BatalhaTexto(b, TextFormat(
             "* Resposta errada! Um fragmento de alucinação escapou do monitor %d.\n"
@@ -44,6 +50,7 @@ void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao)
     }
 }
 
+// Cria uma bala numa vaga livre, conforme o padrão de ataque (0 = chuva, 1 = lateral, 2 = mira).
 void BatalhaCriarBala(Batalha *b, Rectangle c) {
     static const char glifos[] = "01?!#%";
     int livre = -1;
@@ -66,17 +73,20 @@ void BatalhaCriarBala(Batalha *b, Rectangle c) {
     bl->glifo = glifos[GetRandomValue(0, (int)sizeof(glifos) - 2)];
 
     switch (b->padrao) {
+        // CHUVA: dados caindo de cima
         case 0: {
             bl->pos = (Vector2){ (float)GetRandomValue(xMin, xMax), c.y - 12 };
             bl->vel = (Vector2){ 0, v };
         } break;
 
+        // LATERAL: dados atravessando de um lado para o outro
         case 1: {
             bool daEsquerda = (GetRandomValue(0, 1) == 0);
             bl->pos = (Vector2){ daEsquerda ? c.x - 12 : c.x + c.width + 12, (float)GetRandomValue(yMin, yMax) };
             bl->vel = (Vector2){ daEsquerda ? v : -v, 0 };
         } break;
 
+        // MIRA: dados vindo das bordas em direção ao coração
         default: {
             Vector2 p;
             switch (GetRandomValue(0, 3)) {
@@ -91,6 +101,9 @@ void BatalhaCriarBala(Batalha *b, Rectangle c) {
     }
 }
 
+// Atualiza a batalha. Devolve true quando o jogador fecha o texto final.
+//   ENTER / E / ESPAÇO / Z : avança o texto
+//   W A S D / SETAS        : move o coração
 bool BatalhaAtualizar(Batalha *b) {
     float dt = GetFrameTime();
     bool avancar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_Z);
@@ -127,6 +140,7 @@ bool BatalhaAtualizar(Batalha *b) {
             if (b->invencivel > 0.0f) b->invencivel -= dt;
             if (b->tremor > 0.0f)     b->tremor -= dt;
 
+            // ---------- Movimento do coração ----------
             Vector2 dir = {0};
             if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))    dir.y -= 1.0f;
             if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN))  dir.y += 1.0f;
@@ -136,10 +150,12 @@ bool BatalhaAtualizar(Batalha *b) {
             if (Vector2Length(dir) > 0.0f)
                 b->alma = Vector2Add(b->alma, Vector2Scale(Vector2Normalize(dir), VELOCIDADE_ALMA * dt));
 
-            float margem = 12.0f;
+            float margem = 12.0f;           // borda da caixa + metade do coração
             b->alma.x = Clamp(b->alma.x, c.x + margem, c.x + c.width - margem);
             b->alma.y = Clamp(b->alma.y, c.y + margem, c.y + c.height - margem);
 
+            // ---------- Ataques ----------
+            // No COMBATE os padrões se alternam: chuva -> lateral -> mira
             if (b->tipo == BAT_COMBATE)
                 b->padrao = ((int)(b->tempoDesvio / (b->duracao / 3.0f))) % 3;
 
@@ -155,12 +171,14 @@ bool BatalhaAtualizar(Batalha *b) {
 
                 bl->pos = Vector2Add(bl->pos, Vector2Scale(bl->vel, dt));
 
+                // Saiu da caixa: some
                 if (bl->pos.x < c.x - 30 || bl->pos.x > c.x + c.width + 30 ||
                     bl->pos.y < c.y - 30 || bl->pos.y > c.y + c.height + 30) {
                     bl->ativa = false;
                     continue;
                 }
 
+                // Acertou o coração
                 if (b->invencivel <= 0.0f &&
                     Vector2Distance(bl->pos, b->alma) < RAIO_BALA + RAIO_ALMA) {
                     b->hp -= b->dano;
@@ -216,10 +234,12 @@ bool BatalhaAtualizar(Batalha *b) {
     return false;
 }
 
+// Inimigo: um fantasma glitchado (placeholder até a arte ficar pronta)
 static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte) {
     float s = forte ? 1.25f : 0.9f;
     Vector2 p = { centro.x, centro.y + sinf(tempo * 2.0f) * 6.0f };
 
+    // Três camadas deslocadas = efeito de "aberração cromática"
     Color cores[3] = { Fade(RED, 0.45f), Fade(SKYBLUE, 0.45f), (Color){ 200, 170, 255, 255 } };
     float desloc[3] = { -4.0f, 4.0f, 0.0f };
 
@@ -228,10 +248,12 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte) {
         DrawCircle((int)cx, (int)(p.y - 10 * s), 42 * s, cores[k]);
         DrawRectangle((int)(cx - 42 * s), (int)(p.y - 10 * s), (int)(84 * s), (int)(50 * s), cores[k]);
 
+        // Barra ondulada embaixo
         for (int j = 0; j < 5; j++)
             DrawCircle((int)(cx - 34 * s + j * 17 * s), (int)(p.y + 40 * s + sinf(tempo * 6.0f + j) * 3.0f), 9 * s, cores[k]);
     }
 
+    // Olhos
     DrawCircle((int)(p.x - 15 * s), (int)(p.y - 14 * s), 7 * s, BLACK);
     DrawCircle((int)(p.x + 15 * s), (int)(p.y - 14 * s), 7 * s, BLACK);
 
@@ -240,12 +262,14 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte) {
         DrawCircle((int)(p.x + 15 * s), (int)(p.y - 14 * s), 2.5f * s, RED);
     }
 
+    // Boca em zigue-zague
     for (int j = 0; j < 5; j++) {
         Vector2 a = { p.x - 18 * s + j * 7.2f * s,       p.y + 8 * s + (j % 2) * 6 * s };
         Vector2 b = { p.x - 18 * s + (j + 1) * 7.2f * s, p.y + 8 * s + ((j + 1) % 2) * 6 * s };
         DrawLineEx(a, b, 2, BLACK);
     }
 
+    // Fatias de glitch
     unsigned int quadro = (unsigned int)(tempo * 10.0f);
     int fatias = forte ? 5 : 3;
 
@@ -258,6 +282,7 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte) {
         DrawRectangle(fx, fy, (int)(100 * s), 3, Fade((k % 2) ? SKYBLUE : MAGENTA, 0.55f));
     }
 
+    // Símbolos orbitando
     const char *simbolos[4] = { "?", "404", "01", "!" };
     for (int j = 0; j < 4; j++) {
         float ang = tempo * 1.2f + j * (PI / 2.0f);
@@ -267,9 +292,12 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte) {
     }
 }
 
+// Desenha a batalha: inimigo, caixa (encolhe/expande), texto, coração e linha de status com o nickname.
 void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo) {
     ClearBackground(BLACK);
     bool forte = (b->tipo == BAT_COMBATE);
+
+    // ---------- Inimigo ----------
     const char *nome = forte ? "ALUCINAÇÃO" : "FRAGMENTO DE ALUCINAÇÃO";
 
     DrawText(forte ? "COMBATE" : "MINIGAME", 20, 16, 10, forte ? RED : ORANGE);
@@ -277,6 +305,7 @@ void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo) {
 
     DesenharAlucinacao((Vector2){ LARGURA_TELA / 2.0f, 150.0f }, tempo, forte);
 
+    // ---------- Caixa (encolhe/expande com suavização) ----------
     float t = b->anim * b->anim * (3.0f - 2.0f * b->anim);
     Rectangle caixa = {
         Lerp(CAIXA_TEXTO_BATALHA.x, CAIXA_DESVIO.x, t),
@@ -293,6 +322,7 @@ void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo) {
     DrawRectangleRec(caixa, BLACK);
     DrawRectangleLinesEx(caixa, 4, WHITE);
 
+    // ---------- Texto (intro e final) ----------
     if (b->fase == FASE_INTRO || b->fase == FASE_FIM) {
         char parcial[512];
         bool terminou = TextoParcial(b->texto, b->visiveis, parcial, (int)sizeof(parcial));
@@ -302,20 +332,25 @@ void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo) {
             DrawText("ENTER >", (int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12, GOLD);
     }
 
+    // ---------- Esquiva ----------
     if (b->fase == FASE_DESVIO) {
         BeginScissorMode((int)caixa.x + 4, (int)caixa.y + 4, (int)caixa.width - 8, (int)caixa.height - 8);
         for (int i = 0; i < MAX_BALAS; i++) {
             DesenharBala(&b->balas[i]);
         }
+
+        // Coração pisca enquanto está invencível
         if (b->invencivel <= 0.0f || (((int)(b->invencivel * 10.0f)) % 2 == 0))
             DesenharCoracao(b->alma.x, b->alma.y, 2, RED);
         EndScissorMode();
 
+        // Quanto falta para a alucinação perder a força
         float resta = 1.0f - b->tempoDesvio / b->duracao;
         if (resta < 0.0f) resta = 0.0f;
         DrawRectangle((int)caixa.x, (int)(caixa.y + caixa.height + 6), (int)(caixa.width * resta), 3, Fade(WHITE, 0.5f));
     }
 
+    // ---------- Linha de status (NOME  LV  HP) ----------
     int yStatus = 452;
     DrawText(nickname, 60, yStatus, 20, WHITE);
     DrawText("LV 1", 150, yStatus, 20, WHITE);
@@ -325,6 +360,7 @@ void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo) {
     DrawRectangle(275, yStatus, b->hp * 4, 20, YELLOW);
     DrawText(TextFormat("%d / %d", b->hp, HP_MAX_BATALHA), 275 + HP_MAX_BATALHA * 4 + 14, yStatus, 20, WHITE);
 
+    // ---------- Instruções ----------
     const char *instrucao = (b->fase == FASE_DESVIO)
         ? "W A S D ou SETAS  -  mova o coração e desvie!"
         : "ENTER  -  continuar";

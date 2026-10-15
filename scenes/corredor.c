@@ -1,3 +1,5 @@
+// corredor.c - Corredor: introdução, exploração, quizzes dos monitores e início da batalha.
+
 #include "corredor.h"
 #include "../entities/player.h"
 #include "../entities/luci.h"
@@ -7,23 +9,30 @@
 #include "../data/quizzes.h"
 #include <math.h>
 
+// Desenha uma porta do corredor com a borda na cor dada.
 void DesenharPortaCorredor(Rectangle porta, Color corBorda) {
     DrawRectangleRec(porta, (Color){35, 25, 55, 255});
     DrawRectangleLinesEx(porta, 3, corBorda);
 
+    // Maçaneta perto da borda maior
     if (porta.width > porta.height)
         DrawCircle((int)(porta.x + porta.width - 12), (int)(porta.y + porta.height / 2), 3, GOLD);
     else
         DrawCircle((int)(porta.x + 9), (int)(porta.y + porta.height / 2), 4, GOLD);
 }
 
+// Corredor: conversa/quiz em andamento, primeira entrada (Luci explica) ou exploração livre.
+// Errar ou deixar o tempo acabar abre a batalha.
 void CorredorAtualizar(Jogo *g, float dt) {
+    // O companion continua flutuando mesmo durante as conversas
     g->companionAngulo += dt * 2.5f;
 
+    // ---------- CONVERSA / QUIZ EM ANDAMENTO (o personagem fica parado) ----------
     if (g->dlg.estado != DLG_NENHUM) {
         ResultadoDialogo r = DialogoAtualizar(&g->dlg);
         int m = g->dlg.objeto;
 
+        // Errou ou o tempo acabou: a alucinação ataca
         if ((r == RES_ERROU || r == RES_TEMPO) && m >= 0) {
             g->progresso.alucinacao++;
             g->quizDaBatalha = m;
@@ -38,6 +47,7 @@ void CorredorAtualizar(Jogo *g, float dt) {
 
             IniciarTransicao(&g->transicao, BATALHA, DURACAO_FADE_BATALHA);
         } else if (r == RES_FIM) {
+            // Fim do quiz de um monitor: registra o resultado
             if (m >= 0 && g->dlg.respondeu && g->progresso.estado[m] == MON_ATIVO) {
                 if (g->dlg.acertou) {
                     g->progresso.estado[m] = MON_ACERTOU;
@@ -47,17 +57,21 @@ void CorredorAtualizar(Jogo *g, float dt) {
                 }
             }
 
+            // Resolveu os 4 monitores: Luci avisa que a saída abriu
             if (ContarConcluidos(&g->progresso) == TOTAL_MONITORES && !g->progresso.fimAnunciado) {
                 g->progresso.fimAnunciado = true;
                 DialogoIniciar(&g->dlg, &dialogoFimCorredor, OBJ_NENHUM);
             }
         }
     } else if (!g->progresso.introVista) {
+        // ---------- PRIMEIRA ENTRADA: Luci explica o corredor ----------
         g->progresso.introVista = true;
         DialogoIniciar(&g->dlg, &dialogoIntroCorredor, OBJ_NENHUM);
     } else {
+        // ---------- EXPLORAÇÃO LIVRE ----------
         g->direcaoAtual = MoverJogador(&g->playerPos, g->direcaoAtual);
 
+        // Limites do corredor (só a faixa do chão é andável)
         if (g->playerPos.x < 80)  g->playerPos.x = 80;
         if (g->playerPos.x > 720) g->playerPos.x = 720;
         if (g->playerPos.y < 285) g->playerPos.y = 285;
@@ -65,15 +79,20 @@ void CorredorAtualizar(Jogo *g, float dt) {
 
         Rectangle jogador = AreaJogador(g->playerPos);
 
+        // Interações (tecla E)
         if (IsKeyPressed(KEY_E)) {
+            // Porta de baixo: volta para a sala
             if (CheckCollisionRecs(jogador, PORTA_VOLTAR_CORREDOR)) {
                 IniciarTransicao(&g->transicao, JOGANDO, DURACAO_FADE);
             } else if (CheckCollisionRecs(jogador, PORTA_FIM_CORREDOR)) {
+                // Porta da direita: trancada até resolver tudo
                 if (ContarConcluidos(&g->progresso) == TOTAL_MONITORES)
+                    // TODO: aqui entra a transição para a próxima área (Bloco 2).
                     DialogoIniciar(&g->dlg, &dialogoPortaLiberada, OBJ_NENHUM);
                 else
                     DialogoIniciar(&g->dlg, &dialogoPortaTrancada, OBJ_NENHUM);
             } else {
+                // Monitores
                 for (int i = 0; i < TOTAL_MONITORES; i++) {
                     if (!CheckCollisionRecs(jogador, ZonaInteracao(monitores[i].area)))
                         continue;
@@ -88,6 +107,7 @@ void CorredorAtualizar(Jogo *g, float dt) {
                     } else if (QUIZ_EM_ORDEM && i != proximo) {
                         DialogoFalaAvulsa(&g->dlg, TextFormat("Luci: Vamos na ordem, uma lição puxa a outra. Comece pelo monitor %d.", proximo + 1));
                     } else {
+                        // NEUTRO -> ATIVO: começa a explicação + quiz
                         g->progresso.estado[i] = MON_ATIVO;
                         DialogoIniciar(&g->dlg, q, i);
                     }
@@ -98,17 +118,23 @@ void CorredorAtualizar(Jogo *g, float dt) {
     }
 }
 
+// Desenha cenário, portas, monitores, jogador/companion, HUD e a conversa/quiz por cima.
 void CorredorDesenhar(const Jogo *g) {
     ClearBackground((Color){8, 6, 18, 255});
     Rectangle corredor = {50, 100, 700, 320};
 
+    // ---------- CENÁRIO: parede de fundo e chão ----------
     DrawRectangle(50, 100, 700, 140, (Color){26, 20, 46, 255});
     DrawRectangle(50, 240, 700, 180, (Color){18, 15, 30, 255});
+
+    // Rodapé (linha entre a parede e o chão)
     DrawRectangle(50, 236, 700, 6, Fade(PURPLE, 0.45f));
 
+    // Divisões do piso
     for (int x = 50; x < 750; x += 70)
         DrawLine(x, 242, x, 420, Fade(PURPLE, 0.12f));
 
+    // Luminárias pulsando no teto
     for (int i = 0; i < 5; i++) {
         float pulso = 0.5f + 0.5f * sinf(g->tempo * 1.5f + i * 1.3f);
         int lx = 120 + i * 140;
@@ -118,6 +144,7 @@ void CorredorDesenhar(const Jogo *g) {
 
     DrawRectangleLinesEx(corredor, 4, Fade(PURPLE, 0.55f));
 
+    // ---------- PORTAS ----------
     int concluidos = ContarConcluidos(&g->progresso);
     bool saidaLiberada = (concluidos == TOTAL_MONITORES);
     float pulsoPorta = 0.5f + 0.5f * sinf(g->tempo * 4.0f);
@@ -139,7 +166,10 @@ void CorredorDesenhar(const Jogo *g) {
         (int)PORTA_FIM_CORREDOR.y - 16, 10, saidaLiberada ? GREEN : RED
     );
 
+    // ---------- MONITORES ----------
     Rectangle jogador = AreaJogador(g->playerPos);
+
+    // Só mostra os destaques quando o jogador está livre para agir
     bool explorando = (g->dlg.estado == DLG_NENHUM && g->progresso.introVista && !g->transicao.ativa);
 
     for (int i = 0; i < TOTAL_MONITORES; i++) {
@@ -148,6 +178,7 @@ void CorredorDesenhar(const Jogo *g) {
 
         DesenharMonitor(i, a, est, g->tempo, g->spritesMonitor);
 
+        // Nome embaixo, com a cor do estado
         const char *nome = monitores[i].nome;
         Color corNome = LIGHTGRAY;
         if (est == MON_ACERTOU)    { nome = TextFormat("%s (OK)", monitores[i].nome);   corNome = GREEN; }
@@ -160,12 +191,14 @@ void CorredorDesenhar(const Jogo *g) {
             (int)(a.y + a.height) + 32, 10, corNome
         );
 
+        // Destaque quando o jogador está perto
         if (explorando && CheckCollisionRecs(jogador, ZonaInteracao(a))) {
             DrawRectangleLinesEx((Rectangle){ a.x - 4, a.y - 4, a.width + 8, a.height + 8 }, 2, GOLD);
             DrawText("PRESSIONE E", (int)(a.x + a.width / 2) - MeasureText("PRESSIONE E", 12) / 2, (int)a.y - 22, 12, GOLD);
         }
     }
 
+    // Dicas "PRESSIONE E" nas portas
     if (explorando) {
         if (CheckCollisionRecs(jogador, PORTA_VOLTAR_CORREDOR)) {
             DrawText("PRESSIONE E", (int)(PORTA_VOLTAR_CORREDOR.x + PORTA_VOLTAR_CORREDOR.width) + 10, (int)PORTA_VOLTAR_CORREDOR.y, 12, GOLD);
@@ -175,9 +208,11 @@ void CorredorDesenhar(const Jogo *g) {
         }
     }
 
+    // ---------- PERSONAGEM E COMPANION ----------
     DesenharJogador(g->texFrente, g->texCostas, g->texLado, g->playerPos, g->direcaoAtual);
     DesenharCompanion(g->playerPos, g->companionAngulo);
 
+    // ---------- HUD ----------
     DrawText(TextFormat("MONITORES: %d/%d", concluidos, TOTAL_MONITORES), 65, 62, 14, WHITE);
     DrawText(TextFormat("PONTOS: %d", g->progresso.pontos), 230, 62, 14, GOLD);
     DrawText(
@@ -193,5 +228,6 @@ void CorredorDesenhar(const Jogo *g) {
         DrawText("E  -  INTERAGIR", 65, 469, 12, LIGHTGRAY);
     }
 
+    // Conversa / quiz por cima de tudo
     DialogoDesenhar(&g->dlg);
 }

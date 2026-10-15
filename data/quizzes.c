@@ -1,6 +1,13 @@
+// quizzes.c - Conteúdo dos quizzes. Para editar perguntas/respostas, mexa só aqui.
+
 #include "quizzes.h"
 
+// =============================================================
+// CONTEÚDO - CORREDOR (baseado no "Quizz - missão 1.pdf")
+// Para editar perguntas/respostas, mexa só aqui.
+// =============================================================
 const MonitorQuiz monitores[TOTAL_MONITORES] = {
+    // ---------- MONITOR 1: o que é alucinação (Sala 1 / Questão 1) ----------
     {
         .nome = "MONITOR 1",
         .area = {110, 140, 100, 70},
@@ -25,6 +32,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .explicacao = "A alucinação parece confiante, mas é errada ou inventada. E os ajustes do pós-treinamento não eliminam o problema, porque a incerteza ainda costuma ser penalizada."
         }
     },
+    // ---------- MONITOR 2: mapa mental (Sala 1 / Questão 2) ----------
     {
         .nome = "MONITOR 2",
         .area = {260, 140, 100, 70},
@@ -48,6 +56,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .explicacao = "No Path Compression acontece o contrário: a IA deixa de passar pelas etapas intermediárias e pula direto para uma conclusão."
         }
     },
+    // ---------- MONITOR 3: tipos de alucinação (Sala 2 / Questão 3) ----------
     {
         .nome = "MONITOR 3",
         .area = {410, 140, 100, 70},
@@ -70,6 +79,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .explicacao = "A intrínseca contradiz o que o usuário ou o contexto informou. A extrínseca não pode ser verificada ou é inventada, mesmo sem contradizer o contexto."
         }
     },
+    // ---------- MONITOR 4: riscos e mitigação (Sala 2 / Questão 4) ----------
     {
         .nome = "MONITOR 4",
         .area = {560, 140, 100, 70},

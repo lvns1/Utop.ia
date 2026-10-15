@@ -1,3 +1,5 @@
+// game.h - A struct Jogo (todo o estado da partida) e o ciclo de vida do jogo.
+
 #ifndef GAME_H
 #define GAME_H
 
@@ -7,6 +9,8 @@
 #include "../systems/quiz.h"
 #include "../systems/battle.h"
 
+// Estado completo da partida. Antes eram variáveis soltas no main();
+// agora as cenas recebem um Jogo* e alteram só o que precisam.
 typedef struct {
     TelaAtual tela;
     Color corFundoMenu;
@@ -35,6 +39,7 @@ typedef struct {
 
     // Estado da Intro
     int etapaIntro;
+    // Nickname do jogador: exatamente 3 letras
     char nickname[4];
     int nicknamePos;
 
@@ -43,7 +48,7 @@ typedef struct {
     SessaoDialogo dlg;
     Transicao transicao;
     Batalha batalha;
-    int quizDaBatalha;
+    int quizDaBatalha;                      // monitor que gerou a batalha
     ResultadoDialogo motivoBatalha;
 } Jogo;
 

@@ -1,3 +1,5 @@
+// dialogue.c - Lógica e desenho das conversas.
+
 #include "dialogue.h"
 #include "quiz.h"
 #include "../utils/text.h"
@@ -5,11 +7,15 @@
 #include <string.h>
 #include <math.h>
 
+// Quebra o texto na largura dada e reinicia a máquina de escrever.
+
+// ---------- Sistema de diálogo (estilo Undertale) ----------
 void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte) {
     QuebrarTexto(texto, larguraMax, tamFonte, d->texto, (int)sizeof(d->texto));
     d->visiveis = 0.0f;
 }
 
+// Abre uma conversa na primeira página. 'objeto' = monitor (0-3), OBJ_LUCI ou OBJ_NENHUM.
 void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto) {
     d->conteudo = *conteudo;
     d->objeto = objeto;
@@ -23,6 +29,7 @@ void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto) {
     DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
 }
 
+// Conversa de uma página só montada na hora (ex.: com TextFormat)
 void DialogoFalaAvulsa(SessaoDialogo *d, const char *texto) {
     Dialogo fala = {0};
     fala.paginas[0] = texto;
@@ -31,6 +38,7 @@ void DialogoFalaAvulsa(SessaoDialogo *d, const char *texto) {
     DialogoIniciar(d, &fala, OBJ_NENHUM);
 }
 
+// Mostra o resultado de uma resposta numa caixa com a cor de borda dada; 'pontos' > 0 aparece como "+N PONTOS".
 void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, int pontos) {
     d->estado = DLG_FEEDBACK;
     d->corBorda = borda;
@@ -39,8 +47,14 @@ void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, in
     DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
 }
 
+// Atualiza a conversa e avisa o que aconteceu neste frame.
+//   ENTER / E / ESPAÇO : completa o texto na hora ou avança a página
+//   W / S / SETAS      : move o coração entre as alternativas
+//   ENTER / E / ESPAÇO : confirma a alternativa (1, 2, 3, 4 = atalho)
 ResultadoDialogo DialogoAtualizar(SessaoDialogo *d) {
     bool avancar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE);
+
+    // Efeito máquina de escrever
     int total = (int)strlen(d->texto);
 
     if (d->visiveis < (float)total) {
@@ -70,6 +84,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d) {
         } break;
 
         case DLG_ESCOLHA: {
+            // A barra de tempo só começa quando a pergunta terminou de aparecer
             if (!terminou) {
                 if (avancar) d->visiveis = (float)total;
                 break;
@@ -89,6 +104,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d) {
             if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
                 d->selecao = (d->selecao + 1) % NUM_OPCOES;
 
+            // Pequeno atraso para ninguém responder sem querer
             if (TEMPO_QUIZ - d->tempoRestante < ATRASO_RESPOSTA)
                 break;
 
@@ -112,6 +128,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d) {
                         PONTOS_POR_ACERTO
                     );
                 } else {
+                    // Errou: o jogo abre o minigame de esquiva
                     d->estado = DLG_NENHUM;
                     return RES_ERROU;
                 }
@@ -135,13 +152,16 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d) {
     return RES_NADA;
 }
 
+// Desenha a conversa por cima da cena: painel central (pergunta) ou caixa embaixo (páginas e feedback).
 void DialogoDesenhar(const SessaoDialogo *d) {
     if (d->estado == DLG_NENHUM) return;
 
+    // Parte do texto que já "apareceu"
     char parcial[768];
     bool terminou = TextoParcial(d->texto, d->visiveis, parcial, (int)sizeof(parcial));
     bool piscar = (((int)(GetTime() * 2.0)) % 2 == 0);
 
+    // ---------- PERGUNTA: painel central com as 4 alternativas e a barra de tempo ----------
     if (d->estado == DLG_ESCOLHA) {
         DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.7f));
 
@@ -158,6 +178,7 @@ void DialogoDesenhar(const SessaoDialogo *d) {
             px, py + 14, 10, GOLD
         );
 
+        // ---------- Barra de tempo ----------
         float fracao = d->tempoRestante / TEMPO_QUIZ;
         Color corTempo = (fracao > 0.5f) ? LIME : (fracao > 0.25f ? YELLOW : RED);
         if (fracao <= 0.25f && (((int)(GetTime() * 6.0)) % 2 == 0))
@@ -168,8 +189,11 @@ void DialogoDesenhar(const SessaoDialogo *d) {
         DrawRectangleLines(px, py + 32, 620, 12, GRAY);
 
         DrawText(TextFormat("%2d s", (int)ceilf(d->tempoRestante)), px + 632, py + 31, 14, corTempo);
+
+        // ---------- Pergunta ----------
         DesenharTextoLinhas(parcial, px, py + 58, FONTE_PERGUNTA, 24, WHITE);
 
+        // As alternativas só aparecem quando a pergunta terminou de ser "digitada"
         if (terminou) {
             int y = py + 58 + ContarLinhas(d->texto) * 24 + 14;
             int espaco = d->fonteOpcao + 5;
@@ -193,6 +217,10 @@ void DialogoDesenhar(const SessaoDialogo *d) {
         return;
     }
 
+    // -----------------------------------------------------
+    // PÁGINAS E FEEDBACK: caixa de diálogo na parte de baixo
+    // (a altura cresce se o texto for grande)
+    // -----------------------------------------------------
     int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34;
     if (alturaCaixa < 150) alturaCaixa = 150;
 

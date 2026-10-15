@@ -1,3 +1,5 @@
+// dialogues.c - Conteúdo das falas. Para editar textos, mexa só aqui.
+
 #include "dialogues.h"
 
 const char *textosIntro[3] = {
@@ -6,6 +8,7 @@ const char *textosIntro[3] = {
     "Bem-vindo a UtopIA, o universo interior que sustenta essa inteligência. O sistema está\ncolapsando internamente por conta dessas alucinações e se essa falha não for \ncorrigida a tempo, o impacto afetará todas as IAs do mundo real...",
 };
 
+// ---------- CONTEÚDO - SALA INICIAL (falas da Luci) ----------
 const Dialogo dialogoLuciSala = {
     .paginas = {
         "Luci: Olá, Thomas. Eu imagino que se pergunte o que está fazendo aqui. Eu sou Luci, um dos algoritmos que fazem parte da IA que você usa todos os dias.",
@@ -25,6 +28,7 @@ const Dialogo dialogoPortaSalaTrancada = {
     .numPaginas = 1
 };
 
+// Falas avulsas da Luci (sem pergunta)
 const Dialogo dialogoIntroCorredor = {
     .paginas = {
         "Luci: Este é o Corredor do Histórico. Cada um destes 4 monitores guarda uma lição sobre alucinação.",

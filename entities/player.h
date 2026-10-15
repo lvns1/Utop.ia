@@ -1,3 +1,5 @@
+// player.h - Jogador: movimento (WASD), hitboxes e desenho do sprite.
+
 #ifndef PLAYER_H
 #define PLAYER_H
 

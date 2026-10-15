@@ -1,3 +1,5 @@
+// corredor.h - Cena do corredor dos monitores.
+
 #ifndef SCENE_CORREDOR_H
 #define SCENE_CORREDOR_H
 

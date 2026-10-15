@@ -1,6 +1,10 @@
+// text.c - Funções auxiliares de texto (UTF-8: letras com acento ocupam 2 bytes).
+
 #include "text.h"
 #include <string.h>
 
+// Copia "texto" para "saida" inserindo '\n' nos espaços para que
+// nenhuma linha passe de "larguraMax" pixels (DrawText não quebra linha sozinho).
 void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, int tamSaida) {
     int pos = 0;
     int inicioLinha = 0;
@@ -29,6 +33,7 @@ void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, 
     saida[pos] = '\0';
 }
 
+// Desenha um texto com várias linhas (separadas por '\n') e devolve quantas linhas desenhou.
 int DesenharTextoLinhas(const char *texto, int x, int y, int tamFonte, int espacoLinha, Color cor) {
     char linha[512];
     int n = 0;
@@ -48,6 +53,7 @@ int DesenharTextoLinhas(const char *texto, int x, int y, int tamFonte, int espac
     return linhas;
 }
 
+// Quantas linhas (separadas por '\n') o texto tem; no mínimo 1.
 int ContarLinhas(const char *texto) {
     int n = 1;
     for (; *texto != '\0'; texto++)
@@ -55,12 +61,15 @@ int ContarLinhas(const char *texto) {
     return n;
 }
 
+// Letras com acento ocupam 2 bytes em UTF-8. Na máquina de escrever,
+// isso garante que nunca aparece "meia letra" na tela.
 int FimDoCaractere(const char *s, int n) {
     while (s[n] != '\0' && (((unsigned char)s[n]) & 0xC0) == 0x80)
         n++;
     return n;
 }
 
+// Copia a parte do texto que já "apareceu" na máquina de escrever
 bool TextoParcial(const char *texto, float visiveis, char *saida, int tamSaida) {
     int total = (int)strlen(texto);
     int n = FimDoCaractere(texto, (int)visiveis);

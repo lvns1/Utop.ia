@@ -1,3 +1,5 @@
+// collision.h - Áreas de colisão e de interação usadas pelas cenas.
+
 #ifndef COLLISION_H
 #define COLLISION_H
 

@@ -1,10 +1,14 @@
+// effects.c - Implementação dos efeitos visuais.
+
 #include "effects.h"
 
+// Gerador de "ruído" para chiados e glitches (sempre igual para o mesmo número)
 unsigned int Ruido(unsigned int n) {
     n = (n << 13) ^ n;
     return n * (n * n * 15731u + 789221u) + 1376312589u;
 }
 
+// Coração em pixel art (a "alma" do Undertale)
 void DesenharCoracao(float cx, float cy, int pixel, Color cor) {
     static const char *forma[6] = {
         ".XX.XX.",

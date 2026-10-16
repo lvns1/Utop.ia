@@ -16,9 +16,31 @@ void JogoInicializar(Jogo *g) {
 
     // caminhos das imagens (sprites) do jogo e carregamento delas
     g->imagemTitulo = LoadTexture("resources/ui/titulo.png");
-    g->texFrente = LoadTexture(SPRITE_FRENTE);
-    g->texCostas = FileExists(SPRITE_COSTAS) ? LoadTexture(SPRITE_COSTAS) : LoadTexture(SPRITE_COSTAS_RESERVA);
-    g->texLado = LoadTexture(SPRITE_LADO);
+    g->spritesJogador[DIR_FRENTE] = CarregarSprite(
+    SPRITE_ANDANDO_FRENTE,
+    SPRITE_FRENTE,
+    false
+);
+
+g->spritesJogador[DIR_COSTAS] = CarregarSprite(
+    SPRITE_ANDANDO_COSTAS,
+    SPRITE_COSTAS_RESERVA,
+    false
+);
+
+g->spritesJogador[DIR_DIREITA] = CarregarSprite(
+    SPRITE_ANDANDO_DIREITA,
+    SPRITE_LADO,
+    false
+);
+
+g->spritesJogador[DIR_ESQUERDA] = CarregarSprite(
+    SPRITE_ANDANDO_ESQUERDA,
+    SPRITE_LADO,
+    true
+);
+
+g->animJogador = (AnimacaoJogador){0};
 
     // Sprites dos monitores (só carrega os que existirem)
     const char *arquivosMonitor[4] = {
@@ -152,19 +174,19 @@ void JogoDesenhar(const Jogo *g) {
 
     // ---------- FADE DA TRANSIÇÃO (sempre por cima de tudo) ----------
     DesenharTransicao(&g->transicao);
+
     EndDrawing();
-}
+    }
 
-// Descarrega as texturas (chamado antes do CloseWindow).
-void JogoFinalizar(Jogo *g) {
+    // Descarrega as texturas (chamado antes do CloseWindow).
+    void JogoFinalizar(Jogo *g) {
+    // Textura do título
     UnloadTexture(g->imagemTitulo);
-    UnloadTexture(g->texFrente);
-    UnloadTexture(g->texCostas);
-    UnloadTexture(g->texLado);
 
+    // Texturas do jogador (sprites de animação)
     for (int i = 0; i < 4; i++) {
-        if (g->spritesMonitor[i].id > 0) {
-            UnloadTexture(g->spritesMonitor[i]);
+        if (g->spritesJogador[i].textura.id > 0) {
+            UnloadTexture(g->spritesJogador[i].textura);
         }
     }
 }

@@ -22,6 +22,15 @@ typedef enum Direcao { DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA } Direc
 #define SPRITE_COSTAS_RESERVA "resources/sprites/player/person.cima.png"
 #define SPRITE_LADO           "resources/sprites/player/person.lado.png"
 
+#define SPRITE_ANDANDO_FRENTE   "resources/sprites/player/Andando_de_frente.png"
+#define SPRITE_ANDANDO_COSTAS   "resources/sprites/player/Andando_costas.png"
+#define SPRITE_ANDANDO_DIREITA  "resources/sprites/player/Andando_direita.png"
+#define SPRITE_ANDANDO_ESQUERDA "resources/sprites/player/Andando_esquerda.png"
+
+#define QUADROS_ANDANDO 4
+#define FPS_ANIMACAO 8.0f
+#define ALTURA_PERSONAGEM 60.0f
+
 // Sprites dos monitores (opcionais). Enquanto os arquivos não existirem,
 // o jogo desenha os monitores com formas simples.
 #define SPRITE_MONITOR_NEUTRO "resources/sprites/corredor/monitor.neutro.png"

@@ -1,5 +1,6 @@
 // corredor.c - Corredor: introdução, exploração, quizzes dos monitores e início da batalha.
-
+#include "raylib.h"
+#include "raymath.h"
 #include "corredor.h"
 #include "../entities/player.h"
 #include "../entities/luci.h"
@@ -207,9 +208,14 @@ void CorredorDesenhar(const Jogo *g) {
             DrawText("PRESSIONE E", (int)(PORTA_FIM_CORREDOR.x + PORTA_FIM_CORREDOR.width) - MeasureText("PRESSIONE E", 12) - 8, (int)PORTA_FIM_CORREDOR.y - 32, 12, GOLD);
         }
     }
-
     // ---------- PERSONAGEM E COMPANION ----------
-    DesenharJogador(g->texFrente, g->texCostas, g->texLado, g->playerPos, g->direcaoAtual);
+    DesenharJogador(
+        g->spritesJogador,
+        g->playerPos,
+        g->direcaoAtual,
+        g->animJogador.quadro
+    );
+
     DesenharCompanion(g->playerPos, g->companionAngulo);
 
     // ---------- HUD ----------

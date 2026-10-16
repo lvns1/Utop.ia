@@ -1,5 +1,6 @@
 // sala.c - Sala inicial: conversa com a Luci e porta de cima para o corredor.
-
+#include "raylib.h"
+#include "raymath.h"
 #include "sala.h"
 #include "../entities/player.h"
 #include "../entities/luci.h"
@@ -22,6 +23,15 @@ void SalaAtualizar(Jogo *g, float dt) {
         // ---------- MOVIMENTAÇÃO DO PERSONAGEM ----------
         Vector2 posAnterior = g->playerPos;
         g->direcaoAtual = MoverJogador(&g->playerPos, g->direcaoAtual);
+
+        bool andando =
+        Vector2Distance(posAnterior, g->playerPos) > 0.1f;
+
+        AtualizarAnimacao(
+            &g->animJogador,
+            andando,
+            dt
+        );
 
         // Colisão com a Luci (não deixa atravessar)
         if (!g->luciAcompanhando && CheckCollisionRecs(HitboxJogador(g->playerPos), g->luciHitbox))
@@ -93,8 +103,12 @@ void SalaDesenhar(const Jogo *g) {
     }
 
     // ---------- PERSONAGEM ----------
-    DesenharJogador(g->texFrente, g->texCostas, g->texLado, g->playerPos, g->direcaoAtual);
-
+    DesenharJogador(
+    g->spritesJogador,
+    g->playerPos,
+    g->direcaoAtual,
+    g->animJogador.quadro
+    );
     if (g->luciAcompanhando)
         DesenharCompanion(g->playerPos, g->companionAngulo);
 

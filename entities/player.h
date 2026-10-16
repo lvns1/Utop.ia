@@ -6,9 +6,39 @@
 #include "raylib.h"
 #include "../core/config.h"
 
+typedef struct {
+    Texture2D textura;
+    int quadros;
+    bool espelhar;
+} SpriteDirecao;
+
+typedef struct {
+    int quadro;
+    float tempo;
+} AnimacaoJogador;
+
+SpriteDirecao CarregarSprite(
+    const char *folha,
+    const char *antigo,
+    bool espelharAntigo
+);
+
+void AtualizarAnimacao(
+    AnimacaoJogador *animacao,
+    bool andando,
+    float dt
+);
+
 Direcao MoverJogador(Vector2 *pos, Direcao direcaoAtual);
+
 Rectangle HitboxJogador(Vector2 p);
 Rectangle AreaJogador(Vector2 p);
-void DesenharJogador(Texture2D texFrente, Texture2D texCostas, Texture2D texLado, Vector2 pos, Direcao direcao);
+
+void DesenharJogador(
+    const SpriteDirecao sprites[4],
+    Vector2 pos,
+    Direcao direcao,
+    int quadro
+);
 
 #endif

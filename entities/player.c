@@ -2,6 +2,7 @@
 
 #include "player.h"
 #include "raymath.h"
+#include <math.h>
 
 // Lê W A S D, move o jogador (sem ficar mais rápido na diagonal)
 // e devolve para qual lado o sprite deve olhar.
@@ -21,6 +22,48 @@ Direcao MoverJogador(Vector2 *pos, Direcao direcaoAtual) {
     return nova;
 }
 
+// Carrega a folha animada ou usa o sprite estático como alternativa.
+SpriteDirecao CarregarSprite(
+    const char *folha,
+    const char *antigo,
+    bool espelharAntigo
+) {
+    SpriteDirecao sprite = {0};
+
+    if (FileExists(folha)) {
+        sprite.textura = LoadTexture(folha);
+        sprite.quadros = QUADROS_ANDANDO;
+    } else {
+        sprite.textura = LoadTexture(antigo);
+        sprite.quadros = 1;
+        sprite.espelhar = espelharAntigo;
+    }
+
+    return sprite;
+}
+
+// Avança a animação enquanto o personagem anda.
+void AtualizarAnimacao(
+    AnimacaoJogador *animacao,
+    bool andando,
+    float dt
+) {
+    if (!andando) {
+        animacao->quadro = 0;
+        animacao->tempo = 0.0f;
+        return;
+    }
+
+    animacao->tempo += dt;
+
+    if (animacao->tempo >= 1.0f / FPS_ANIMACAO) {
+        animacao->tempo -= 1.0f / FPS_ANIMACAO;
+
+        animacao->quadro =
+            (animacao->quadro + 1) % QUADROS_ANDANDO;
+    }
+}
+
 // Hitbox menor, usada para colidir com a Luci
 Rectangle HitboxJogador(Vector2 p) {
     return (Rectangle){ p.x - TAM_SPRITE / 4, p.y - TAM_SPRITE / 4, TAM_SPRITE / 2, TAM_SPRITE / 2 };
@@ -32,21 +75,72 @@ Rectangle AreaJogador(Vector2 p) {
 }
 
 // Desenha o sprite da direção atual centrado em 'pos' (esquerda = sprite do lado espelhado).
-void DesenharJogador(Texture2D texFrente, Texture2D texCostas, Texture2D texLado, Vector2 pos, Direcao direcao) {
-    Texture2D texAtual;
-    float flip = 1.0f;                      // 1 = normal, -1 = espelhado (usado p/ olhar p/ esquerda)
+void DesenharJogador(
+    const SpriteDirecao sprites[4],
+    Vector2 pos,
+    Direcao direcao,
+    int quadro
+) {
+    const SpriteDirecao *sprite = &sprites[direcao];
+    Texture2D textura = sprite->textura;
 
-    switch (direcao) {
-        case DIR_FRENTE:   texAtual = texFrente; break;
-        case DIR_COSTAS:   texAtual = texCostas; break;
-        case DIR_DIREITA:  texAtual = texLado;   break;
-        case DIR_ESQUERDA: texAtual = texLado; flip = -1.0f; break;
-        default:           texAtual = texFrente; break;
+    float flip = sprite->espelhar ? -1.0f : 1.0f;
+
+    Rectangle origem;
+    Rectangle destino;
+    Vector2 centro;
+
+    if (sprite->quadros > 1) {
+        float largura = (float)textura.width / sprite->quadros;
+        float altura = (float)textura.height;
+
+        origem = (Rectangle) {
+            largura * (quadro % sprite->quadros),
+            0,
+            largura,
+            altura
+        };
+
+        float escala = ALTURA_PERSONAGEM / altura;
+
+        destino = (Rectangle) {
+            roundf(pos.x),
+            roundf(pos.y),
+            largura * escala,
+            altura * escala
+        };
+
+        centro = (Vector2) {
+            destino.width / 2,
+            destino.height / 2
+        };
+    } else {
+        origem = (Rectangle) {
+            0,
+            0,
+            textura.width * flip,
+            textura.height
+        };
+
+        destino = (Rectangle) {
+            pos.x,
+            pos.y,
+            TAM_SPRITE,
+            TAM_SPRITE
+        };
+
+        centro = (Vector2) {
+            TAM_SPRITE / 2,
+            TAM_SPRITE / 2
+        };
     }
 
-    Rectangle sourceRec = { 0.0f, 0.0f, (float)texAtual.width * flip, (float)texAtual.height };
-    Rectangle destRec = { pos.x, pos.y, TAM_SPRITE, TAM_SPRITE };
-    Vector2 origin = { TAM_SPRITE / 2, TAM_SPRITE / 2 };
-
-    DrawTexturePro(texAtual, sourceRec, destRec, origin, 0.0f, WHITE);
+    DrawTexturePro(
+        textura,
+        origem,
+        destino,
+        centro,
+        0.0f,
+        WHITE
+    );
 }

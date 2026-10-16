@@ -31,12 +31,27 @@ void IntroAtualizar(Jogo *g) {
 
     // ---------- ETAPA FINAL: REGISTRO DO NICKNAME ----------
     if (g->etapaIntro == 3) {
-        // Lê uma letra por vez (A-Z)
-        int tecla = GetKeyPressed();
-        if (tecla >= KEY_A && tecla <= KEY_Z && g->nicknamePos < 3) {
-            g->nickname[g->nicknamePos] = (char)('A' + (tecla - KEY_A));
+        // Lê os caracteres digitados
+    int caractere = GetCharPressed();
+
+    while (caractere > 0) {
+        // Converte letras minúsculas em maiúsculas
+        if (caractere >= 'a' && caractere <= 'z') {
+            caractere = caractere - ('a' - 'A');
+        }
+
+        // Aceita somente letras de A até Z
+        if (caractere >= 'A' &&
+            caractere <= 'Z' &&
+            g->nicknamePos < 3) {
+
+            g->nickname[g->nicknamePos] = (char)caractere;
             g->nicknamePos++;
         }
+
+    // Processa o próximo caractere digitado
+    caractere = GetCharPressed();
+}
 
         // BACKSPACE apaga a última letra digitada.
         // Se não houver nenhuma letra, volta para o menu.

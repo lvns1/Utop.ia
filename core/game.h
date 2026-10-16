@@ -8,6 +8,7 @@
 #include "../systems/dialogue.h"
 #include "../systems/quiz.h"
 #include "../systems/battle.h"
+#include "../entities/player.h"
 
 // Estado completo da partida. Antes eram variáveis soltas no main();
 // agora as cenas recebem um Jogo* e alteram só o que precisam.
@@ -17,10 +18,9 @@ typedef struct {
 
     // Recursos visuais
     Texture2D imagemTitulo;
-    Texture2D texFrente;
-    Texture2D texCostas;
-    Texture2D texLado;
     Texture2D spritesMonitor[4];
+    SpriteDirecao spritesJogador[4];
+    AnimacaoJogador animJogador;
 
     // Estado do Jogador
     Vector2 playerPos;

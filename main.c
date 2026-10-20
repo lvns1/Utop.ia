@@ -2074,6 +2074,130 @@ static void DesenharTextoBotao(Rectangle b, const char *texto, int tamanho, Colo
 }
 
 // =============================================================
+// MENU DE PAUSE
+// =============================================================
+
+#define DESFOQUE_PAUSA  4        // quanto maior, mais desfocado fica o fundo (2 a 8)
+
+typedef enum { PAUSA_CONTINUAR, PAUSA_SAIR, NUM_OPCOES_PAUSA } OpcaoPausa;
+
+// Tira uma "foto" da tela atual (com as cores normais do jogo) e desfoca:
+// diminui e aumenta de novo a imagem, perdendo os detalhes finos.
+// É feito uma vez só, no momento em que o jogo pausa.
+static Texture2D CapturarFundoPausa(void)
+{
+    Image img = LoadImageFromScreen();
+    int w = img.width;
+    int h = img.height;
+
+    ImageResize(&img, w / DESFOQUE_PAUSA, h / DESFOQUE_PAUSA);
+    ImageResize(&img, w, h);
+
+    ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+
+    Texture2D t = LoadTextureFromImage(img);
+    SetTextureFilter(t, TEXTURE_FILTER_BILINEAR);
+    UnloadImage(img);
+
+    return t;
+}
+
+static Rectangle RetanguloOpcaoPausa(int i)
+{
+    return (Rectangle){ 290, 285 + i * 60.0f, 220, 44 };
+}
+
+// Lê teclado e mouse no menu de pause.
+// Devolve a opção escolhida (PAUSA_CONTINUAR / PAUSA_SAIR) ou -1 se nada foi escolhido.
+//   W / S / SETAS          : troca a opção
+//   ENTER / E / ESPAÇO     : confirma
+//   mouse                  : passa por cima para marcar, clica para escolher
+static int AtualizarPausa(int *selecao)
+{
+    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
+        *selecao = (*selecao + NUM_OPCOES_PAUSA - 1) % NUM_OPCOES_PAUSA;
+
+    if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
+        *selecao = (*selecao + 1) % NUM_OPCOES_PAUSA;
+
+    Vector2 mouse = GetMousePosition();
+    bool mouseMexeu = (Vector2Length(GetMouseDelta()) > 0.0f);
+
+    for (int i = 0; i < NUM_OPCOES_PAUSA; i++) {
+
+        if (!CheckCollisionPointRec(mouse, RetanguloOpcaoPausa(i)))
+            continue;
+
+        if (mouseMexeu)
+            *selecao = i;
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            return i;
+    }
+
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE))
+        return *selecao;
+
+    return -1;
+}
+
+static void DesenharPausa(Texture2D fundo, int selecao)
+{
+    // Paleta do jogo
+    Color fundoEscuro = (Color){ 8, 6, 18, 255 };      // fundo das salas
+    Color painelCor   = (Color){ 18, 15, 30, 255 };    // chão das salas
+
+    // Fundo: a tela do jogo congelada e desfocada, com as cores normais
+    ClearBackground(fundoEscuro);
+
+    if (fundo.id > 0) {
+        DrawTexturePro(
+            fundo,
+            (Rectangle){ 0, 0, (float)fundo.width, (float)fundo.height },
+            (Rectangle){ 0, 0, LARGURA_TELA, ALTURA_TELA },
+            (Vector2){ 0, 0 },
+            0.0f,
+            WHITE
+        );
+    }
+
+    // Escurece só um pouco, para o menu se destacar
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(fundoEscuro, 0.35f));
+
+    // Painel roxo, com um filete azul por dentro
+    Rectangle painel = { 250, 170, 300, 265 };
+
+    DrawRectangleRec(painel, Fade(painelCor, 0.92f));
+    DrawRectangleLinesEx(painel, 4, PURPLE);
+    DrawRectangleLinesEx((Rectangle){ painel.x + 8, painel.y + 8, painel.width - 16, painel.height - 16 }, 1, Fade(SKYBLUE, 0.35f));
+
+    const char *titulo = "PAUSADO";
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 200, 40, PURPLE);
+
+    // Opções, com o coração na marcada (estilo Undertale, em azul)
+    const char *opcoes[NUM_OPCOES_PAUSA] = { "CONTINUAR", "SAIR DO JOGO" };
+
+    for (int i = 0; i < NUM_OPCOES_PAUSA; i++) {
+
+        Rectangle r = RetanguloOpcaoPausa(i);
+        bool marcada = (i == selecao);
+
+        if (marcada) {
+            DrawRectangleRec(r, Fade(PURPLE, 0.15f));
+            DesenharCoracao(r.x + 26, r.y + r.height / 2, 2, SKYBLUE);
+        }
+
+        DrawText(opcoes[i], (int)r.x + 50, (int)(r.y + r.height / 2) - 10, 20, marcada ? SKYBLUE : LIGHTGRAY);
+    }
+
+    const char *dica1 = "ESC - voltar ao jogo";
+    const char *dica2 = "O progresso é salvo ao sair";
+
+    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 400, 10, Fade(SKYBLUE, 0.6f));
+    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 414, 10, GRAY);
+}
+
+// =============================================================
 // MAIN
 // =============================================================
 
@@ -2082,6 +2206,10 @@ int main(void) {
     // 1. INICIALIZAÇÃO
 
     InitWindow(LARGURA_TELA, ALTURA_TELA, "UtopIA - Game");
+
+    // ESC não fecha mais a janela: ele abre o menu de pause
+    // (fechar pelo X da janela continua funcionando)
+    SetExitKey(KEY_NULL);
 
     TelaAtual tela = MENU;
 
@@ -2177,6 +2305,15 @@ int main(void) {
     int pontoSaveFlash = -1;
     float confirmarNovoJogo = 0.0f;          // > 0 = clicou em JOGAR com save existente, falta confirmar
 
+    // =========================================================
+    // VARIÁVEIS DO PAUSE
+    // =========================================================
+
+    bool pausado = false;
+    bool capturarPausa = false;              // apertou ESC: tira a "foto" do fundo no fim deste frame
+    int selecaoPausa = PAUSA_CONTINUAR;
+    Texture2D fundoPausa = {0};
+
     const char *arquivoPontoSave = AcharSpriteJogador(SPRITE_PONTO_SAVE);
     Texture2D texPontoSave = (arquivoPontoSave != NULL) ? LoadTexture(arquivoPontoSave) : (Texture2D){0};
 
@@ -2198,10 +2335,36 @@ int main(void) {
         float dt = GetFrameTime();
 
         // =====================================================
+        // ESC: ABRE / FECHA O PAUSE
+        // =====================================================
+
+        if (IsKeyPressed(KEY_ESCAPE)) {
+
+            if (pausado) {
+
+                // Volta para o jogo
+                pausado = false;
+                UnloadTexture(fundoPausa);
+                fundoPausa = (Texture2D){0};
+
+            } else if ((tela == JOGANDO || tela == CORREDOR || tela == BATALHA) && !transicao.ativa) {
+
+                // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
+                capturarPausa = true;
+                selecaoPausa = PAUSA_CONTINUAR;
+
+            } else if (tela == OPCOES) {
+
+                tela = MENU;
+            }
+        }
+
+        // =====================================================
         // ANIMAÇÃO DO TÍTULO
         // =====================================================
 
-        tempo += dt;
+        if (!pausado)
+            tempo += dt;
 
         float amplitude = 8.0f;
         float velocidade = 3.0f;
@@ -2225,7 +2388,7 @@ int main(void) {
         // TRANSIÇÃO ENTRE TELAS (FADE)
         // =====================================================
 
-        if (transicao.ativa) {
+        if (transicao.ativa && !pausado) {
 
             float passo = dt / transicao.duracao;
 
@@ -2295,10 +2458,32 @@ int main(void) {
             confirmarNovoJogo -= dt;
 
         // =====================================================
+        // MENU DE PAUSE (enquanto pausado, o resto do jogo fica congelado:
+        // personagem, diálogos, barra de tempo do quiz e batalha)
+        // =====================================================
+
+        if (pausado) {
+
+            int escolha = AtualizarPausa(&selecaoPausa);
+
+            if (escolha == PAUSA_CONTINUAR) {
+
+                pausado = false;
+                UnloadTexture(fundoPausa);
+                fundoPausa = (Texture2D){0};
+
+            } else if (escolha == PAUSA_SAIR) {
+
+                // O auto save do final do programa guarda o progresso
+                fecharJogo = true;
+            }
+        }
+
+        // =====================================================
         // MENU
         // =====================================================
 
-        if (tela == MENU) {
+        else if (tela == MENU) {
 
             // CONTINUAR (carrega o save)
             if (existeSave && CheckCollisionPointRec(mouse, btnContinuar)) {
@@ -2769,8 +2954,10 @@ int main(void) {
             avisoSave = TEMPO_AVISO_SAVE;
         }
 
-        if (avisoSave > 0.0f) avisoSave -= dt;
-        if (flashSave > 0.0f) flashSave -= dt * 1.5f;
+        if (!pausado) {
+            if (avisoSave > 0.0f) avisoSave -= dt;
+            if (flashSave > 0.0f) flashSave -= dt * 1.5f;
+        }
 
         // =====================================================
         // ANIMAÇÃO DO PERSONAGEM
@@ -2782,7 +2969,8 @@ int main(void) {
                      !transicao.ativa &&
                      Vector2Distance(posInicioFrame, playerPos) > 0.01f;
 
-        AtualizarAnimacao(&animJogador, andou, dt);
+        if (!pausado)
+            AtualizarAnimacao(&animJogador, andou, dt);
 
         // =====================================================
         // DESENHO
@@ -2791,10 +2979,19 @@ int main(void) {
         BeginDrawing();
 
         // =====================================================
+        // PAUSE
+        // =====================================================
+
+        if (pausado) {
+
+            DesenharPausa(fundoPausa, selecaoPausa);
+        }
+
+        // =====================================================
         // MENU
         // =====================================================
 
-        if (tela == MENU) {
+        else if (tela == MENU) {
 
             ClearBackground(cor_de_fundo_menu);
 
@@ -3308,15 +3505,25 @@ int main(void) {
             ClearBackground(DARKBLUE);
 
             DrawText("TELA DE OPÇÕES", 280, 250, 30, YELLOW);
-            DrawText("Aperte BACKSPACE para voltar", 250, 300, 20, LIGHTGRAY);
+            const char *voltar = "Aperte BACKSPACE ou ESC para voltar";
+            DrawText(voltar, LARGURA_TELA / 2 - MeasureText(voltar, 20) / 2, 300, 20, LIGHTGRAY);
         }
 
         // =====================================================
         // FADE DA TRANSIÇÃO (sempre por cima de tudo)
         // =====================================================
 
-        if (transicao.ativa)
+        if (transicao.ativa && !pausado)
             DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, transicao.alfa));
+
+        // Acabou de apertar ESC: a tela deste frame vira o fundo do pause
+        // (precisa ser antes do EndDrawing, enquanto a imagem ainda está na tela)
+        if (capturarPausa) {
+
+            fundoPausa = CapturarFundoPausa();
+            capturarPausa = false;
+            pausado = true;
+        }
 
         EndDrawing();
     }
@@ -3331,6 +3538,9 @@ int main(void) {
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
     if (texPontoSave.id > 0)
         UnloadTexture(texPontoSave);
+
+    if (fundoPausa.id > 0)
+        UnloadTexture(fundoPausa);
 
     UnloadTexture(imagem_titulo);
     for (int i = 0; i < NUM_DIRECOES; i++)

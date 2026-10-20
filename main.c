@@ -148,16 +148,57 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 // POSIÇÕES DOS MAPAS
 // =============================================================
 
-// Sala inicial: porta na parede de CIMA
-static const Rectangle PORTA_SALA      = {360, 42, 80, 36};
-static const Rectangle ZONA_PORTA_SALA = {360, 42, 80, 52};
+// Sala inicial: arte do mapa (imagem quadrada 1024x1024)
+// Se o arquivo não existir, o jogo usa o cenário simples antigo.
+#define ARQUIVO_MAPA_SALA "resources/maps/mapa1_introducao.png"
+
+// ---- TAMANHO E POSIÇÃO DO MAPA NA TELA (AJUSTE AQUI) ----
+// Tudo que é "medido na imagem" (paredes, porta, ponto de save, Luci, spawn)
+// acompanha estes valores sozinho: aumentou o mapa, tudo vai junto.
+#define MAPA_SALA_X          100.0f
+#define MAPA_SALA_Y            0.0f
+#define MAPA_SALA_LARGURA    600.0f
+#define MAPA_SALA_ALTURA     600.0f
+#define TAM_IMAGEM_MAPA_SALA 1024.0f   // lado da imagem em pixels
+
+// Converte uma medida da imagem (pixels, de 0 a 1024) para a tela
+#define MAPA_X(px)  (MAPA_SALA_X + (px) * MAPA_SALA_LARGURA / TAM_IMAGEM_MAPA_SALA)
+#define MAPA_Y(py)  (MAPA_SALA_Y + (py) * MAPA_SALA_ALTURA / TAM_IMAGEM_MAPA_SALA)
+#define MAPA_L(pl)  ((pl) * MAPA_SALA_LARGURA / TAM_IMAGEM_MAPA_SALA)
+#define MAPA_A(pa)  ((pa) * MAPA_SALA_ALTURA / TAM_IMAGEM_MAPA_SALA)
+
+// Retângulo medido na imagem: x, y, largura, altura
+#define RETANGULO_MAPA(x, y, l, a)  { MAPA_X(x), MAPA_Y(y), MAPA_L(l), MAPA_A(a) }
+
+static const Rectangle AREA_MAPA_SALA = { MAPA_SALA_X, MAPA_SALA_Y, MAPA_SALA_LARGURA, MAPA_SALA_ALTURA };
+
+// Limites do centro do personagem no cenário simples (sem a imagem do mapa)
+static const Rectangle LIMITES_SALA_SIMPLES = {80, 80, 640, 440};
+
+// ---- PAREDES INVISÍVEIS DA SALA INICIAL ----
+#define PAREDES_INVISIVEIS_ATIVAS   1   // 1 = bloqueiam o personagem | 0 = desligadas
+#define MOSTRAR_PAREDES_INVISIVEIS  1   // 1 = desenha as paredes (para calibrar) | 0 = escondidas
+
+// Cada linha é uma parede: { x, y, largura, altura } medidos na imagem.
+// Para criar outra, é só acrescentar uma linha aqui e aumentar NUM_PAREDES_SALA.
+static const Rectangle PAREDES_SALA[] = {
+    RETANGULO_MAPA(   0,   0, 1024, 270),   // parede de cima (com o arco da porta)
+    RETANGULO_MAPA(   0,   0,   55, 1024),  // parede da esquerda
+    RETANGULO_MAPA( 985,   0,   39, 1024),  // parede da direita
+    RETANGULO_MAPA(   0, 975, 1024,   49),  // parede de baixo
+};
+#define NUM_PAREDES_SALA 4
+
+// Sala inicial: porta na parede de CIMA (o arco da imagem)
+static const Rectangle PORTA_SALA      = RETANGULO_MAPA(464, 101, 116, 159);
+static const Rectangle ZONA_PORTA_SALA = RETANGULO_MAPA(447, 154, 150, 145);
 
 // Corredor: porta de baixo volta para a sala / porta da direita é a saída
 static const Rectangle PORTA_VOLTAR_CORREDOR = {100, 406, 90, 18};
 static const Rectangle PORTA_FIM_CORREDOR    = {722, 265, 28, 140};
 
-static const Vector2 SPAWN_SALA       = {400, 300};
-static const Vector2 SPAWN_SALA_VOLTA = {400, 115};   // logo abaixo da porta de cima
+static const Vector2 SPAWN_SALA       = { MAPA_X(512), MAPA_Y(512) };
+static const Vector2 SPAWN_SALA_VOLTA = { MAPA_X(522), MAPA_Y(300) };   // logo abaixo da porta de cima   // logo abaixo da porta de cima
 static const Vector2 SPAWN_CORREDOR   = {145, 368};   // logo acima da porta de baixo
 
 // Caixa da batalha: larga para texto, estreita para desviar (como no Undertale)
@@ -242,7 +283,7 @@ typedef struct {
 // Para criar outro ponto, é só acrescentar uma linha aqui e aumentar NUM_PONTOS_SAVE
 // (e desenhar/tratar o E na sala correspondente, como é feito na sala inicial).
 static const PontoSave PONTOS_SAVE[] = {
-    { JOGANDO,  { 700, 535 } },
+    { JOGANDO,  { MAPA_X(870), MAPA_Y(905) } },
 };
 #define NUM_PONTOS_SAVE 1
 
@@ -631,6 +672,45 @@ static Rectangle AreaJogador(Vector2 p)
 {
     return (Rectangle){ p.x - 18, p.y - 22, 36, 44 };
 }
+
+// Pés do personagem: é o que bate nas paredes invisíveis
+// (a cabeça pode passar "por trás" da parede, como em jogos vistos de cima)
+static Rectangle PesJogador(Vector2 p)
+{
+    return (Rectangle){ p.x - 14, p.y + ALTURA_PERSONAGEM / 2 - 8, 28, 8 };
+}
+
+// Algum retângulo encosta em alguma parede invisível da sala?
+static bool BateNasParedes(Rectangle r)
+{
+    for (int i = 0; i < NUM_PAREDES_SALA; i++)
+        if (CheckCollisionRecs(r, PAREDES_SALA[i]))
+            return true;
+
+    return false;
+}
+
+// Impede o jogador de atravessar as paredes invisíveis.
+// Testa X e Y separados, assim ele desliza pela parede em vez de travar.
+static void ColidirComParedes(Vector2 *pos, Vector2 posAnterior)
+{
+    // Já estava dentro de uma parede (ex.: save antigo): deixa sair
+    if (BateNasParedes(PesJogador(posAnterior)))
+        return;
+
+    Vector2 teste = { pos->x, posAnterior.y };
+
+    if (BateNasParedes(PesJogador(teste)))
+        teste.x = posAnterior.x;
+
+    teste.y = pos->y;
+
+    if (BateNasParedes(PesJogador(teste)))
+        teste.y = posAnterior.y;
+
+    *pos = teste;
+}
+
 
 // Procura o arquivo nas pastas de PASTAS_SPRITES_JOGADOR.
 // Devolve o caminho encontrado, ou NULL se não estiver em nenhuma.
@@ -2248,6 +2328,9 @@ int main(void) {
         if (FileExists(arquivosMonitor[i]))
             spritesMonitor[i] = LoadTexture(arquivosMonitor[i]);
 
+    // Mapa da sala inicial (opcional: sem o arquivo, usa o cenário simples)
+    Texture2D texMapaSala = FileExists(ARQUIVO_MAPA_SALA) ? LoadTexture(ARQUIVO_MAPA_SALA) : (Texture2D){0};
+
     Vector2 playerPos = SPAWN_SALA;
     Direcao direcaoAtual = DIR_FRENTE;
 
@@ -2256,7 +2339,7 @@ int main(void) {
     bool pertoDaLuci = false;
 
     // --- NPC: LUCI ---
-    Rectangle luciHitbox = { 400.0f, 375.0f, TAM_SPRITE, TAM_SPRITE };
+    Rectangle luciHitbox = { MAPA_X(512), MAPA_Y(640), TAM_SPRITE, TAM_SPRITE };
     bool luciAcompanhando = false;   // depois da conversa ela vira companion
     float companionAngulo = 0.0f;
 
@@ -2687,11 +2770,19 @@ int main(void) {
                 // LIMITES DO MAPA
                 // -------------------------------------------------
 
-                if (playerPos.x < 80)  playerPos.x = 80;
-                if (playerPos.x > 720) playerPos.x = 720;
-                if (playerPos.y < 80)  playerPos.y = 80;
-                if (playerPos.y > 520) playerPos.y = 520;
+                // Paredes invisíveis (só valem com a imagem do mapa)
+#if PAREDES_INVISIVEIS_ATIVAS
+                if (texMapaSala.id > 0)
+                    ColidirComParedes(&playerPos, posAnterior);
+#endif
 
+                // Limite final: a própria imagem do mapa (ou o cenário simples)
+                Rectangle lim = (texMapaSala.id > 0) ? AREA_MAPA_SALA : LIMITES_SALA_SIMPLES;
+
+                if (playerPos.x < lim.x)              playerPos.x = lim.x;
+                if (playerPos.x > lim.x + lim.width)  playerPos.x = lim.x + lim.width;
+                if (playerPos.y < lim.y)              playerPos.y = lim.y;
+                if (playerPos.y > lim.y + lim.height) playerPos.y = lim.y + lim.height;
                 // -------------------------------------------------
                 // INTERAÇÃO (tecla E)
                 // -------------------------------------------------
@@ -3208,7 +3299,27 @@ int main(void) {
             // -------------------------------------------------
 
             Rectangle mapa = {50, 50, 700, 500};
+            bool mapaCarregado = (texMapaSala.id > 0);
 
+            if (mapaCarregado) {
+
+                // Arte do mapa, ajustada à área AREA_MAPA_SALA
+                DrawTexturePro(
+                    texMapaSala,
+                    (Rectangle){ 0, 0, (float)texMapaSala.width, (float)texMapaSala.height },
+                    AREA_MAPA_SALA,
+                    (Vector2){ 0, 0 },
+                    0.0f,
+                    WHITE
+                );
+
+            } else {
+
+                // Sem a imagem: cenário simples
+                DrawRectangleRec(mapa, (Color){18, 15, 30, 255});      // chão
+                DrawRectangleLinesEx(mapa, 4, Fade(PURPLE, 0.55f));    // bordas
+            }
+            
             DrawRectangleRec(mapa, (Color){18, 15, 30, 255});      // chão
             DrawRectangleLinesEx(mapa, 4, Fade(PURPLE, 0.55f));    // bordas
 
@@ -3218,11 +3329,19 @@ int main(void) {
 
             bool salaLiberada = luciAcompanhando;
 
-            DrawRectangleRec(PORTA_SALA, (Color){35, 25, 55, 255});
-            DrawRectangleLinesEx(PORTA_SALA, 3, salaLiberada ? PURPLE : MAROON);
+            if (!mapaCarregado) {
 
-            // Maçaneta
-            DrawCircle((int)(PORTA_SALA.x + PORTA_SALA.width - 12), (int)(PORTA_SALA.y + PORTA_SALA.height / 2), 4, GOLD);
+                DrawRectangleRec(PORTA_SALA, (Color){35, 25, 55, 255});
+                DrawRectangleLinesEx(PORTA_SALA, 3, salaLiberada ? PURPLE : MAROON);
+
+                // Maçaneta
+                DrawCircle((int)(PORTA_SALA.x + PORTA_SALA.width - 12), (int)(PORTA_SALA.y + PORTA_SALA.height / 2), 4, GOLD);
+
+            } else if (!salaLiberada) {
+
+                // O arco já está na imagem: só marca a porta como trancada
+                DrawRectangleRec(PORTA_SALA, Fade(MAROON, 0.35f));
+            }
 
             DrawText(
                 "CORREDOR",
@@ -3277,22 +3396,47 @@ int main(void) {
             if (luciAcompanhando)
                 DesenharCompanion(playerPos, companionAngulo);
 
+            // Paredes invisíveis e pés do personagem (para calibrar)
+            // Desligue em MOSTRAR_PAREDES_INVISIVEIS
+#if MOSTRAR_PAREDES_INVISIVEIS
+            if (mapaCarregado) {
+
+                for (int i = 0; i < NUM_PAREDES_SALA; i++) {
+
+                    DrawRectangleRec(PAREDES_SALA[i], Fade(RED, 0.25f));
+                    DrawRectangleLinesEx(PAREDES_SALA[i], 1, RED);
+                }
+
+                DrawRectangleLinesEx(PesJogador(playerPos), 1, YELLOW);
+            }
+#endif
+
             // Aviso do ponto de save: fora do mapa, no canto inferior esquerdo
             // (alinhado com a borda esquerda do mapa, logo abaixo dela)
-            if (pertoSave)
-                DrawText("PRESSIONE E", (int)mapa.x, (int)(mapa.y + mapa.height) + 12, 12, GOLD);
+            if (pertoSave) {
+
+                if (mapaCarregado)
+                    DrawText("PRESSIONE E", 8, ALTURA_TELA - 24, 12, GOLD);
+                else
+                    DrawText("PRESSIONE E", (int)mapa.x, (int)(mapa.y + mapa.height) + 12, 12, GOLD);
+            }
 
             // -------------------------------------------------
             // INSTRUÇÕES E HUD
             // -------------------------------------------------
 
-            DrawText("W A S D  -  MOVIMENTAR", 65, 65, 12, LIGHTGRAY);
-            DrawText("E  -  INTERAGIR", 65, 82, 12, LIGHTGRAY);
+            // Com o mapa quadrado, o HUD fica nas faixas pretas dos lados
+            int hudEsq = mapaCarregado ? 8   : 65;
+            int hudDir = mapaCarregado ? 792 : 700;
+            int hudFonte = mapaCarregado ? 10 : 12;
 
-            DrawText(nickname, 700 - MeasureText(nickname, 14), 65, 14, WHITE);
+            DrawText(mapaCarregado ? "WASD - MOVER" : "W A S D  -  MOVIMENTAR", hudEsq, 65, hudFonte, LIGHTGRAY);
+            DrawText(mapaCarregado ? "E - INTERAGIR" : "E  -  INTERAGIR", hudEsq, 82, hudFonte, LIGHTGRAY);
+
+            DrawText(nickname, hudDir - MeasureText(nickname, 14), 65, 14, WHITE);
 
             const char *textoPontos = TextFormat("PONTOS: %d", progresso.pontos);
-            DrawText(textoPontos, 700 - MeasureText(textoPontos, 12), 84, 12, GOLD);
+            DrawText(textoPontos, hudDir - MeasureText(textoPontos, 12), 84, 12, GOLD);
 
             if (livre && pertoDaLuci) {
 
@@ -3538,6 +3682,9 @@ int main(void) {
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
     if (texPontoSave.id > 0)
         UnloadTexture(texPontoSave);
+
+    if (texMapaSala.id > 0)
+        UnloadTexture(texMapaSala);
 
     if (fundoPausa.id > 0)
         UnloadTexture(fundoPausa);

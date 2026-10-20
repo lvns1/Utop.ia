@@ -177,7 +177,7 @@ static const Rectangle LIMITES_SALA_SIMPLES = {80, 80, 640, 440};
 
 // ---- PAREDES INVISÍVEIS DA SALA INICIAL ----
 #define PAREDES_INVISIVEIS_ATIVAS   1   // 1 = bloqueiam o personagem | 0 = desligadas
-#define MOSTRAR_PAREDES_INVISIVEIS  1   // 1 = desenha as paredes (para calibrar) | 0 = escondidas
+#define MOSTRAR_PAREDES_INVISIVEIS  0   // 1 = desenha as paredes (para calibrar) | 0 = escondidas
 
 // Cada linha é uma parede: { x, y, largura, altura } medidos na imagem.
 // Para criar outra, é só acrescentar uma linha aqui e aumentar NUM_PAREDES_SALA.
@@ -198,7 +198,7 @@ static const Rectangle PORTA_VOLTAR_CORREDOR = {100, 406, 90, 18};
 static const Rectangle PORTA_FIM_CORREDOR    = {722, 265, 28, 140};
 
 static const Vector2 SPAWN_SALA       = { MAPA_X(512), MAPA_Y(512) };
-static const Vector2 SPAWN_SALA_VOLTA = { MAPA_X(522), MAPA_Y(300) };   // logo abaixo da porta de cima   // logo abaixo da porta de cima
+static const Vector2 SPAWN_SALA_VOLTA = { MAPA_X(522), MAPA_Y(300) };   // logo abaixo da porta de cima
 static const Vector2 SPAWN_CORREDOR   = {145, 368};   // logo acima da porta de baixo
 
 // Caixa da batalha: larga para texto, estreita para desviar (como no Undertale)
@@ -3319,9 +3319,6 @@ int main(void) {
                 DrawRectangleRec(mapa, (Color){18, 15, 30, 255});      // chão
                 DrawRectangleLinesEx(mapa, 4, Fade(PURPLE, 0.55f));    // bordas
             }
-            
-            DrawRectangleRec(mapa, (Color){18, 15, 30, 255});      // chão
-            DrawRectangleLinesEx(mapa, 4, Fade(PURPLE, 0.55f));    // bordas
 
             // -------------------------------------------------
             // PORTA (parede de cima)

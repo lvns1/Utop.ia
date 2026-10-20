@@ -1,6 +1,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include <string.h>
+#include <stdio.h>
 #include <math.h>
 
 // =============================================================
@@ -14,7 +15,28 @@
 
 // Definimos os "canais" (telas) do nosso jogo
 typedef enum { MENU, INTRO, JOGANDO, OPCOES, CORREDOR, BATALHA } TelaAtual;
-typedef enum Direcao { DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA } Direcao;
+typedef enum Direcao {
+    DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA,
+    // Diagonais (FRENTE = descendo na tela, COSTAS = subindo)
+    DIR_FRENTE_DIREITA, DIR_FRENTE_ESQUERDA, DIR_COSTAS_DIREITA, DIR_COSTAS_ESQUERDA,
+    NUM_DIRECOES
+} Direcao;
+
+// Sprite de uma direção do personagem
+typedef struct {
+    Texture2D textura;
+    int quadros;        // 4 = folha de animação / 1 = imagem parada antiga
+    bool espelhar;      // só no modo antigo (esquerda = lado espelhado)
+    Rectangle recorte[4];                 // onde o personagem está de verdade em cada quadro
+    float alturaRef;                      // altura do personagem na imagem (maior dos quadros)
+    bool emprestada;                      // true = usa a textura de outra direção (não liberar duas vezes)
+} SpriteDirecao;
+
+// Qual quadro da caminhada está aparecendo
+typedef struct {
+    int quadro;
+    float tempo;
+} AnimacaoJogador;
 
 #define LARGURA_TELA 800
 #define ALTURA_TELA  600
@@ -23,22 +45,45 @@ typedef enum Direcao { DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA } Direc
 // SPRITES
 // =============================================================
 
-// Andando para CIMA o personagem tem que aparecer DE COSTAS para a câmera.
-// O jogo procura primeiro "person.costas.png" (personagem visto por trás).
-// Se esse arquivo não existir, usa o "person.cima.png" antigo.
-#define SPRITE_FRENTE          "resources\\sprites\\player\\person.frente.png"
-#define SPRITE_COSTAS          "resources\\sprites\\player\\person.costas.png"
-#define SPRITE_COSTAS_RESERVA  "resources\\sprites\\player\\person.cima.png"
-#define SPRITE_LADO            "resources\\sprites\\player\\person.lado.png"
+// Folhas de animação do personagem: 4 quadros lado a lado, TODOS DO MESMO
+// TAMANHO e com o personagem no mesmo lugar de cada quadro (versão limpa
+// de 152x60, quadros de 38x60). O quadro 0 é o personagem parado (pés juntos).
+// Andando para CIMA ele aparece DE COSTAS (Andando_costas.png).
+#define SPRITE_ANDANDO_FRENTE    "Andando_de_frente.png"
+#define SPRITE_ANDANDO_COSTAS    "Andando_costas.png"
+#define SPRITE_ANDANDO_DIREITA   "Andando_direita.png"
+#define SPRITE_ANDANDO_ESQUERDA  "Andando_esquerda.png"
+
+// Diagonais (3/4). Se alguma dessas folhas não for encontrada,
+// aquela diagonal usa a folha de LADO do mesmo sentido.
+#define SPRITE_ANDANDO_FRENTE_DIREITA   "Andando_diagonal_frente_direita.png"
+#define SPRITE_ANDANDO_FRENTE_ESQUERDA  "Andando_diagonal_frente_esquerda.png"
+#define SPRITE_ANDANDO_COSTAS_DIREITA   "Andando_diagonal_costas_direita.png"
+#define SPRITE_ANDANDO_COSTAS_ESQUERDA  "Andando_diagonal_costas_esquerda.png"
+
+// Pastas onde o jogo procura as folhas do personagem, na ordem.
+// "" = pasta do repositório (de onde o jogo é executado).
+static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/", "resources/sprites/save/" };
+#define NUM_PASTAS_SPRITES_JOGADOR 3
+
+#define QUADROS_ANDANDO     4
+#define FPS_ANIMACAO        8.0f     // trocas de quadro por segundo enquanto anda (AJUSTE AQUI)
+#define ALTURA_PERSONAGEM   58.0f    // altura do PERSONAGEM (não da imagem) na tela, em pixels (AJUSTE AQUI)
+                                     // com as folhas limpas, 58 ou 116 deixam a pixel art nítida
+
+// Imagens antigas (1 por direção), usadas só se as folhas acima não existirem
+#define SPRITE_FRENTE          "resources/sprites/player/person.frente.png"
+#define SPRITE_COSTAS          "resources/sprites/player/person.cima.png"
+#define SPRITE_LADO            "resources/sprites/player/person.lado.png"
 
 // Sprites dos monitores (opcionais). Enquanto os arquivos não existirem,
 // o jogo desenha os monitores com formas simples.
-#define SPRITE_MONITOR_NEUTRO  "resources\\sprites\\corredor\\monitor.neutro.png"
-#define SPRITE_MONITOR_ATIVO   "resources\\sprites\\corredor\\monitor.ativo.png"
-#define SPRITE_MONITOR_ACERTO  "resources\\sprites\\corredor\\monitor.acerto.png"
-#define SPRITE_MONITOR_ERRO    "resources\\sprites\\corredor\\monitor.erro.png"
+#define SPRITE_MONITOR_NEUTRO  "resources/sprites/corredor/monitor.neutro.png"
+#define SPRITE_MONITOR_ATIVO   "resources/sprites/corredor/monitor.ativo.png"
+#define SPRITE_MONITOR_ACERTO  "resources/sprites/corredor/monitor.acerto.png"
+#define SPRITE_MONITOR_ERRO    "resources/sprites/corredor/monitor.erro.png"
 
-#define TAM_SPRITE          65.0f    // tamanho do personagem na tela
+#define TAM_SPRITE          65.0f    // base das hitboxes (e tamanho das imagens antigas)
 #define VELOCIDADE_JOGADOR  300.0f   // pixels por segundo (= 5 px por frame a 60 FPS)
 
 // =============================================================
@@ -66,6 +111,23 @@ typedef enum Direcao { DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA } Direc
 // Conversas que não são de monitor
 #define OBJ_NENHUM  -1
 #define OBJ_LUCI    -2
+#define OBJ_SAVE    -3
+
+// =============================================================
+// SAVE - CONSTANTES
+// =============================================================
+
+#define ARQUIVO_SAVE         "utopia.sav"
+#define ARQUIVO_SAVE_TEMP    "utopia.sav.tmp"
+#define VERSAO_SAVE          1            // aumente quando mudar o que vai no save
+#define ASSINATURA_SAVE      0x41495455u  // identifica o arquivo como save do UtopIA
+#define TEMPO_AVISO_SAVE     2.0f         // segundos do aviso "JOGO SALVO" na tela
+
+// Ponto de save: folha com 12 quadros lado a lado (fluxo de dados)
+#define SPRITE_PONTO_SAVE    "Ponto_save.png"
+#define QUADROS_PONTO_SAVE   12
+#define FPS_PONTO_SAVE       12.0f
+#define ESCALA_PONTO_SAVE    2.0f         // 24x42 na imagem -> 48x84 na tela
 
 // =============================================================
 // BATALHA - CONSTANTES
@@ -126,10 +188,10 @@ typedef struct {
 
 typedef enum { MON_NEUTRO, MON_ATIVO, MON_ACERTOU, MON_ERROU } EstadoMonitor;
 
-typedef enum { DLG_NENHUM, DLG_PAGINAS, DLG_ESCOLHA, DLG_FEEDBACK } EstadoDialogo;
+typedef enum { DLG_NENHUM, DLG_PAGINAS, DLG_ESCOLHA, DLG_FEEDBACK, DLG_CONFIRMA } EstadoDialogo;
 
 // O que aconteceu na conversa neste frame
-typedef enum { RES_NADA, RES_FIM, RES_ERROU, RES_TEMPO } ResultadoDialogo;
+typedef enum { RES_NADA, RES_FIM, RES_ERROU, RES_TEMPO, RES_SIM, RES_NAO } ResultadoDialogo;
 
 // Estado da conversa que está acontecendo na tela agora
 typedef struct {
@@ -156,6 +218,33 @@ typedef struct {
     bool introVista;
     bool fimAnunciado;
 } ProgressoCorredor;
+
+// O que vai para o arquivo de save. Só o que não dá para reconstruir:
+// diálogo aberto, quiz no meio, batalha e animação ficam de fora.
+typedef struct {
+    unsigned int assinatura;
+    int versao;
+    char nickname[4];
+    int sala;                               // JOGANDO ou CORREDOR
+    float x, y;
+    int direcao;
+    bool luciAcompanhando;
+    ProgressoCorredor progresso;
+} DadosSave;
+
+// Ponto de save no mapa (o "fluxo de dados")
+typedef struct {
+    TelaAtual sala;
+    Vector2 base;                           // centro da base, no chão
+} PontoSave;
+
+// Sala inicial, no canto inferior direito do mapa.
+// Para criar outro ponto, é só acrescentar uma linha aqui e aumentar NUM_PONTOS_SAVE
+// (e desenhar/tratar o E na sala correspondente, como é feito na sala inicial).
+static const PontoSave PONTOS_SAVE[] = {
+    { JOGANDO,  { 700, 535 } },
+};
+#define NUM_PONTOS_SAVE 1
 
 // Fade entre telas: escurece (fase 0), troca de tela, clareia (fase 1)
 typedef struct {
@@ -503,18 +592,30 @@ static void DesenharCoracao(float cx, float cy, int pixel, Color cor)
 static Direcao MoverJogador(Vector2 *pos, Direcao direcaoAtual)
 {
     Vector2 direcao = {0};
-    Direcao nova = direcaoAtual;
 
-    if (IsKeyDown(KEY_D)) { direcao.x += 1.0f; nova = DIR_DIREITA; }
-    if (IsKeyDown(KEY_A)) { direcao.x -= 1.0f; nova = DIR_ESQUERDA; }
-    if (IsKeyDown(KEY_S)) { direcao.y += 1.0f; nova = DIR_FRENTE; }
-    if (IsKeyDown(KEY_W)) { direcao.y -= 1.0f; nova = DIR_COSTAS; }   // para cima = de costas
+    if (IsKeyDown(KEY_D)) direcao.x += 1.0f;
+    if (IsKeyDown(KEY_A)) direcao.x -= 1.0f;
+    if (IsKeyDown(KEY_S)) direcao.y += 1.0f;
+    if (IsKeyDown(KEY_W)) direcao.y -= 1.0f;   // para cima = de costas
 
-    if (Vector2Length(direcao) > 0.0f) {
+    // Parado (ou apertando lados opostos): continua olhando para onde estava
+    if (Vector2Length(direcao) == 0.0f)
+        return direcaoAtual;
 
-        direcao = Vector2Normalize(direcao);
-        *pos = Vector2Add(*pos, Vector2Scale(direcao, VELOCIDADE_JOGADOR * GetFrameTime()));
-    }
+    Direcao nova;
+
+    if      (direcao.y > 0 && direcao.x > 0) nova = DIR_FRENTE_DIREITA;
+    else if (direcao.y > 0 && direcao.x < 0) nova = DIR_FRENTE_ESQUERDA;
+    else if (direcao.y < 0 && direcao.x > 0) nova = DIR_COSTAS_DIREITA;
+    else if (direcao.y < 0 && direcao.x < 0) nova = DIR_COSTAS_ESQUERDA;
+    else if (direcao.y > 0)                  nova = DIR_FRENTE;
+    else if (direcao.y < 0)                  nova = DIR_COSTAS;
+    else if (direcao.x > 0)                  nova = DIR_DIREITA;
+    else                                     nova = DIR_ESQUERDA;
+
+    // Normaliza para a diagonal não ficar mais rápida
+    direcao = Vector2Normalize(direcao);
+    *pos = Vector2Add(*pos, Vector2Scale(direcao, VELOCIDADE_JOGADOR * GetFrameTime()));
 
     return nova;
 }
@@ -531,25 +632,159 @@ static Rectangle AreaJogador(Vector2 p)
     return (Rectangle){ p.x - 18, p.y - 22, 36, 44 };
 }
 
-static void DesenharJogador(Texture2D texFrente, Texture2D texCostas, Texture2D texLado, Vector2 pos, Direcao direcao)
+// Procura o arquivo nas pastas de PASTAS_SPRITES_JOGADOR.
+// Devolve o caminho encontrado, ou NULL se não estiver em nenhuma.
+static const char *AcharSpriteJogador(const char *nome)
 {
-    Texture2D texAtual;
-    float flip = 1.0f; // 1 = normal, -1 = espelhado (usado p/ olhar p/ esquerda)
+    static char caminho[512];
 
-    switch (direcao)
-    {
-        case DIR_FRENTE:   texAtual = texFrente; break;
-        case DIR_COSTAS:   texAtual = texCostas; break;
-        case DIR_DIREITA:  texAtual = texLado;   break;
-        case DIR_ESQUERDA: texAtual = texLado; flip = -1.0f; break;
-        default:           texAtual = texFrente; break;
+    for (int i = 0; i < NUM_PASTAS_SPRITES_JOGADOR; i++) {
+
+        snprintf(caminho, sizeof(caminho), "%s%s", PASTAS_SPRITES_JOGADOR[i], nome);
+
+        if (FileExists(caminho))
+            return caminho;
     }
 
-    Rectangle sourceRec = { 0.0f, 0.0f, (float)texAtual.width * flip, (float)texAtual.height };
-    Rectangle destRec = { pos.x, pos.y, TAM_SPRITE, TAM_SPRITE };
-    Vector2 origin = { TAM_SPRITE / 2, TAM_SPRITE / 2 };
+    TraceLog(LOG_WARNING, "SPRITE: '%s' nao encontrado na pasta do repositorio nem em resources/sprites/", nome);
+    return NULL;
+}
 
-    DrawTexturePro(texAtual, sourceRec, destRec, origin, 0.0f, WHITE);
+// Carrega a folha de animação; se ela não existir, usa a imagem antiga
+static SpriteDirecao CarregarSprite(const char *folha, const char *antigo, bool espelharAntigo)
+{
+    SpriteDirecao s = {0};
+
+    folha = AcharSpriteJogador(folha);
+
+    if (folha != NULL) {
+
+        Image img = LoadImage(folha);
+        Color *px = LoadImageColors(img);
+
+        s.textura = LoadTextureFromImage(img);
+        s.quadros = QUADROS_ANDANDO;
+
+        // Acha o personagem dentro de cada quadro, ignorando o espaço vazio em volta.
+        // Assim o tamanho fica certo em qualquer resolução e o personagem não
+        // "treme" quando os quadros não estão igualmente espaçados na folha.
+        int larguraQuadro = img.width / QUADROS_ANDANDO;
+
+        for (int q = 0; q < QUADROS_ANDANDO; q++) {
+
+            int x0 = q * larguraQuadro;
+            int minX = img.width, maxX = -1, minY = img.height, maxY = -1;
+
+            for (int y = 0; y < img.height; y++) {
+                for (int x = x0; x < x0 + larguraQuadro; x++) {
+
+                    if (px[y * img.width + x].a > 128) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+
+            if (maxX < 0)   // quadro vazio: usa o quadro inteiro
+                s.recorte[q] = (Rectangle){ (float)x0, 0, (float)larguraQuadro, (float)img.height };
+            else
+                s.recorte[q] = (Rectangle){ (float)minX, (float)minY, (float)(maxX - minX + 1), (float)(maxY - minY + 1) };
+
+            if (s.recorte[q].height > s.alturaRef)
+                s.alturaRef = s.recorte[q].height;
+        }
+
+        UnloadImageColors(px);
+        UnloadImage(img);
+
+        // Imagem muito maior que o tamanho na tela (ex.: a arte original de 909x369):
+        // suaviza a redução para não "picotar" os pixels
+        if (s.alturaRef > ALTURA_PERSONAGEM * 2) {
+            GenTextureMipmaps(&s.textura);
+            SetTextureFilter(s.textura, TEXTURE_FILTER_TRILINEAR);
+        }
+
+    } else {
+
+        s.textura = LoadTexture(antigo);
+        s.quadros = 1;
+        s.espelhar = espelharAntigo;
+    }
+
+    return s;
+}
+
+// Diagonal: usa a folha própria se ela existir; senão, empresta a folha de lado
+static SpriteDirecao CarregarSpriteDiagonal(const char *folha, SpriteDirecao reserva)
+{
+    if (AcharSpriteJogador(folha) != NULL)
+        return CarregarSprite(folha, folha, false);
+
+    reserva.emprestada = true;
+    return reserva;
+}
+
+// Andando: avança os quadros. Parado: volta para o quadro 0 (pés juntos).
+static void AtualizarAnimacao(AnimacaoJogador *a, bool andando, float dt)
+{
+    if (!andando) {
+
+        a->quadro = 0;
+        a->tempo = 0.0f;
+        return;
+    }
+
+    a->tempo += dt;
+
+    if (a->tempo >= 1.0f / FPS_ANIMACAO) {
+
+        a->tempo -= 1.0f / FPS_ANIMACAO;
+        a->quadro = (a->quadro + 1) % QUADROS_ANDANDO;
+    }
+}
+
+// sprites[] é indexado pela direção (mesma ordem do enum Direcao)
+static void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Direcao direcao, int quadro)
+{
+    const SpriteDirecao *s = &sprites[direcao];
+    Texture2D t = s->textura;
+
+    if (s->quadros > 1) {
+
+        // Folha de animação: recorta só o personagem do quadro atual
+        Rectangle sourceRec = s->recorte[quadro % s->quadros];
+
+        // A escala vem da altura do PERSONAGEM na imagem: qualquer resolução
+        // aparece com ALTURA_PERSONAGEM pixels de altura na tela.
+        float escala = ALTURA_PERSONAGEM / s->alturaRef;
+        float w = roundf(sourceRec.width * escala);
+        float h = roundf(sourceRec.height * escala);
+
+        // Centralizado na horizontal e com o topo da cabeça sempre na mesma
+        // altura (os pés mudam a cada passo, a cabeça não pula).
+        // Posição arredondada para os pixels ficarem nítidos.
+        Rectangle destRec = {
+            roundf(pos.x - w / 2),
+            roundf(pos.y - ALTURA_PERSONAGEM / 2),
+            w,
+            h
+        };
+
+        DrawTexturePro(t, sourceRec, destRec, (Vector2){ 0, 0 }, 0.0f, WHITE);
+
+    } else {
+
+        // Imagem antiga parada (65x65)
+        float flip = s->espelhar ? -1.0f : 1.0f;
+
+        Rectangle sourceRec = { 0.0f, 0.0f, (float)t.width * flip, (float)t.height };
+        Rectangle destRec = { pos.x, pos.y, TAM_SPRITE, TAM_SPRITE };
+        Vector2 origin = { TAM_SPRITE / 2, TAM_SPRITE / 2 };
+
+        DrawTexturePro(t, sourceRec, destRec, origin, 0.0f, WHITE);
+    }
 }
 
 // Luci flutuando em volta do jogador (depois da primeira conversa)
@@ -641,6 +876,21 @@ static void DialogoFalaAvulsa(SessaoDialogo *d, const char *texto)
     fala.numPaginas = 1;
 
     DialogoIniciar(d, &fala, OBJ_NENHUM);
+}
+
+// Pergunta de SIM / NÃO na caixa de baixo (usada no ponto de save)
+static void DialogoConfirmar(SessaoDialogo *d, const char *texto, int objeto)
+{
+    Dialogo vazio = {0};
+
+    d->conteudo = vazio;
+    d->objeto = objeto;
+    d->estado = DLG_CONFIRMA;
+    d->selecao = 0;                         // começa no SIM
+    d->corBorda = WHITE;
+    d->pontosGanhos = 0;
+
+    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
 }
 
 static void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, int pontos)
@@ -827,6 +1077,30 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         } break;
 
+        case DLG_CONFIRMA: {
+
+            if (!terminou) {
+
+                if (avancar)
+                    d->visiveis = (float)total;
+
+                break;
+            }
+
+            if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_D) ||
+                IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_RIGHT) ||
+                IsKeyPressed(KEY_W) || IsKeyPressed(KEY_S) ||
+                IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
+                d->selecao = 1 - d->selecao;
+
+            if (avancar) {
+
+                d->estado = DLG_NENHUM;
+                return (d->selecao == 0) ? RES_SIM : RES_NAO;
+            }
+
+        } break;
+
         case DLG_NENHUM:
         default:
             break;
@@ -934,7 +1208,8 @@ static void DialogoDesenhar(const SessaoDialogo *d)
     // (a altura cresce se o texto for grande)
     // -----------------------------------------------------
 
-    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34;
+    bool confirma = (d->estado == DLG_CONFIRMA);
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + (confirma ? 30 : 0);
 
     if (alturaCaixa < 150)
         alturaCaixa = 150;
@@ -954,6 +1229,26 @@ static void DialogoDesenhar(const SessaoDialogo *d)
         26,
         WHITE
     );
+
+    // Opções SIM / NÃO com o coração na escolhida
+    if (confirma && terminou) {
+
+        const char *opcoes[2] = { "SIM", "NÃO" };
+        int yOpcoes = (int)(caixa.y + caixa.height) - 40;
+
+        for (int i = 0; i < 2; i++) {
+
+            int xOpcao = (int)caixa.x + 160 + i * 240;
+            bool marcada = (d->selecao == i);
+
+            if (marcada)
+                DesenharCoracao((float)xOpcao - 18, (float)yOpcoes + 9, 2, RED);
+
+            DrawText(opcoes[i], xOpcao, yOpcoes, 20, marcada ? YELLOW : LIGHTGRAY);
+        }
+
+        return;
+    }
 
     if (terminou) {
 
@@ -1573,6 +1868,212 @@ static void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo)
 }
 
 // =============================================================
+// SAVE
+// =============================================================
+
+// Grava primeiro num arquivo temporário e só depois troca pelo save de verdade:
+// se o jogo fechar no meio da gravação, o save anterior continua inteiro.
+static bool GravarSave(const DadosSave *d)
+{
+    FILE *f = fopen(ARQUIVO_SAVE_TEMP, "wb");
+
+    if (f == NULL)
+        return false;
+
+    bool ok = (fwrite(d, sizeof(*d), 1, f) == 1);
+
+    if (fclose(f) != 0)
+        ok = false;
+
+    if (!ok) {
+        remove(ARQUIVO_SAVE_TEMP);
+        return false;
+    }
+
+    remove(ARQUIVO_SAVE);                   // no Windows o rename falha se o destino existir
+
+    return (rename(ARQUIVO_SAVE_TEMP, ARQUIVO_SAVE) == 0);
+}
+
+// Lê e confere o save. Devolve false se não existir, for de outra versão
+// ou estiver corrompido (nesse caso o jogo simplesmente começa do zero).
+static bool LerSave(DadosSave *d)
+{
+    FILE *f = fopen(ARQUIVO_SAVE, "rb");
+
+    if (f == NULL)
+        return false;
+
+    bool ok = (fread(d, sizeof(*d), 1, f) == 1);
+    fclose(f);
+
+    if (!ok || d->assinatura != ASSINATURA_SAVE || d->versao != VERSAO_SAVE)
+        return false;
+
+    if (d->sala != JOGANDO && d->sala != CORREDOR)
+        return false;
+
+    if (d->direcao < 0 || d->direcao >= NUM_DIRECOES)
+        d->direcao = DIR_FRENTE;
+
+    for (int i = 0; i < 3; i++)
+        if (d->nickname[i] < 'A' || d->nickname[i] > 'Z')
+            return false;
+
+    d->nickname[3] = '\0';
+
+    for (int i = 0; i < TOTAL_MONITORES; i++)
+        if (d->progresso.estado[i] < MON_NEUTRO || d->progresso.estado[i] > MON_ERROU)
+            d->progresso.estado[i] = MON_NEUTRO;
+
+    // Posição dentro dos limites da sala salva
+    if (d->sala == JOGANDO) {
+        d->x = Clamp(d->x, 80, 720);
+        d->y = Clamp(d->y, 80, 520);
+    } else {
+        d->x = Clamp(d->x, 80, 720);
+        d->y = Clamp(d->y, 285, 395);
+    }
+
+    return true;
+}
+
+// Monta o save a partir do estado atual do jogo e grava
+static bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direcao direcao,
+                       bool luciAcompanhando, const ProgressoCorredor *progresso)
+{
+    DadosSave d;
+    memset(&d, 0, sizeof(d));
+
+    d.assinatura = ASSINATURA_SAVE;
+    d.versao = VERSAO_SAVE;
+    memcpy(d.nickname, nickname, 4);
+
+    // A batalha acontece "dentro" do corredor
+    d.sala = (tela == JOGANDO) ? JOGANDO : CORREDOR;
+
+    d.x = pos.x;
+    d.y = pos.y;
+    d.direcao = (int)direcao;
+    d.luciAcompanhando = luciAcompanhando;
+    d.progresso = *progresso;
+
+    // Quiz ou batalha pela metade: o monitor volta para NEUTRO
+    // e o jogador refaz aquele quiz quando carregar o jogo
+    for (int i = 0; i < TOTAL_MONITORES; i++)
+        if (d.progresso.estado[i] == MON_ATIVO)
+            d.progresso.estado[i] = MON_NEUTRO;
+
+    bool ok = GravarSave(&d);
+
+    TraceLog(ok ? LOG_INFO : LOG_WARNING, "SAVE: %s", ok ? "jogo salvo em " ARQUIVO_SAVE : "falha ao salvar");
+    return ok;
+}
+
+static Rectangle ZonaPontoSave(Vector2 base)
+{
+    return (Rectangle){ base.x - 32, base.y - 60, 64, 80 };
+}
+
+// Índice do ponto de save perto do jogador nesta sala (-1 = nenhum)
+static int PontoSaveProximo(TelaAtual sala, Rectangle areaJogador)
+{
+    for (int i = 0; i < NUM_PONTOS_SAVE; i++)
+        if (PONTOS_SAVE[i].sala == sala && CheckCollisionRecs(areaJogador, ZonaPontoSave(PONTOS_SAVE[i].base)))
+            return i;
+
+    return -1;
+}
+
+// Desenha o ponto de save: fluxo de dados caindo sobre uma base
+// "flash" > 0 = acabou de salvar (o fluxo brilha mais)
+static void DesenharPontoSave(Texture2D tex, Vector2 base, float tempo, bool perto, float flash)
+{
+    float pulso = 0.5f + 0.5f * sinf(tempo * 3.0f);
+
+    // Brilho no chão
+    DrawEllipse((int)base.x, (int)base.y - 4, 36, 10, Fade(PURPLE, 0.10f + 0.08f * pulso + (perto ? 0.10f : 0.0f)));
+
+    if (tex.id > 0) {
+
+        int quadro = ((int)(tempo * FPS_PONTO_SAVE)) % QUADROS_PONTO_SAVE;
+        float w = (float)tex.width / QUADROS_PONTO_SAVE;
+        float h = (float)tex.height;
+
+        Rectangle src = { w * quadro, 0, w, h };
+        Rectangle dst = {
+            roundf(base.x - w * ESCALA_PONTO_SAVE / 2),
+            roundf(base.y - h * ESCALA_PONTO_SAVE),
+            w * ESCALA_PONTO_SAVE,
+            h * ESCALA_PONTO_SAVE
+        };
+
+        DrawTexturePro(tex, src, dst, (Vector2){ 0, 0 }, 0.0f, WHITE);
+
+        // Perto ou acabou de salvar: o fluxo brilha
+        float brilho = (perto ? 0.25f : 0.0f) + flash;
+
+        if (brilho > 0.0f) {
+            BeginBlendMode(BLEND_ADDITIVE);
+            DrawTexturePro(tex, src, dst, (Vector2){ 0, 0 }, 0.0f, Fade(WHITE, brilho > 1.0f ? 1.0f : brilho));
+            EndBlendMode();
+        }
+
+        return;
+    }
+
+    // Sem o PNG: versão simples desenhada com texto
+    Color trilha[4] = { (Color){ 235, 230, 255, 255 }, SKYBLUE, PURPLE, DARKPURPLE };
+    int passo = (int)(tempo * FPS_PONTO_SAVE);
+
+    for (int c = 0; c < 5; c++) {
+        for (int r = 0; r < 6; r++) {
+
+            int cabeca = (passo + c * 5) % 12;
+            int idade = cabeca - r;
+
+            if (idade < 0 || idade > 3)
+                continue;
+
+            const char *g = ((r * 7 + c * 3 + passo) % 2) ? "1" : "0";
+            DrawText(g, (int)base.x - 20 + c * 8, (int)base.y - 84 + r * 12, 10, trilha[idade]);
+        }
+    }
+
+    DrawRectangle((int)base.x - 20, (int)base.y - 12, 40, 10, (Color){ 35, 25, 55, 255 });
+    DrawRectangleLines((int)base.x - 20, (int)base.y - 12, 40, 10, PURPLE);
+    DrawRectangle((int)base.x - 4, (int)base.y - 9, 8, 3, (pulso > 0.5f) ? GOLD : ORANGE);
+}
+
+// Aviso no canto da tela depois de um auto save
+static void DesenharAvisoSave(float aviso, bool falhou, float tempo)
+{
+    if (aviso <= 0.0f)
+        return;
+
+    float alfa = (aviso < 0.5f) ? aviso / 0.5f : 1.0f;
+    bool salvando = (aviso > TEMPO_AVISO_SAVE - 0.6f);
+
+    const char *texto = falhou ? "ERRO AO SALVAR" : (salvando ? "SALVANDO..." : "JOGO SALVO");
+    Color cor = falhou ? RED : (salvando ? SKYBLUE : PURPLE);
+
+    int largura = MeasureText(texto, 12);
+    int x = 750 - largura;
+    int y = 566;
+
+    // "01" girando ao lado, como dados passando
+    const char *dados = (((int)(tempo * 10.0f)) % 2) ? "01" : "10";
+
+    DrawText(dados, x - 22, y, 12, Fade(SKYBLUE, alfa));
+    DrawText(texto, x, y, 12, Fade(cor, alfa));
+}
+
+static void DesenharTextoBotao(Rectangle b, const char *texto, int tamanho, Color cor)
+{
+    DrawText(texto, (int)(b.x + b.width / 2) - MeasureText(texto, tamanho) / 2, (int)(b.y + b.height / 2) - tamanho / 2, tamanho, cor);
+}
+
+// =============================================================
 // MAIN
 // =============================================================
 
@@ -1587,10 +2088,23 @@ int main(void) {
     Color cor_de_fundo_menu = {2, 0, 12, 255};
 
     // caminhos das imagens (sprites) do jogo e carregamento delas
-    Texture2D imagem_titulo = LoadTexture("resources\\ui\\titulo.png");
-    Texture2D texFrente = LoadTexture(SPRITE_FRENTE);
-    Texture2D texCostas = FileExists(SPRITE_COSTAS) ? LoadTexture(SPRITE_COSTAS) : LoadTexture(SPRITE_COSTAS_RESERVA);
-    Texture2D texLado = LoadTexture(SPRITE_LADO);
+    Texture2D imagem_titulo = LoadTexture("resources/ui/titulo.png");
+
+    // Personagem: uma folha de animação por direção (na ordem do enum Direcao)
+    SpriteDirecao spritesJogador[NUM_DIRECOES];
+
+    spritesJogador[DIR_FRENTE]   = CarregarSprite(SPRITE_ANDANDO_FRENTE,   SPRITE_FRENTE, false);
+    spritesJogador[DIR_COSTAS]   = CarregarSprite(SPRITE_ANDANDO_COSTAS,   SPRITE_COSTAS, false);
+    spritesJogador[DIR_DIREITA]  = CarregarSprite(SPRITE_ANDANDO_DIREITA,  SPRITE_LADO,   false);
+    spritesJogador[DIR_ESQUERDA] = CarregarSprite(SPRITE_ANDANDO_ESQUERDA, SPRITE_LADO,   true);
+
+    // Diagonais: sem folha própria, usam a de lado do mesmo sentido
+    spritesJogador[DIR_FRENTE_DIREITA]  = CarregarSpriteDiagonal(SPRITE_ANDANDO_FRENTE_DIREITA,  spritesJogador[DIR_DIREITA]);
+    spritesJogador[DIR_FRENTE_ESQUERDA] = CarregarSpriteDiagonal(SPRITE_ANDANDO_FRENTE_ESQUERDA, spritesJogador[DIR_ESQUERDA]);
+    spritesJogador[DIR_COSTAS_DIREITA]  = CarregarSpriteDiagonal(SPRITE_ANDANDO_COSTAS_DIREITA,  spritesJogador[DIR_DIREITA]);
+    spritesJogador[DIR_COSTAS_ESQUERDA] = CarregarSpriteDiagonal(SPRITE_ANDANDO_COSTAS_ESQUERDA, spritesJogador[DIR_ESQUERDA]);
+
+    AnimacaoJogador animJogador = {0};
 
     // Sprites dos monitores (só carrega os que existirem)
     const char *arquivosMonitor[4] = {
@@ -1651,9 +2165,26 @@ int main(void) {
     ResultadoDialogo motivoBatalha = RES_NADA;
 
     // =========================================================
+    // VARIÁVEIS DO SAVE
+    // =========================================================
+
+    DadosSave saveLido;
+    bool existeSave = LerSave(&saveLido);    // mostra o botão CONTINUAR
+    bool pedirAutoSave = false;              // marcado nos momentos importantes; salva no fim do frame
+    float avisoSave = 0.0f;                  // tempo restante do aviso "JOGO SALVO"
+    bool saveFalhou = false;
+    float flashSave = 0.0f;                  // brilho do ponto de save logo depois de salvar
+    int pontoSaveFlash = -1;
+    float confirmarNovoJogo = 0.0f;          // > 0 = clicou em JOGAR com save existente, falta confirmar
+
+    const char *arquivoPontoSave = AcharSpriteJogador(SPRITE_PONTO_SAVE);
+    Texture2D texPontoSave = (arquivoPontoSave != NULL) ? LoadTexture(arquivoPontoSave) : (Texture2D){0};
+
+    // =========================================================
     // ÁREAS DE CLIQUE DOS BOTÕES DO MENU
     // =========================================================
 
+    Rectangle btnContinuar = {300, 270, 200, 50};   // só aparece se existir save
     Rectangle btnJogar = {300, 270, 200, 50};
     Rectangle btnOpcoes = {300, 340, 200, 50};
     Rectangle btnSair = {300, 410, 200, 50};
@@ -1715,11 +2246,13 @@ int main(void) {
 
                         playerPos = SPAWN_CORREDOR;
                         direcaoAtual = DIR_COSTAS;
+                        pedirAutoSave = true;     // AUTO SAVE: entrou no corredor
 
                     } else if (tela == JOGANDO && origem == CORREDOR) {
 
                         playerPos = SPAWN_SALA_VOLTA;
                         direcaoAtual = DIR_FRENTE;
+                        pedirAutoSave = true;     // AUTO SAVE: voltou para a sala
                     }
 
                     transicao.fase = 1;
@@ -1742,11 +2275,24 @@ int main(void) {
         // LÓGICA
         // =====================================================
 
+        // Guarda a posição para saber se o personagem andou neste frame
+        Vector2 posInicioFrame = playerPos;
+
         Vector2 mouse = GetMousePosition();
 
         Color corBtnJogar = DARKGRAY;
         Color corBtnOpcoes = DARKGRAY;
         Color corBtnSair = DARKGRAY;
+        Color corBtnContinuar = DARKGRAY;
+
+        // Com save, o CONTINUAR entra no topo e os outros botões descem
+        float yBotoes = existeSave ? 340.0f : 270.0f;
+        btnJogar.y  = yBotoes;
+        btnOpcoes.y = yBotoes + 70;
+        btnSair.y   = yBotoes + 140;
+
+        if (confirmarNovoJogo > 0.0f)
+            confirmarNovoJogo -= dt;
 
         // =====================================================
         // MENU
@@ -1754,13 +2300,49 @@ int main(void) {
 
         if (tela == MENU) {
 
+            // CONTINUAR (carrega o save)
+            if (existeSave && CheckCollisionPointRec(mouse, btnContinuar)) {
+
+                corBtnContinuar = PURPLE;
+
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+
+                    if (LerSave(&saveLido)) {
+
+                        memcpy(nickname, saveLido.nickname, 4);
+                        nicknamePos = 3;
+                        luciAcompanhando = saveLido.luciAcompanhando;
+                        progresso = saveLido.progresso;
+                        playerPos = (Vector2){ saveLido.x, saveLido.y };
+                        direcaoAtual = (Direcao)saveLido.direcao;
+                        dlg = (SessaoDialogo){0};
+                        animJogador = (AnimacaoJogador){0};
+                        tela = (TelaAtual)saveLido.sala;
+
+                        // Entra clareando a tela
+                        transicao = (Transicao){ .ativa = true, .alfa = 1.0f, .fase = 1, .duracao = DURACAO_FADE, .destino = tela };
+
+                    } else {
+
+                        // Save sumiu ou corrompeu desde que o menu abriu
+                        existeSave = false;
+                    }
+                }
+            }
+
             // JOGAR
             if (CheckCollisionPointRec(mouse, btnJogar)) {
 
                 corBtnJogar = GREEN;
 
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                // Com save existente, pede um segundo clique para confirmar
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && existeSave && confirmarNovoJogo <= 0.0f) {
 
+                    confirmarNovoJogo = 3.0f;
+
+                } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+
+                    confirmarNovoJogo = 0.0f;
                     tela = INTRO;
                     etapaIntro = 0;
 
@@ -1770,6 +2352,7 @@ int main(void) {
                     luciAcompanhando = false;
                     playerPos = SPAWN_SALA;
                     direcaoAtual = DIR_FRENTE;
+                    animJogador = (AnimacaoJogador){0};
 
                     nickname[0] = nickname[1] = nickname[2] = '_';
                     nickname[3] = '\0';
@@ -1880,8 +2463,25 @@ int main(void) {
                 ResultadoDialogo r = DialogoAtualizar(&dlg);
 
                 // Terminou a conversa com a Luci: ela passa a acompanhar o jogador
-                if (r == RES_FIM && dlg.objeto == OBJ_LUCI)
+                if (r == RES_FIM && dlg.objeto == OBJ_LUCI) {
                     luciAcompanhando = true;
+                    pedirAutoSave = true;         // AUTO SAVE: missão começou
+                }
+
+                // Ponto de save: respondeu SIM
+                if (r == RES_SIM && dlg.objeto == OBJ_SAVE) {
+
+                    bool ok = SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso);
+
+                    if (ok) {
+                        existeSave = true;
+                        flashSave = 0.8f;
+                    }
+
+                    DialogoFalaAvulsa(&dlg, ok
+                        ? "* Os dados foram sincronizados. Progresso salvo."
+                        : "* O fluxo falhou... Não foi possível salvar.");
+                }
             }
 
             else {
@@ -1920,6 +2520,11 @@ int main(void) {
                     case DIR_COSTAS:   interacaoBox.y -= TAM_SPRITE / 2; break; // olhando pra cima
                     case DIR_DIREITA:  interacaoBox.x += TAM_SPRITE / 2; break;
                     case DIR_ESQUERDA: interacaoBox.x -= TAM_SPRITE / 2; break;
+                    case DIR_FRENTE_DIREITA:  interacaoBox.x += TAM_SPRITE / 2; interacaoBox.y += TAM_SPRITE / 2; break;
+                    case DIR_FRENTE_ESQUERDA: interacaoBox.x -= TAM_SPRITE / 2; interacaoBox.y += TAM_SPRITE / 2; break;
+                    case DIR_COSTAS_DIREITA:  interacaoBox.x += TAM_SPRITE / 2; interacaoBox.y -= TAM_SPRITE / 2; break;
+                    case DIR_COSTAS_ESQUERDA: interacaoBox.x -= TAM_SPRITE / 2; interacaoBox.y -= TAM_SPRITE / 2; break;
+                    default: break;
                 }
 
                 pertoDaLuci = !luciAcompanhando && CheckCollisionRecs(interacaoBox, luciHitbox);
@@ -1939,6 +2544,12 @@ int main(void) {
                             IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE);
                         else
                             DialogoIniciar(&dlg, &dialogoPortaSalaTrancada, OBJ_NENHUM);
+
+                    } else if ((pontoSaveFlash = PontoSaveProximo(JOGANDO, AreaJogador(playerPos))) >= 0) {
+
+                        DialogoConfirmar(&dlg,
+                            "* Um fluxo de dados corre sem parar. Você se sente sincronizado.\n* Salvar o progresso?",
+                            OBJ_SAVE);
                     }
                 }
             }
@@ -1993,6 +2604,8 @@ int main(void) {
 
                             progresso.estado[m] = MON_ERROU;
                         }
+
+                        pedirAutoSave = true;     // AUTO SAVE: terminou um monitor
                     }
 
                     // Resolveu os 4 monitores: Luci avisa que a saída abriu
@@ -2142,6 +2755,36 @@ int main(void) {
         }
 
         // =====================================================
+        // AUTO SAVE (feito aqui, depois de toda a lógica do frame)
+        // =====================================================
+
+        if (pedirAutoSave && (tela == JOGANDO || tela == CORREDOR)) {
+
+            pedirAutoSave = false;
+            saveFalhou = !SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso);
+
+            if (!saveFalhou)
+                existeSave = true;
+
+            avisoSave = TEMPO_AVISO_SAVE;
+        }
+
+        if (avisoSave > 0.0f) avisoSave -= dt;
+        if (flashSave > 0.0f) flashSave -= dt * 1.5f;
+
+        // =====================================================
+        // ANIMAÇÃO DO PERSONAGEM
+        // =====================================================
+
+        // Só anima se ele realmente se moveu (parado, em diálogo ou
+        // empurrando a parede ele fica no quadro 0)
+        bool andou = (tela == JOGANDO || tela == CORREDOR) &&
+                     !transicao.ativa &&
+                     Vector2Distance(posInicioFrame, playerPos) > 0.01f;
+
+        AtualizarAnimacao(&animJogador, andou, dt);
+
+        // =====================================================
         // DESENHO
         // =====================================================
 
@@ -2161,14 +2804,26 @@ int main(void) {
             DrawTexture(imagem_titulo, 215, (int)y2, Fade(PURPLE, 0.1f));
 
             // Botões
-            DrawRectangleRec(btnJogar, corBtnJogar);
+            if (existeSave) {
+                DrawRectangleRec(btnContinuar, corBtnContinuar);
+                DesenharTextoBotao(btnContinuar, "CONTINUAR", 20, WHITE);
+            }
+
+            bool pedindoConfirmacao = (confirmarNovoJogo > 0.0f);
+
+            DrawRectangleRec(btnJogar, pedindoConfirmacao ? MAROON : corBtnJogar);
             DrawRectangleRec(btnOpcoes, corBtnOpcoes);
             DrawRectangleRec(btnSair, corBtnSair);
 
             // Textos
-            DrawText("JOGAR", 365, 285, 20, WHITE);
-            DrawText("OPÇÕES", 360, 355, 20, WHITE);
-            DrawText("SAIR", 375, 425, 20, WHITE);
+            DesenharTextoBotao(btnJogar, pedindoConfirmacao ? "TEM CERTEZA?" : "JOGAR", 20, WHITE);
+            DesenharTextoBotao(btnOpcoes, "OPÇÕES", 20, WHITE);
+            DesenharTextoBotao(btnSair, "SAIR", 20, WHITE);
+
+            if (pedindoConfirmacao) {
+                const char *aviso = "Clique de novo para começar do zero (o progresso salvo será substituído)";
+                DrawText(aviso, LARGURA_TELA / 2 - MeasureText(aviso, 10) / 2, (int)(btnSair.y + btnSair.height) + 14, 10, LIGHTGRAY);
+            }
         }
 
         // =====================================================
@@ -2408,10 +3063,27 @@ int main(void) {
             // PERSONAGEM
             // -------------------------------------------------
 
-            DesenharJogador(texFrente, texCostas, texLado, playerPos, direcaoAtual);
+            // Ponto de save: desenhado atrás ou na frente do jogador, conforme a altura
+            Vector2 baseSave = PONTOS_SAVE[0].base;
+            bool pertoSave = livre && PontoSaveProximo(JOGANDO, AreaJogador(playerPos)) == 0;
+            bool saveAtras = baseSave.y <= playerPos.y + ALTURA_PERSONAGEM / 2;
+            float flashSala = (pontoSaveFlash == 0) ? flashSave : 0.0f;
+
+            if (saveAtras)
+                DesenharPontoSave(texPontoSave, baseSave, tempo, pertoSave, flashSala);
+
+            DesenharJogador(spritesJogador, playerPos, direcaoAtual, animJogador.quadro);
+
+            if (!saveAtras)
+                DesenharPontoSave(texPontoSave, baseSave, tempo, pertoSave, flashSala);
 
             if (luciAcompanhando)
                 DesenharCompanion(playerPos, companionAngulo);
+
+            // Aviso do ponto de save: fora do mapa, no canto inferior esquerdo
+            // (alinhado com a borda esquerda do mapa, logo abaixo dela)
+            if (pertoSave)
+                DrawText("PRESSIONE E", (int)mapa.x, (int)(mapa.y + mapa.height) + 12, 12, GOLD);
 
             // -------------------------------------------------
             // INSTRUÇÕES E HUD
@@ -2434,6 +3106,7 @@ int main(void) {
 
             // Conversa por cima de tudo
             DialogoDesenhar(&dlg);
+            DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 
         // =====================================================
@@ -2587,7 +3260,7 @@ int main(void) {
             // PERSONAGEM E COMPANION
             // -------------------------------------------------
 
-            DesenharJogador(texFrente, texCostas, texLado, playerPos, direcaoAtual);
+            DesenharJogador(spritesJogador, playerPos, direcaoAtual, animJogador.quadro);
             DesenharCompanion(playerPos, companionAngulo);
 
             // -------------------------------------------------
@@ -2614,6 +3287,7 @@ int main(void) {
 
             // Conversa / quiz por cima de tudo
             DialogoDesenhar(&dlg);
+            DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 
         // =====================================================
@@ -2648,12 +3322,20 @@ int main(void) {
     }
 
     // 3. FINALIZAÇÃO
+
+    // AUTO SAVE: fechou a janela no meio do jogo
+    // (no menu ou na intro não salva, para não apagar o progresso)
+    if (tela == JOGANDO || tela == CORREDOR || tela == BATALHA)
+        SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso);
+
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
+    if (texPontoSave.id > 0)
+        UnloadTexture(texPontoSave);
 
     UnloadTexture(imagem_titulo);
-    UnloadTexture(texFrente);
-    UnloadTexture(texCostas);
-    UnloadTexture(texLado);
+    for (int i = 0; i < NUM_DIRECOES; i++)
+        if (!spritesJogador[i].emprestada)
+            UnloadTexture(spritesJogador[i].textura);
 
     for (int i = 0; i < 4; i++)
         if (spritesMonitor[i].id > 0)

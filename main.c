@@ -868,6 +868,16 @@ static void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 p
 }
 
 // Luci flutuando em volta do jogador (depois da primeira conversa)
+// Visual da Luci (o mesmo parada na sala e acompanhando o jogador)
+static void DesenharLuci(Vector2 p)
+{
+    Rectangle corpo = { p.x - 7, p.y - 7, 14, 14 };
+
+    DrawCircle((int)p.x, (int)p.y, 14, Fade(SKYBLUE, 0.15f));
+    DrawRectangleRec(corpo, SKYBLUE);
+    DrawRectangleLinesEx(corpo, 2, BLUE);
+}
+
 static void DesenharCompanion(Vector2 jogadorPos, float angulo)
 {
     Vector2 p = {
@@ -875,11 +885,23 @@ static void DesenharCompanion(Vector2 jogadorPos, float angulo)
         jogadorPos.y - 10.0f + sinf(angulo * 1.2f) * 26.0f
     };
 
-    Rectangle companion = { p.x - 7, p.y - 7, 14, 14 };
+    DesenharLuci(p);
+}
 
-    DrawCircle((int)p.x, (int)p.y, 14, Fade(SKYBLUE, 0.15f));
-    DrawRectangleRec(companion, SKYBLUE);
-    DrawRectangleLinesEx(companion, 2, BLUE);
+// Centro da Luci parada na sala inicial (flutuando de leve)
+static Vector2 CentroLuciSala(Rectangle hitbox, float tempo)
+{
+    return (Vector2){
+        hitbox.x + hitbox.width / 2,
+        hitbox.y + hitbox.height / 2 + sinf(tempo * 2.0f) * 4.0f
+    };
+}
+
+// Parte "sólida" da Luci parada: só o tamanho do desenho dela.
+// (a hitbox inteira continua valendo para falar com ela)
+static Rectangle CorpoLuciSala(Rectangle hitbox)
+{
+    return (Rectangle){ hitbox.x + hitbox.width / 2 - 14, hitbox.y + hitbox.height / 2 - 14, 28, 28 };
 }
 
 // =============================================================
@@ -2763,7 +2785,7 @@ int main(void) {
                 direcaoAtual = MoverJogador(&playerPos, direcaoAtual);
 
                 // Colisão com a Luci (não deixa atravessar)
-                if (!luciAcompanhando && CheckCollisionRecs(HitboxJogador(playerPos), luciHitbox))
+                if (!luciAcompanhando && CheckCollisionRecs(HitboxJogador(playerPos), CorpoLuciSala(luciHitbox)))
                     playerPos = posAnterior;
 
                 // -------------------------------------------------
@@ -3334,19 +3356,9 @@ int main(void) {
                 // Maçaneta
                 DrawCircle((int)(PORTA_SALA.x + PORTA_SALA.width - 12), (int)(PORTA_SALA.y + PORTA_SALA.height / 2), 4, GOLD);
 
-            } else if (!salaLiberada) {
-
-                // O arco já está na imagem: só marca a porta como trancada
-                DrawRectangleRec(PORTA_SALA, Fade(MAROON, 0.35f));
             }
-
-            DrawText(
-                "CORREDOR",
-                (int)(PORTA_SALA.x + PORTA_SALA.width / 2) - MeasureText("CORREDOR", 10) / 2,
-                (int)PORTA_SALA.y - 14,
-                10,
-                salaLiberada ? LIGHTGRAY : RED
-            );
+            // Com a imagem do mapa, o arco da porta já está desenhado nela:
+            // nada é pintado por cima (trancada ou não)
 
             bool livre = (dlg.estado == DLG_NENHUM && !transicao.ativa);
 
@@ -3367,9 +3379,11 @@ int main(void) {
 
             if (!luciAcompanhando) {
 
-                // hitbox da Luci em azul, pra ajudar a calibrar a posição dela
-                DrawRectangleRec(luciHitbox, Fade(BLUE, 0.4f));
-                DrawText("Luci", (int)luciHitbox.x, (int)luciHitbox.y - 10, 10, WHITE);
+                // Mesmo visual de quando ela acompanha o jogador, flutuando parada
+                Vector2 pLuci = CentroLuciSala(luciHitbox, tempo);
+
+                DesenharLuci(pLuci);
+                DrawText("Luci", (int)pLuci.x - MeasureText("Luci", 10) / 2, (int)pLuci.y - 28, 10, Fade(SKYBLUE, 0.8f));
             }
 
             // -------------------------------------------------

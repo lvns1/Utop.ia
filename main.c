@@ -387,10 +387,18 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .numPaginas = 5,
             .pergunta = "Qual alternativa está correta sobre as alucinações de IA e o treinamento do modelo?",
             .opcoes = {
-                "A alucinação ocorre quando a IA gera uma resposta que parece confiante e coerente, mas é incorreta ou inventada. No pós-treinamento, os ajustes eliminam esses erros, pois a IA passa a ser recompensada por demonstrar incerteza.",
-                "A alucinação ocorre quando a IA gera uma resposta visivelmente incoerente, fácil de reconhecer como erro. No pós-treinamento, os ajustes eliminam completamente as falhas do modelo.",
-                "A alucinação ocorre quando a IA se recusa a responder por não ter certeza da informação. No pré-treinamento, o modelo aprende padrões probabilísticos ao prever a próxima palavra e pode \"adivinhar\" a resposta mais provável.",
-                "A alucinação ocorre quando a IA gera uma resposta que parece confiante e coerente, mas é incorreta, contradiz o contexto ou é inventada. No pré-treinamento, o modelo aprende padrões probabilísticos ao prever a próxima palavra e pode \"adivinhar\" a resposta mais provável."
+                "A alucinacao e uma resposta convincente, mas incorreta. "
+                "No pos-treinamento, esses erros sao eliminados ao recompensar a incerteza.",
+
+                "A alucinacao e uma resposta incoerente, facil de identificar. "
+                "No pos-treinamento, todas as falhas sao eliminadas.",
+
+                "A alucinacao e a recusa em responder por incerteza. "
+                "No pre-treinamento, o modelo aprende a prever a proxima palavra.",
+
+                "A alucinacao e uma resposta convincente, mas incorreta ou inventada. "
+                "No pre-treinamento, o modelo aprende a prever a proxima palavra "
+                "e pode gerar respostas provaveis, mas falsas."
             },
             .correta = 3,
             .explicacao = "A alucinação parece confiante, mas é errada ou inventada. E os ajustes do pós-treinamento não eliminam o problema, porque a incerteza ainda costuma ser penalizada."
@@ -412,10 +420,13 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .numPaginas = 4,
             .pergunta = "Segundo Luci, qual alternativa apresenta uma afirmação FALSA sobre os mecanismos de alucinação?",
             .opcoes = {
-                "Path Reuse: no início do treinamento, o modelo pode \"pegar atalhos\" e reaproveitar um caminho de raciocínio que funcionou antes.",
-                "Path Compression: conforme o treinamento avança, caminhos usados com frequência são \"encurtados\" para serem mais eficientes.",
-                "Path Compression: conforme o treinamento avança, a IA passa a percorrer todas as etapas intermediárias de raciocínio antes de chegar a uma conclusão.",
-                "Path Reuse: um caminho de raciocínio que funcionou para um assunto pode ser aplicado em um contexto completamente diferente."
+                "Path Reuse: no início, o modelo reaproveita caminhos de raciocínio que já funcionaram.",
+
+                "Path Compression: com o treinamento, caminhos frequentes são encurtados para ganhar eficiência.",
+
+                "Path Compression: com o treinamento, a IA passa a percorrer todas as etapas antes de concluir.",
+
+                "Path Reuse: o modelo aplica um caminho de raciocínio conhecido a contextos diferentes."
             },
             .correta = 2,
             .explicacao = "No Path Compression acontece o contrário: a IA deixa de passar pelas etapas intermediárias e pula direto para uma conclusão."
@@ -436,10 +447,13 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .numPaginas = 3,
             .pergunta = "Qual alternativa apresenta corretamente os dois tipos de alucinação?",
             .opcoes = {
-                "As alucinações intrínsecas acontecem quando a resposta não pode ser verificada ou é completamente inventada, mesmo que não contradiga o contexto. As extrínsecas acontecem quando a resposta contradiz a informação fornecida pelo usuário ou o contexto.",
-                "As alucinações intrínsecas acontecem quando a resposta contradiz a informação fornecida pelo usuário ou o contexto. As extrínsecas acontecem quando a resposta não pode ser verificada ou é completamente inventada, mesmo que não contradiga o contexto.",
-                "As alucinações intrínsecas acontecem quando a resposta contradiz a informação fornecida pelo usuário ou o contexto. As extrínsecas acontecem quando a resposta é sempre verdadeira, mas apresentada de forma diferente da esperada.",
-                "As alucinações intrínsecas acontecem quando a IA aprende informações erradas ou desatualizadas nos dados de treinamento. As extrínsecas acontecem quando a IA junta coisas que aparecem juntas nos dados, mesmo sem ligação real."
+                "Intrínsecas: a resposta contradiz o contexto. Extrínsecas: a resposta é inventada ou não verificável, sem contradizer o contexto.",
+
+                "Intrínsecas: a resposta contradiz o contexto. Extrínsecas: a resposta é inventada ou não verificável, mesmo sem contradição.",
+
+                "Intrínsecas: a resposta contradiz o contexto. Extrínsecas: a resposta é verdadeira, mas apresentada de forma inesperada.",
+
+                "Intrínsecas: a IA aprende dados errados ou desatualizados. Extrínsecas: a IA associa informações sem relação real."
             },
             .correta = 1,
             .explicacao = "A intrínseca contradiz o que o usuário ou o contexto informou. A extrínseca não pode ser verificada ou é inventada, mesmo sem contradizer o contexto."
@@ -462,10 +476,13 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
             .numPaginas = 5,
             .pergunta = "Qual alternativa descreve corretamente um risco da alucinação e uma forma adequada de mitigá-lo?",
             .opcoes = {
-                "A IA junta dois fatos que aparecem juntos nos dados, mesmo sem ligação real, e passa a tratá-los como se um causasse o outro. Para evitar isso, o usuário deve aceitar a resposta quando ela parecer confiante e coerente.",
-                "O usuário faz um pedido vago e confuso, e a IA inventa informações para manter a coerência. Para evitar isso, basta conectar o modelo a uma base de dados confiável em tempo real, usando o RAG, sem precisar mudar o pedido.",
-                "A IA aprendeu informações desatualizadas nos dados de treinamento e as repete como se fossem atuais. Para evitar isso, o usuário deve escrever pedidos mais curtos e com menos contexto.",
-                "O usuário faz um pedido confuso, e a IA inventa informações para preencher as lacunas. Para evitar isso, o usuário deve reformular a pergunta de forma direta e dar um contexto mais claro."
+                "A IA associa fatos sem relação e presume causalidade. Para evitar isso, aceite respostas confiantes e coerentes.",
+
+                "A IA inventa informações diante de pedidos vagos. Para evitar isso, use RAG, sem precisar reformular o pedido.",
+
+                "A IA repete informações desatualizadas. Para evitar isso, faça pedidos mais curtos e com menos contexto.",
+
+                "A IA inventa informações diante de pedidos confusos. Para evitar isso, reformule a pergunta e forneça contexto claro."
             },
             .correta = 3,
             .explicacao = "Pedidos confusos fazem a IA preencher lacunas inventando. Reformular de forma direta e com contexto claro ataca a causa do problema."

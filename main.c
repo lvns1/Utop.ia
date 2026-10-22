@@ -92,6 +92,9 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 
 #define TOTAL_MONITORES     4
 #define PONTOS_POR_ACERTO   10
+#define PENALIDADE_ERRO     5        // resposta errada ou tempo esgotado (corredor e Bloco 2)
+#define PENALIDADE_HP_ZERO  15       // a vida chegou a zero numa batalha
+// A pontuação nunca fica negativa
 #define TEMPO_QUIZ          60.0f    // segundos da barra de tempo de cada quiz (AJUSTE AQUI)
 #define ATRASO_RESPOSTA     0.4f     // evita responder sem querer apertando ENTER rápido demais
 #define QUIZ_EM_ORDEM       1        // 1 = monitores na ordem 1-2-3-4 / 0 = qualquer ordem
@@ -969,6 +972,20 @@ static void IniciarTransicao(Transicao *t, TelaAtual destino, float duracao)
     t->destino = destino;
 }
 
+// Soma (ou tira, se delta < 0) pontos sem deixar a pontuação ficar negativa.
+// Devolve quanto realmente mudou.
+static int AlterarPontos(ProgressoCorredor *p, int delta)
+{
+    int antes = p->pontos;
+
+    p->pontos += delta;
+
+    if (p->pontos < 0)
+        p->pontos = 0;
+
+    return p->pontos - antes;
+}
+
 // ---------- Sistema de diálogo (estilo Undertale) ----------
 
 static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte)
@@ -1374,6 +1391,17 @@ static void DialogoDesenhar(const SessaoDialogo *d)
     }
 
     if (terminou) {
+
+        if (d->estado == DLG_FEEDBACK && d->pontosGanhos < 0) {
+
+            DrawText(
+                TextFormat("%d PONTOS", d->pontosGanhos),
+                (int)caixa.x + 20,
+                (int)(caixa.y + caixa.height - 26),
+                14,
+                RED
+            );
+        }
 
         if (d->estado == DLG_FEEDBACK && d->pontosGanhos > 0) {
 
@@ -1790,7 +1818,7 @@ static bool BatalhaAtualizar(Batalha *b)
                 if (b->derrota)
                     BatalhaTexto(b,
                         "* A alucinação te dominou por um instante...\n"
-                        "* No Bloco 1 você não perde vidas, mas ela ficou mais forte.");
+                        "* Você não perde vidas, mas perde pontos e ela ficou mais forte.");
                 else if (b->danosRecebidos == 0)
                     BatalhaTexto(b,
                         "* Esquiva perfeita! A alucinação se desfaz em ruído.\n"
@@ -2675,8 +2703,8 @@ static void B2Responder(BatalhaB2 *b)
             b->venceu = true;
         }
 
-        B2Texto(b, TextFormat("%s %s\n* A alucinação de %s caiu para %d%%.",
-                              cabecalho, explicacao, def->nome, (int)b->alucinacaoInimigo));
+        B2Texto(b, TextFormat("%s %s\n* A alucinação de %s caiu para %d%%.  (+%d pontos)",
+                              cabecalho, explicacao, def->nome, (int)b->alucinacaoInimigo, PONTOS_ACERTO_B2));
 
     } else {
 
@@ -2686,7 +2714,7 @@ static void B2Responder(BatalhaB2 *b)
         if (b->alucinacaoInimigo > 100.0f)
             b->alucinacaoInimigo = 100.0f;
 
-        B2Texto(b, TextFormat("%s %s\n* %s contra-ataca!", cabecalho, explicacao, def->nome));
+        B2Texto(b, TextFormat("%s %s\n* %s contra-ataca!  (-%d pontos)", cabecalho, explicacao, def->nome, PENALIDADE_ERRO));
     }
 
     b->fase = B2_RESULTADO;
@@ -2923,8 +2951,9 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
                 if (b->hp <= 0) {
                     b->fase = B2_FIM;
-                    B2Texto(b, "* Os dados corrompidos foram demais para o seu coração...\n"
-                               "* Você é levado de volta à sala. A entidade continua lá.");
+                    B2Texto(b, TextFormat("* Os dados corrompidos foram demais para o seu coração...\n"
+                                          "* Você é levado de volta à sala e perde %d pontos. A entidade continua lá.",
+                                          PENALIDADE_HP_ZERO));
                 } else {
                     b->rodada++;
                     B2PrepararRodada(b);
@@ -4214,6 +4243,11 @@ int main(void) {
                 if (batalha.derrota)
                     progresso.alucinacao++;
 
+                // Errou (ou o tempo acabou): perde pontos.
+                // Se a vida zerou na batalha, perde mais.
+                int perdidos = AlterarPontos(&progresso,
+                    -(PENALIDADE_ERRO + (batalha.derrota ? PENALIDADE_HP_ZERO : 0)));
+
                 // De volta ao corredor: Luci explica a resposta certa
                 const Dialogo *q = &monitores[quizDaBatalha].quiz;
 
@@ -4231,7 +4265,7 @@ int main(void) {
                         q->explicacao
                     ),
                     ORANGE,
-                    0
+                    perdidos            // aparece em vermelho na caixa: "-5 PONTOS"
                 );
 
                 IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE_BATALHA);
@@ -4333,13 +4367,18 @@ int main(void) {
 
                 int i = batalhaB2.inimigo;
 
-                progresso.pontos += batalhaB2.acertos * PONTOS_ACERTO_B2;
                 progresso.alucinacao += batalhaB2.erros;   // cada erro fortalece a alucinação
+
+                // Saldo da batalha: +acertos, -erros, e bônus de vitória
+                // ou penalidade se a vida chegou a zero
+                AlterarPontos(&progresso,
+                    batalhaB2.acertos * PONTOS_ACERTO_B2
+                    - batalhaB2.erros * PENALIDADE_ERRO
+                    + (batalhaB2.venceu ? PONTOS_VITORIA_B2 : -PENALIDADE_HP_ZERO));
 
                 if (batalhaB2.venceu) {
 
                     bloco2.derrotado[i] = true;
-                    progresso.pontos += PONTOS_VITORIA_B2;
 
                     // De volta à sala, a Luci lembra como alucinou
                     DialogoFalaAvulsa(&dlg, INIMIGOS_B2[i].memoriaLuci);

@@ -567,12 +567,16 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 As User Stories foram utilizadas para representar as funcionalidades, necessidades e objetivos do projeto a partir da perspectiva dos usuários e do desenvolvimento do UtopIA.
 
 <a href="assets/trello/board.png">
-
   <img src="assets/trello/board.png" width="600">
-
 </a>
 
 *Board geral de organização das User Stories.*
+
+<a href="assets/trello/board2.png">
+  <img src="assets/trello/board2.png" width="600">
+</a>
+
+*Board geral de organização das User Stories — 2ª unidade.*
 
 <details>
 

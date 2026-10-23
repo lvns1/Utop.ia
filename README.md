@@ -586,6 +586,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US01](assets/storyboards/US_01_storyboard.png)
 
+[🗒️ Relato — US01](assets/relatos/US_01_relato.png)
+
+[🎥 Screen Cast — US01](https://youtu.be/wrcCTJ1Nv9E?si=Mz4YG8G_fLX1zhhF)
+
 </details>
 
 <details>
@@ -597,6 +601,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [📐 Diagrama — US02](assets/diagramas/US_02_diagrama.png)
 
 [🎬 Storyboard — US02](assets/storyboards/US_02_storyboard.png)
+
+[🗒️ Relato — US02](assets/relatos/US_02_relato.png)
+
+[🎥 Screen Cast — US02](https://youtu.be/Q9OhwAFjX6c?si=Q6mBlEx1xT6hbkZc)
 
 </details>
 
@@ -612,6 +620,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US03](assets/storyboards/US_03_storyboard.png)
 
+[🗒️ Relato — US03](assets/relatos/US_03_relato.png)
+
+[🎥 Screen Cast — US03](https://youtu.be/I6TmZ8IFFSI?si=MO-PcDeSr3haG-iB)
+
 </details>
 
 <details>
@@ -625,6 +637,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US04](assets/sketches/us04_sketche.png)
 
 [🎬 Storyboard — US04](assets/storyboards/US_04_storyboard.png)
+
+[🗒️ Relato — US04](assets/relatos/US_04_relato.png)
+
+[🎥 Screen Cast — US04](https://youtu.be/WTUJnM0dEZ4?si=liISsET03vsJzYJk)
 
 </details>
 
@@ -640,6 +656,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US05](assets/storyboards/US_05_storyboard.png)
 
+[🗒️ Relato — US05](assets/relatos/US_05_relato.png)
+
+[🎥 Screen Cast — US05](https://youtu.be/POx_cD2tzZ0?si=0DXE9dlW013V0oHg)
+
 </details>
 
 <details>
@@ -653,6 +673,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US06](assets/sketches/us06_sketche.png)
 
 [🎬 Storyboard — US06](assets/storyboards/US_06_storyboard.png)
+
+[🗒️ Relato — US06](assets/relatos/US_06_relato.png)
+
+[🎥 Screen Cast — US06](https://youtu.be/HmvslBYjSzU?si=SIK_AirIyapwFu5_)
 
 </details>
 
@@ -668,6 +692,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US07](assets/storyboards/US_07_storyboard.png)
 
+[🗒️ Relato — US07](assets/relatos/US_07_relato.png)
+
+[🎥 Screen Cast — US07](https://youtu.be/xQutfyeJYco?si=wBypX9f5rsWS0W6C)
+
 </details>
 
 <details>
@@ -681,6 +709,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US08](assets/sketches/us08_sketche.png)
 
 [🎬 Storyboard — US08](assets/storyboards/US_08_storyboard.png)
+
+[🗒️ Relato — US08](assets/relatos/US_08_relato.png)
+
+[🎥 Screen Cast — US08](https://youtu.be/pOlduLv4mwY?si=iqae3wok6zmSKh3G)
 
 </details>
 

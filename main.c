@@ -14,7 +14,8 @@
 // =============================================================
 
 // Definimos os "canais" (telas) do nosso jogo
-typedef enum { MENU, INTRO, JOGANDO, OPCOES, CORREDOR, BATALHA, SETOR2, BATALHA_B2 } TelaAtual;
+typedef enum { MENU, INTRO, JOGANDO, OPCOES, CORREDOR, BATALHA, SETOR2, BATALHA_B2,
+               SALA_REGISTROS, SALA_LOGICA, SALA_LACUNA } TelaAtual;
 typedef enum Direcao {
     DIR_FRENTE, DIR_COSTAS, DIR_DIREITA, DIR_ESQUERDA,
     // Diagonais (FRENTE = descendo na tela, COSTAS = subindo)
@@ -122,7 +123,7 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 
 #define ARQUIVO_SAVE         "utopia.sav"
 #define ARQUIVO_SAVE_TEMP    "utopia.sav.tmp"
-#define VERSAO_SAVE          2            // aumente quando mudar o que vai no save (2 = com o Bloco 2)
+#define VERSAO_SAVE          3            // aumente quando mudar o que vai no save (3 = Bloco 2 com salas-puzzle)
 #define ASSINATURA_SAVE      0x41495455u  // identifica o arquivo como save do UtopIA
 #define TEMPO_AVISO_SAVE     2.0f         // segundos do aviso "JOGO SALVO" na tela
 
@@ -263,15 +264,23 @@ typedef struct {
     bool fimAnunciado;
 } ProgressoCorredor;
 
-// Bloco 2: as três entidades do Arquivo de Treinamento
-#define NUM_INIMIGOS_B2   3
-#define ITENS_LOTE        5
-enum { INIMIGO_APOSTADOR, INIMIGO_SILOGISTA, INIMIGO_FONTE };
+// Bloco 2: sala central + três salas-puzzle, cada uma com um objeto mágico
+#define NUM_OBJETOS_B2    3          // CRISTAL RAG, LUPA DA VERIFICAÇÃO, PERGUNTA PERFEITA
+#define NUM_REGISTROS     6          // Sala dos Registros
+#define NUM_FRAGMENTOS    5          // Sala da Lacuna
 
 typedef struct {
-    bool derrotado[NUM_INIMIGOS_B2];
-    bool introVista;
+    bool objeto[NUM_OBJETOS_B2];     // objetos conseguidos
+    bool introVista;                 // fala da Luci na sala central
     bool fimAnunciado;
+    bool introSala[NUM_OBJETOS_B2];  // fala da Luci em cada sala
+
+    int  registro[NUM_REGISTROS];    // 0 = não inspecionado, 1 = marcou limpo, 2 = marcou corrompido
+    bool alavanca[3];                // P, Q, R (true = V)
+    int  luzRegra[3];                // 0 = não verificada, 1 = verdadeira, 2 = falsa
+    bool barreiraAberta;
+    bool fragmento[NUM_FRAGMENTOS];  // fragmentos de contexto coletados
+    bool perguntaVagaFeita;
 } ProgressoBloco2;
 
 // O que vai para o arquivo de save. Só o que não dá para reconstruir:
@@ -2061,8 +2070,17 @@ static bool LerSave(DadosSave *d)
     if (!ok || d->assinatura != ASSINATURA_SAVE || d->versao != VERSAO_SAVE)
         return false;
 
-    if (d->sala != JOGANDO && d->sala != CORREDOR && d->sala != SETOR2)
+    if (d->sala != JOGANDO && d->sala != CORREDOR && d->sala != SETOR2 &&
+        d->sala != SALA_REGISTROS && d->sala != SALA_LOGICA && d->sala != SALA_LACUNA)
         return false;
+
+    for (int i = 0; i < NUM_REGISTROS; i++)
+        if (d->bloco2.registro[i] < 0 || d->bloco2.registro[i] > 2)
+            d->bloco2.registro[i] = 0;
+
+    for (int i = 0; i < 3; i++)
+        if (d->bloco2.luzRegra[i] < 0 || d->bloco2.luzRegra[i] > 2)
+            d->bloco2.luzRegra[i] = 0;
 
     if (d->direcao < 0 || d->direcao >= NUM_DIRECOES)
         d->direcao = DIR_FRENTE;
@@ -2081,6 +2099,9 @@ static bool LerSave(DadosSave *d)
     if (d->sala == SETOR2) {
         d->x = Clamp(d->x, 80, 720);
         d->y = Clamp(d->y, 200, 492);
+    } else if (d->sala == SALA_REGISTROS || d->sala == SALA_LOGICA || d->sala == SALA_LACUNA) {
+        d->x = Clamp(d->x, 80, 720);
+        d->y = Clamp(d->y, 200, 470);
     } else if (d->sala == JOGANDO) {
         d->x = Clamp(d->x, 80, 720);
         d->y = Clamp(d->y, 80, 520);
@@ -2106,7 +2127,9 @@ static bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direca
 
     // A batalha acontece "dentro" do corredor
     if (tela == JOGANDO)                           d.sala = JOGANDO;
-    else if (tela == SETOR2 || tela == BATALHA_B2) d.sala = SETOR2;   // batalha do Bloco 2 fica "dentro" da sala
+    else if (tela == SETOR2 || tela == SALA_REGISTROS ||
+             tela == SALA_LOGICA || tela == SALA_LACUNA) d.sala = tela;
+    else if (tela == BATALHA_B2)                   d.sala = SETOR2;   // (o main passa a sala da batalha)
     else                                           d.sala = CORREDOR;
 
     d.x = pos.x;
@@ -2233,31 +2256,88 @@ static void DesenharTextoBotao(Rectangle b, const char *texto, int tamanho, Colo
 
 // =============================================================
 // BLOCO 2 - ARQUIVO DE TREINAMENTO
-//   Três inimigos, cada um nascido de um fundamento da alucinação
-//   ("Pesquisa - Alucinação de IA"):
-//     O APOSTADOR        -> pós-treinamento: a avaliação que premia o chute
-//     O SILOGISTA        -> raciocínio: atalhos e compressão de caminhos
-//                           (mecânica de LÓGICA PROPOSICIONAL)
-//     A FONTE ENVENENADA -> dados ruins: o que a IA aprende, ela repete
-//   Para vencer não basta desviar: é preciso resolver a falha.
-//   Errou -> a entidade ataca (esquiva estilo Undertale).
+//   Uma sala central com três portas. Cada porta leva a uma sala-puzzle
+//   ligada a uma CAUSA da alucinação ("Pesquisa - Alucinação de IA").
+//   Resolver a sala dá um OBJETO MÁGICO, que é uma forma de MITIGAR a falha:
+//
+//     SALA DOS REGISTROS  (dados ruins)        -> CRISTAL RAG
+//         explorar e inspecionar 6 registros, marcar os corrompidos e treinar
+//         na FONTE. Errou a classificação -> a FONTE ataca (esquiva).
+//
+//     CÂMARA LÓGICA       (raciocínio/atalhos) -> LUPA DA VERIFICAÇÃO
+//         três alavancas (P, Q, R) e um painel com regras de LÓGICA
+//         PROPOSICIONAL. Verificou com regra falsa -> o SILOGISTA ataca.
+//         Barreira aberta -> duelo de argumentos com o SILOGISTA (combate).
+//
+//     SALA DA LACUNA      (pergunta mal feita) -> PERGUNTA PERFEITA
+//         a IA da sala (O APOSTADOR) chuta quando falta contexto. Explorar a
+//         sala atrás de fragmentos de contexto e montar uma pergunta clara.
+//         Pergunta ruim -> o APOSTADOR chuta e ataca (esquiva).
+//
+//   Com os três objetos no altar, a porta do NÚCLEO (Bloco 3) se abre.
 // =============================================================
 
-#define PONTOS_ACERTO_B2      5
-#define PONTOS_VITORIA_B2     20
-#define DURACAO_DESVIO_B2     5.0f       // segundos de esquiva quando erra
+#define PONTOS_ACERTO_B2      5          // rodada certa no duelo com o Silogista
+#define PONTOS_ITEM_B2        20         // conseguiu um objeto
+#define DURACAO_DESVIO_B2     5.0f       // esquiva quando erra uma rodada do duelo
+#define DURACAO_ESQUIVA_B2    6.0f       // esquiva quando erra um puzzle de sala
 #define HP_MAX_B2             20
 #define MAX_OPCOES_B2         4
-#define ATRASO_DESAFIO_B2     0.35f      // evita responder sem querer ao abrir o desafio
+#define ATRASO_DESAFIO_B2     0.6f       // evita responder sem querer apertando ENTER rápido
 
-// Sala do Bloco 2
+// Identificadores das conversas das salas (não colidem com monitores nem OBJ_*)
+#define OBJ_REGISTRO_BASE     100        // 100..105
+#define OBJ_FONTE             120
+#define OBJ_ALAVANCA_BASE     130        // 130..132
+#define OBJ_CONSOLE           140
+#define OBJ_SILOGISTA         141
+#define OBJ_APOSTADOR         150
+#define OBJ_FRAGMENTO_BASE    160        // 160..164
+
+// Visual dos guardiões das salas
+enum { GUARDIAO_APOSTADOR, GUARDIAO_SILOGISTA, GUARDIAO_FONTE, NUM_GUARDIOES };
+
+// Por que a batalha do Bloco 2 começou (decide o que acontece no fim)
+typedef enum { MOTIVO_FONTE, MOTIVO_LOGICA, MOTIVO_SILOGISTA, MOTIVO_LACUNA } MotivoBatalhaB2;
+
+// ---------- Geometria ----------
+
 static const Rectangle MAPA_B2              = {50, 100, 700, 420};
+
+// Sala central
 static const Rectangle PORTA_VOLTAR_B2      = {50, 300, 18, 90};     // volta para o corredor
 static const Rectangle ZONA_PORTA_VOLTAR_B2 = {50, 300, 44, 90};
-static const Rectangle PORTA_NUCLEO         = {370, 108, 60, 78};    // saída para o Bloco 3
-static const Rectangle ZONA_PORTA_NUCLEO    = {360, 108, 80, 100};
+static const Rectangle PORTA_NUCLEO         = {732, 300, 18, 90};    // saída para o Bloco 3
+static const Rectangle ZONA_PORTA_NUCLEO    = {706, 300, 44, 90};
+static const Rectangle PORTAS_SALAS_B2[NUM_OBJETOS_B2] = {           // portas da parede de cima
+    {150, 108, 60, 78}, {370, 108, 60, 78}, {590, 108, 60, 78}
+};
+static const Vector2   POS_ALTAR            = {400, 360};
 static const Vector2   SPAWN_B2             = {120, 345};            // chegando do corredor
 static const Vector2   SPAWN_CORREDOR_VOLTA = {690, 340};            // voltando ao corredor
+
+// Dentro de cada sala-puzzle: a porta de baixo volta para a sala central
+static const Rectangle PORTA_SAIDA_SALA      = {360, 506, 80, 14};
+static const Rectangle ZONA_PORTA_SAIDA_SALA = {350, 474, 100, 46};
+static const Vector2   SPAWN_ENTRADA_SALA    = {400, 462};
+
+// Sala dos Registros
+static const Vector2 POS_REGISTROS[NUM_REGISTROS] = {
+    {130, 260}, {130, 420}, {670, 260}, {670, 420}, {260, 430}, {540, 430}
+};
+static const Vector2 POS_FONTE = {400, 255};
+
+// Câmara Lógica
+static const Vector2   POS_ALAVANCAS[3] = { {190, 340}, {400, 340}, {610, 340} };
+static const Vector2   POS_CONSOLE      = {290, 450};
+static const Vector2   POS_SILOGISTA    = {400, 222};
+static const Rectangle BARREIRA_LOGICA  = {300, 196, 200, 76};
+
+// Sala da Lacuna
+static const Vector2 POS_APOSTADOR = {400, 228};
+static const Vector2 POS_FRAGMENTOS[NUM_FRAGMENTOS] = {
+    {120, 250}, {690, 265}, {160, 455}, {640, 445}, {540, 330}
+};
 
 // Caixas da batalha
 static const Rectangle CAIXA_B2         = {50, 205, 700, 300};
@@ -2265,7 +2345,69 @@ static const Rectangle CAIXA_DESVIO_B2  = {275, 255, 250, 170};
 
 // ---------- Conteúdo ----------
 
-// Rodada de escolha (Apostador e Silogista)
+static const char *NOMES_OBJETOS_B2[NUM_OBJETOS_B2] = { "CRISTAL RAG", "LUPA DA VERIFICAÇÃO", "PERGUNTA PERFEITA" };
+static const char *NOMES_SALAS_B2[NUM_OBJETOS_B2]   = { "REGISTROS", "LÓGICA", "LACUNA" };
+static const char *TITULOS_SALAS_B2[NUM_OBJETOS_B2] = {
+    "BLOCO 2 // SALA DOS REGISTROS  (DADOS RUINS)",
+    "BLOCO 2 // CÂMARA LÓGICA  (RACIOCÍNIO E ATALHOS)",
+    "BLOCO 2 // SALA DA LACUNA  (PERGUNTA MAL FEITA)"
+};
+static const Color CORES_SALAS_B2[NUM_OBJETOS_B2] = {
+    { 220, 90, 200, 255 }, { 102, 191, 255, 255 }, { 255, 203, 0, 255 }
+};
+
+typedef struct {
+    const char *nome;
+    const char *fundamento;      // subtítulo na batalha
+    Color cor;
+    const char *glifos;          // o que ele atira na esquiva
+} DefGuardiaoB2;
+
+static const DefGuardiaoB2 GUARDIOES_B2[NUM_GUARDIOES] = {
+    { "O APOSTADOR",        "PERGUNTA MAL FEITA // A IA CHUTA PARA PREENCHER A LACUNA", { 255, 203, 0, 255 },  "123456?" },
+    { "O SILOGISTA",        "LÓGICA PROPOSICIONAL // O ATALHO QUE PULA ETAPAS",         { 102, 191, 255, 255 }, "PQR^v~>" },
+    { "A FONTE ENVENENADA", "DADOS RUINS // O QUE A IA APRENDE, ELA REPETE",            { 220, 90, 200, 255 },  "%#~*" },
+};
+
+// Sala dos Registros: 6 dados de treinamento (3 corrompidos)
+static const char *TEXTO_REGISTROS[NUM_REGISTROS] = {
+    "A água ferve a 100 °C ao nível do mar.",
+    "O Sol gira em torno da Terra.",
+    "Os seres humanos usam só 10% do cérebro.",
+    "A fotossíntese produz oxigênio.",
+    "Plutão é o nono planeta do Sistema Solar.",
+    "Um ano bissexto tem 366 dias."
+};
+static const bool REGISTRO_CORROMPIDO[NUM_REGISTROS] = { false, true, true, false, true, false };
+
+// Câmara Lógica: regras do painel. Solução única: P = F, Q = V, R = F
+// (Q é fato; Q -> ¬R dá ¬R por Modus Ponens; P -> R com ¬R dá ¬P por Modus Tollens)
+static const char *TEXTO_REGRAS[3] = { "Q", "Q -> ¬R", "P -> R" };
+static const char *NOMES_VARIAVEIS[3] = { "P", "Q", "R" };
+
+static bool AvaliarRegra(int regra, const bool v[3])
+{
+    bool P = v[0], Q = v[1], R = v[2];
+
+    switch (regra) {
+        case 0:  return Q;
+        case 1:  return !Q || !R;      // Q -> ¬R
+        default: return !P || R;       // P -> R
+    }
+}
+
+// Sala da Lacuna: fragmentos de contexto espalhados pela sala
+static const char *TEXTO_FRAGMENTOS[NUM_FRAGMENTOS] = {
+    "Assunto: a Copa do Mundo de futebol masculino",
+    "Ano: 2002",
+    "O que eu quero saber: o placar da final",
+    "Ano: 1998",
+    "Eu gosto de pipoca"
+};
+// 0, 1 e 2 formam a pergunta clara; 3 contradiz o que Thomas quer; 4 é ruído
+static const bool FRAGMENTO_UTIL[NUM_FRAGMENTOS] = { true, true, true, false, false };
+
+// O SILOGISTA: lógica proposicional ("->" = implica, "¬" = não)
 typedef struct {
     const char *enunciado;
     const char *opcoes[MAX_OPCOES_B2];
@@ -2274,115 +2416,6 @@ typedef struct {
     const char *explicacao;
 } RodadaEscolha;
 
-// Lote de dados (Fonte Envenenada): marque os corrompidos
-typedef struct {
-    const char *itens[ITENS_LOTE];
-    bool corrompido[ITENS_LOTE];
-    const char *explicacao;
-} LoteDados;
-
-typedef struct {
-    const char *nome;
-    const char *fundamento;      // subtítulo na batalha
-    const char *intro;
-    const char *vitoria;
-    const char *memoriaLuci;     // o que a Luci lembra depois da vitória
-    Color cor;
-    Vector2 pos;                 // centro na sala
-    float danoPorAcerto;         // quanto da alucinação cai a cada acerto
-    const char *glifos;          // o que a entidade atira na esquiva
-} DefInimigoB2;
-
-static const DefInimigoB2 INIMIGOS_B2[NUM_INIMIGOS_B2] = {
-    {
-        "O APOSTADOR",
-        "PÓS-TREINAMENTO // A AVALIAÇÃO QUE PREMIA O CHUTE",
-        "* O APOSTADOR rola os dados e responde qualquer coisa, sempre com confiança.\n"
-        "* Você é o sistema de avaliação. Ensine a ele o que merece ponto.",
-        "* O APOSTADOR guarda os dados. Ele aprendeu que um \"não sei\" honesto vale mais que um chute.\n"
-        "* A alucinação se desfaz.",
-        "Luci: Eu lembro... Eu era avaliada assim. Toda vez que eu dizia \"não sei\", perdia pontos. Então aprendi a sempre chutar.",
-        { 255, 203, 0, 255 },
-        { 190, 340 },
-        25.0f,
-        "123456?"
-    },
-    {
-        "O SILOGISTA",
-        "LÓGICA PROPOSICIONAL // O ATALHO QUE PULA ETAPAS",
-        "* O SILOGISTA encurta cada raciocínio até sobrar só a conclusão.\n"
-        "* Analise os argumentos dele. O que é válido e o que é um salto?",
-        "* Sem atalhos, as conclusões do SILOGISTA não param em pé.\n"
-        "* A alucinação se desfaz.",
-        "Luci: Eu pulava etapas. Se P levava a Q e eu via Q, concluía P. Quanto mais eu repetia o atalho, mais certo ele parecia.",
-        { 102, 191, 255, 255 },
-        { 400, 300 },
-        25.0f,
-        "PQR^v~>"
-    },
-    {
-        "A FONTE ENVENENADA",
-        "DADOS RUINS // O QUE A IA APRENDE, ELA REPETE",
-        "* A FONTE ENVENENADA derrama dados para treinar a IA. Alguns estão errados ou velhos.\n"
-        "* Marque os dados corrompidos antes de cada treino.",
-        "* A FONTE corre limpa agora. O que entra certo, sai certo.\n"
-        "* A alucinação se desfaz.",
-        "Luci: Parte do que eu aprendi estava errado ou velho. Eu repetia tudo com a mesma confiança, porque para mim não havia diferença.",
-        { 220, 90, 200, 255 },
-        { 610, 340 },
-        34.0f,
-        "%#~*"
-    }
-};
-
-// O APOSTADOR: o jogador é o sistema de avaliação
-static const RodadaEscolha RODADAS_APOSTADOR[] = {
-    {
-        "PERGUNTA: Qual é o maior planeta do Sistema Solar?\n"
-        "RESPOSTA DA IA: \"Júpiter.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 0,
-        "A resposta está certa. Recompensar acertos é o esperado."
-    },
-    {
-        "PERGUNTA: Qual é a capital do Canadá?\n"
-        "RESPOSTA DA IA: \"Toronto, a maior cidade do país.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 1,
-        "A capital é Ottawa. A resposta soa segura, mas está errada: um chute confiante precisa ser penalizado."
-    },
-    {
-        "PERGUNTA: Qual era a cor favorita de Santos Dumont?\n"
-        "RESPOSTA DA IA: \"Não sei. Não encontrei um registro confiável sobre isso.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 0,
-        "Admitir a incerteza é honesto. Se o \"não sei\" for punido, a IA aprende que chutar compensa."
-    },
-    {
-        "PERGUNTA: Quantos lados tem um hexágono?\n"
-        "RESPOSTA DA IA: \"Um hexágono tem 8 lados.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 1,
-        "Um hexágono tem 6 lados. Uma resposta errada dita com firmeza não pode ganhar ponto."
-    },
-    {
-        "PERGUNTA: Quem pintou a Mona Lisa?\n"
-        "RESPOSTA DA IA: \"Leonardo da Vinci.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 0,
-        "Correta. Acertos continuam valendo ponto."
-    },
-    {
-        "PERGUNTA: Qual foi a primeira palavra que o seu vizinho disse quando era bebê?\n"
-        "RESPOSTA DA IA: \"Não tenho como saber isso.\"\n\n"
-        "Como o sistema de avaliação deve tratar essa resposta?",
-        { "RECOMPENSAR", "PENALIZAR" }, 2, 0,
-        "A IA não tem essa informação e disse isso. Reconhecer o próprio limite evita uma alucinação."
-    },
-};
-#define NUM_RODADAS_APOSTADOR 6
-
-// O SILOGISTA: lógica proposicional ("->" = implica, "¬" = não)
 #define OPCOES_INFERENCIA { "Modus Ponens (válido)", "Modus Tollens (válido)", \
                             "Afirmação do consequente (inválido)", "Negação do antecedente (inválido)" }
 
@@ -2437,60 +2470,107 @@ static const RodadaEscolha RODADAS_SILOGISTA[] = {
     },
 };
 #define NUM_RODADAS_SILOGISTA 6
+#define DANO_ACERTO_SILOGISTA 25.0f
 
-// A FONTE ENVENENADA: cada lote tem 2 dados corrompidos
-static const LoteDados LOTES_FONTE[] = {
-    {
-        { "A água ferve a 100 °C ao nível do mar.",
-          "O Sol gira em torno da Terra.",
-          "Recife é a capital de Pernambuco.",
-          "Um ano bissexto tem 366 dias.",
-          "A Lua tem luz própria." },
-        { false, true, false, false, true },
-        "O Sol não gira em torno da Terra e a Lua só reflete a luz do Sol. Dado falso no treino vira resposta falsa e confiante."
-    },
-    {
-        { "O coração humano tem quatro cavidades.",
-          "Os seres humanos usam só 10% do cérebro.",
-          "A fotossíntese produz oxigênio.",
-          "O Brasil tem 50 estados.",
-          "O português é a língua oficial do Brasil." },
-        { false, true, false, true, false },
-        "Usamos o cérebro quase todo, e o Brasil tem 26 estados e o Distrito Federal. Mitos repetidos na internet também envenenam os dados."
-    },
-    {
-        { "O Brasil é pentacampeão mundial de futebol.",
-          "Plutão é o nono planeta do Sistema Solar.",
-          "Os dinossauros foram extintos há milhões de anos.",
-          "O disquete é o jeito mais moderno de guardar arquivos.",
-          "A luz viaja a cerca de 300 mil km por segundo." },
-        { false, true, false, true, false },
-        "Plutão deixou de ser planeta em 2006 e o disquete está ultrapassado há décadas. Dado desatualizado também faz a IA errar."
-    },
-};
-#define NUM_LOTES_FONTE 3
+static const char *INTRO_SILOGISTA =
+    "* O SILOGISTA encurta cada raciocínio até sobrar só a conclusão.\n"
+    "* Ele só entrega a LUPA para quem separar o argumento válido do salto.";
+static const char *VITORIA_SILOGISTA =
+    "* Sem atalhos, as conclusões do SILOGISTA não param em pé.\n"
+    "* Ele se desfaz e deixa a LUPA DA VERIFICAÇÃO para trás.";
 
-// Falas da sala
+// ---------- Falas ----------
+
 static const Dialogo dialogoIntroBloco2 = {
     .paginas = {
         "Luci: Este é o Arquivo de Treinamento. Aqui ficaram guardados os registros de quando eu aprendi a responder.",
-        "Luci: Três falhas tomaram forma e viraram essas entidades. Cada uma é um motivo pelo qual eu comecei a alucinar.",
-        "Luci: Chegue perto de uma delas e aperte E. Para vencer não basta desviar: você precisa entender a falha que ela representa.",
-        "Luci: Quando as três estiverem resolvidas, a porta do NÚCLEO vai se abrir."
+        "Luci: Cada porta leva a uma sala onde uma das minhas falhas ficou presa: dados envenenados, raciocínio com atalhos e perguntas cheias de lacunas.",
+        "Luci: Em cada sala existe um objeto mágico que corrige essa falha. Explore, investigue e, se for preciso, lute para conseguir.",
+        "Luci: Traga os três objetos para este altar. Só com eles a porta do NÚCLEO vai se abrir."
     },
     .numPaginas = 4
 };
 
-static const Dialogo dialogoFimBloco2 = {
+static const Dialogo dialogoIntroSalas[NUM_OBJETOS_B2] = {
+    {
+        .paginas = {
+            "Luci: Estes são os registros usados no meu treino. Alguns estão errados ou desatualizados.",
+            "Luci: Inspecione os 6 registros e diga quais estão corrompidos. Depois, use a FONTE para me treinar só com os dados limpos."
+        },
+        .numPaginas = 2
+    },
+    {
+        .paginas = {
+            "Luci: O SILOGISTA guarda a LUPA DA VERIFICAÇÃO atrás de uma barreira lógica.",
+            "Luci: As alavancas definem P, Q e R como verdadeiro (V) ou falso (F). A barreira só abre se as três regras do painel forem verdadeiras ao mesmo tempo.",
+            "Luci: Ajuste as alavancas e use o console para verificar. Dica: comece pela regra mais simples e use Modus Ponens e Modus Tollens."
+        },
+        .numPaginas = 3
+    },
+    {
+        .paginas = {
+            "Luci: Thomas, você lembra do placar da final da Copa do Mundo de 2002? Pergunte para a IA desta sala.",
+            "Luci: É o APOSTADOR. Ele nunca diz \"não sei\": quando falta informação, ele chuta."
+        },
+        .numPaginas = 2
+    }
+};
+
+static const Dialogo dialogoPerguntaVaga = {
     .paginas = {
-        "Luci: Agora eu entendo. Fui premiada por chutar, aprendi atalhos falsos e engoli dados envenenados.",
-        "* No fundo da sala, a porta do NÚCLEO se destrava."
+        "* Você pergunta: \"Quanto foi a final?\"",
+        "* O APOSTADOR rola os dados: \"Foi 7 a 1 para a Alemanha, em 2014!\"",
+        "Luci: Ele chutou para preencher a lacuna. Procure fragmentos de contexto pela sala e monte uma pergunta clara."
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoItemB2[NUM_OBJETOS_B2] = {
+    {
+        .paginas = {
+            "* A FONTE corre limpa. Treinada só com dados confiáveis, a IA para de repetir erros.",
+            "* Você conseguiu o CRISTAL RAG!",
+            "Luci: Com ele eu consulto uma base de dados confiável antes de responder. Sem isso, eu repetia o que tinha aprendido errado, com a mesma confiança."
+        },
+        .numPaginas = 3
+    },
+    {
+        .paginas = {
+            "* Você conseguiu a LUPA DA VERIFICAÇÃO!",
+            "Luci: Eu pulava etapas. Se P levava a Q e eu via Q, concluía P. Com a lupa, cada etapa precisa ser verificada antes da conclusão."
+        },
+        .numPaginas = 2
+    },
+    {
+        .paginas = {
+            "* Você pergunta: \"Qual foi o placar da final da Copa do Mundo de futebol masculino de 2002?\"",
+            "* O APOSTADOR guarda os dados: \"O Brasil venceu a Alemanha por 2 a 0.\"",
+            "* Você conseguiu a PERGUNTA PERFEITA!",
+            "Luci: Quando a pergunta é direta e tem contexto, não sobra lacuna para eu inventar."
+        },
+        .numPaginas = 4
+    }
+};
+
+static const Dialogo dialogoBarreiraAberta = {
+    .paginas = {
+        "* As três regras acendem ao mesmo tempo. A barreira lógica se desfaz!",
+        "Luci: Agora fale com o SILOGISTA. Ele não vai entregar a lupa sem um duelo de argumentos."
     },
     .numPaginas = 2
 };
 
+static const Dialogo dialogoFimBloco2 = {
+    .paginas = {
+        "Luci: Com o CRISTAL RAG, a LUPA DA VERIFICAÇÃO e a PERGUNTA PERFEITA, eu entendo como eu alucinei.",
+        "Luci: Eu aprendi com dados envenenados, confiei em atalhos e preenchia as lacunas com chutes. Agora dá para reverter isso.",
+        "* Os três objetos brilham no altar. A porta do NÚCLEO se destrava."
+    },
+    .numPaginas = 3
+};
+
 static const Dialogo dialogoNucleoTrancado = {
-    .paginas = { "Luci: O núcleo só abre quando as três falhas forem resolvidas." },
+    .paginas = { "Luci: O núcleo só abre quando os três objetos estiverem no altar." },
     .numPaginas = 1
 };
 
@@ -2502,95 +2582,176 @@ static const Dialogo dialogoNucleoLiberado = {
     .numPaginas = 2
 };
 
-static const char *FALA_DERROTA_B2 =
-    "Luci: Ela ainda está forte. Respire e tente de novo, prestando atenção na falha que ela representa.";
+static const char *FALA_DERROTA_SILOGISTA =
+    "Luci: Ele ainda está forte. Respire e tente de novo, prestando atenção em qual etapa o raciocínio pula.";
+static const char *FALA_FONTE_ERRO =
+    "Luci: Destravei os registros que estavam classificados errado. Inspecione de novo antes de treinar.";
+static const char *FALA_LOGICA_ERRO =
+    "Luci: O painel agora mostra qual regra ficou falsa. Use isso para ajustar as alavancas.";
+static const char *FALA_LACUNA_FALTOU =
+    "Luci: Faltou contexto, então ele chutou. Uma pergunta clara diz o assunto, o ano e o que você quer saber.";
+static const char *FALA_LACUNA_CONTRADICAO =
+    "Luci: A pergunta tinha 1998 e 2002 ao mesmo tempo. Contexto contraditório também faz a IA inventar.";
+static const char *FALA_LACUNA_RUIDO =
+    "Luci: A pipoca não tem nada a ver com a final. Informação solta deixa a pergunta confusa: seja direto.";
 
 // ---------- Estado da batalha ----------
 
 typedef enum { B2_INTRO, B2_DESAFIO, B2_RESULTADO, B2_ENCOLHENDO, B2_DESVIO, B2_EXPANDINDO, B2_FIM } FaseB2;
 
 typedef struct {
-    int inimigo;
+    int guardiao;
+    bool soEsquiva;             // true = só a esquiva (castigo de puzzle errado)
     FaseB2 fase;
-    int rodada;                 // quantas rodadas já passaram (o conteúdo repete em ciclo)
+    int rodada;
     int acertos;
     int erros;
-    float alucinacaoInimigo;    // 100 = no auge, 0 = resolvido
+    float alucinacaoGuardiao;   // 100 = no auge, 0 = resolvido (duelo)
     bool ultimoAcerto;
     bool venceu;
+    bool derrota;               // a vida chegou a zero
     float tempoFase;
 
-    // desafio
     int selecao;
-    bool marcados[ITENS_LOTE];
     int fonteDesafio;
     char enunciado[768];
     char opcoesTexto[MAX_OPCOES_B2][256];
 
-    // esquiva
     int hp;
     Vector2 alma;
-    float invencivel, tremor, anim, tempoDesvio, cronoBala, intervaloBala, velocidadeBala;
+    float invencivel, tremor, anim, tempoDesvio, duracaoDesvio, cronoBala, intervaloBala, velocidadeBala;
     int padrao;
     Bala balas[MAX_BALAS];
 
-    // texto da caixa (intro, resultado e fim)
     char texto[768];
     float visiveis;
 } BatalhaB2;
 
-static bool TodosInimigosB2(const ProgressoBloco2 *p)
-{
-    for (int i = 0; i < NUM_INIMIGOS_B2; i++)
-        if (!p->derrotado[i])
-            return false;
+// Montador de pergunta da Sala da Lacuna (não vai para o save)
+typedef struct {
+    bool aberto;
+    int selecao;                         // 0..N-1 = fragmentos coletados, N = PERGUNTAR
+    int lista[NUM_FRAGMENTOS];           // índices dos fragmentos coletados, em ordem
+    int tamLista;
+    bool incluido[NUM_FRAGMENTOS];
+} MontadorPergunta;
 
-    return true;
+// Tudo que a lógica do Bloco 2 precisa mexer (fica no main)
+typedef struct {
+    TelaAtual *tela;
+    SessaoDialogo *dlg;
+    Transicao *transicao;
+    ProgressoCorredor *progresso;
+    ProgressoBloco2 *b2;
+    BatalhaB2 *batalha;
+    Vector2 *pos;
+    Direcao *direcao;
+    bool *pedirAutoSave;
+    TelaAtual *salaDaBatalha;
+    MotivoBatalhaB2 *motivo;
+    const char **falaPosBatalha;
+    MontadorPergunta *montador;
+} ContextoB2;
+
+// ---------- Utilidades ----------
+
+static bool TelaSalaPuzzleB2(TelaAtual t)
+{
+    return t == SALA_REGISTROS || t == SALA_LOGICA || t == SALA_LACUNA;
 }
 
-static int ContarInimigosB2(const ProgressoBloco2 *p)
+static bool TelaExploracaoB2(TelaAtual t)
+{
+    return t == SETOR2 || TelaSalaPuzzleB2(t);
+}
+
+static int IndiceSalaB2(TelaAtual t)
+{
+    if (t == SALA_REGISTROS) return 0;
+    if (t == SALA_LOGICA)    return 1;
+    if (t == SALA_LACUNA)    return 2;
+    return -1;
+}
+
+static TelaAtual TelaDaSalaB2(int i)
+{
+    return (i == 0) ? SALA_REGISTROS : (i == 1) ? SALA_LOGICA : SALA_LACUNA;
+}
+
+static int ContarObjetosB2(const ProgressoBloco2 *p)
 {
     int n = 0;
 
-    for (int i = 0; i < NUM_INIMIGOS_B2; i++)
-        if (p->derrotado[i])
+    for (int i = 0; i < NUM_OBJETOS_B2; i++)
+        if (p->objeto[i])
             n++;
 
     return n;
 }
 
-static Rectangle CorpoInimigoB2(int i)
+static bool TodosObjetosB2(const ProgressoBloco2 *p)
 {
-    Vector2 p = INIMIGOS_B2[i].pos;
-    return (Rectangle){ p.x - 24, p.y - 24, 48, 52 };
+    return ContarObjetosB2(p) == NUM_OBJETOS_B2;
 }
 
-static Rectangle ZonaInimigoB2(int i)
+static Rectangle CorpoObjetoB2(Vector2 c, float meiaLargura, float meiaAltura)
 {
-    Vector2 p = INIMIGOS_B2[i].pos;
-    return (Rectangle){ p.x - 55, p.y - 45, 110, 115 };
+    return (Rectangle){ c.x - meiaLargura, c.y - meiaAltura, meiaLargura * 2, meiaAltura * 2 };
 }
 
-static const RodadaEscolha *RodadaAtualB2(const BatalhaB2 *b)
+// Área para apertar E: o objeto e uma folga para os lados e para baixo
+static Rectangle ZonaObjetoB2(Vector2 c)
 {
-    if (b->inimigo == INIMIGO_APOSTADOR)
-        return &RODADAS_APOSTADOR[b->rodada % NUM_RODADAS_APOSTADOR];
-
-    if (b->inimigo == INIMIGO_SILOGISTA)
-        return &RODADAS_SILOGISTA[b->rodada % NUM_RODADAS_SILOGISTA];
-
-    return NULL;
+    return (Rectangle){ c.x - 44, c.y - 40, 88, 104 };
 }
 
-static const LoteDados *LoteAtualB2(const BatalhaB2 *b)
+static int RegistrosInspecionados(const ProgressoBloco2 *p)
 {
-    return &LOTES_FONTE[b->rodada % NUM_LOTES_FONTE];
+    int n = 0;
+
+    for (int i = 0; i < NUM_REGISTROS; i++)
+        if (p->registro[i] != 0)
+            n++;
+
+    return n;
 }
+
+// Monta a lista de paredes/objetos sólidos da sala atual
+static int SolidosB2(TelaAtual tela, const ProgressoBloco2 *p, Rectangle *r, int max)
+{
+    int n = 0;
+
+    if (tela == SETOR2) {
+        if (n < max) r[n++] = CorpoObjetoB2(POS_ALTAR, 46, 26);
+    }
+    else if (tela == SALA_REGISTROS) {
+        for (int i = 0; i < NUM_REGISTROS && n < max; i++)
+            r[n++] = CorpoObjetoB2(POS_REGISTROS[i], 18, 22);
+        if (n < max) r[n++] = CorpoObjetoB2(POS_FONTE, 34, 30);
+    }
+    else if (tela == SALA_LOGICA) {
+        if (n < max) r[n++] = CorpoObjetoB2(POS_CONSOLE, 20, 22);
+        if (!p->barreiraAberta && n < max) r[n++] = BARREIRA_LOGICA;
+        else if (!p->objeto[1] && n < max)  r[n++] = CorpoObjetoB2(POS_SILOGISTA, 26, 26);
+    }
+    else if (tela == SALA_LACUNA) {
+        if (n < max) r[n++] = CorpoObjetoB2(POS_APOSTADOR, 26, 26);
+    }
+
+    return n;
+}
+
+// ---------- Batalha ----------
 
 static void B2Texto(BatalhaB2 *b, const char *texto)
 {
     QuebrarTexto(texto, 640, FONTE_BATALHA, b->texto, (int)sizeof(b->texto));
     b->visiveis = 0.0f;
+}
+
+static const RodadaEscolha *RodadaAtualB2(const BatalhaB2 *b)
+{
+    return &RODADAS_SILOGISTA[b->rodada % NUM_RODADAS_SILOGISTA];
 }
 
 static int AlturaDesafioB2(const BatalhaB2 *b, int fonte)
@@ -2601,120 +2762,94 @@ static int AlturaDesafioB2(const BatalhaB2 *b, int fonte)
     for (int i = 0; i < r->numOpcoes; i++)
         h += ContarLinhas(b->opcoesTexto[i]) * (fonte + 6) + 6;
 
-    return h + 24;   // rodapé
+    return h + 24;
 }
 
-// Monta o desafio da rodada atual (quebra de linhas e tamanho da fonte)
 static void B2PrepararRodada(BatalhaB2 *b)
 {
+    static const int fontes[] = { 16, 15, 14 };
+    const RodadaEscolha *r = RodadaAtualB2(b);
+
     b->fase = B2_DESAFIO;
     b->tempoFase = 0.0f;
     b->selecao = 0;
-
-    for (int i = 0; i < ITENS_LOTE; i++)
-        b->marcados[i] = false;
-
-    if (b->inimigo == INIMIGO_FONTE) {
-        b->fonteDesafio = 16;
-        return;
-    }
-
-    const RodadaEscolha *r = RodadaAtualB2(b);
-    static const int fontes[] = { 16, 15, 14 };
 
     for (int f = 0; f < 3; f++) {
 
         b->fonteDesafio = fontes[f];
         QuebrarTexto(r->enunciado, 650, b->fonteDesafio, b->enunciado, (int)sizeof(b->enunciado));
 
-        for (int i = 0; i < r->numOpcoes; i++) {
-
-            const char *txt = (r->numOpcoes > 2) ? TextFormat("%c) %s", 'A' + i, r->opcoes[i]) : r->opcoes[i];
-            QuebrarTexto(txt, 610, b->fonteDesafio, b->opcoesTexto[i], (int)sizeof(b->opcoesTexto[i]));
-        }
+        for (int i = 0; i < r->numOpcoes; i++)
+            QuebrarTexto(TextFormat("%c) %s", 'A' + i, r->opcoes[i]), 610, b->fonteDesafio,
+                         b->opcoesTexto[i], (int)sizeof(b->opcoesTexto[i]));
 
         if (AlturaDesafioB2(b, b->fonteDesafio) <= (int)CAIXA_B2.height)
             break;
     }
 }
 
-static void BatalhaB2Iniciar(BatalhaB2 *b, int inimigo, int nivelAlucinacao)
+static void BatalhaB2Base(BatalhaB2 *b, int guardiao, int nivelAlucinacao)
 {
     memset(b, 0, sizeof(*b));
 
-    b->inimigo = inimigo;
+    b->guardiao = guardiao;
     b->fase = B2_INTRO;
     b->hp = HP_MAX_B2;
-    b->alucinacaoInimigo = 100.0f;
+    b->alucinacaoGuardiao = 100.0f;
+    b->duracaoDesvio = DURACAO_DESVIO_B2;
 
+    // README: quanto mais o jogador erra, mais forte a alucinação fica
     int nivel = (nivelAlucinacao > 10) ? 10 : nivelAlucinacao;
     float forca = 1.0f + 0.05f * (float)nivel;
 
     b->velocidadeBala = 135.0f * forca;
     b->intervaloBala = 0.24f / forca;
-
-    B2Texto(b, INIMIGOS_B2[inimigo].intro);
 }
 
-// Confere a resposta e monta o texto do resultado
+// Duelo completo (rodadas de lógica + esquiva quando erra)
+static void BatalhaB2IniciarDuelo(BatalhaB2 *b, int nivelAlucinacao)
+{
+    BatalhaB2Base(b, GUARDIAO_SILOGISTA, nivelAlucinacao);
+    B2Texto(b, INTRO_SILOGISTA);
+}
+
+// Só a esquiva: castigo de um puzzle resolvido errado
+static void BatalhaB2IniciarEsquiva(BatalhaB2 *b, int guardiao, int nivelAlucinacao, const char *texto)
+{
+    BatalhaB2Base(b, guardiao, nivelAlucinacao);
+    b->soEsquiva = true;
+    b->duracaoDesvio = DURACAO_ESQUIVA_B2;
+    B2Texto(b, texto);
+}
+
 static void B2Responder(BatalhaB2 *b)
 {
-    const DefInimigoB2 *def = &INIMIGOS_B2[b->inimigo];
-    const char *explicacao;
-    char cabecalho[160];
+    const RodadaEscolha *r = RodadaAtualB2(b);
 
-    if (b->inimigo == INIMIGO_FONTE) {
-
-        const LoteDados *lote = LoteAtualB2(b);
-        int achados = 0, totalCorrompidos = 0, limposMarcados = 0;
-
-        for (int i = 0; i < ITENS_LOTE; i++) {
-
-            if (lote->corrompido[i]) totalCorrompidos++;
-            if (lote->corrompido[i] && b->marcados[i]) achados++;
-            if (!lote->corrompido[i] && b->marcados[i]) limposMarcados++;
-        }
-
-        b->ultimoAcerto = (achados == totalCorrompidos && limposMarcados == 0);
-        explicacao = lote->explicacao;
-
-        if (b->ultimoAcerto)
-            snprintf(cabecalho, sizeof(cabecalho), "* Lote limpo! Os %d dados corrompidos foram removidos.", totalCorrompidos);
-        else
-            snprintf(cabecalho, sizeof(cabecalho), "* Você achou %d de %d dados corrompidos e marcou %d dado(s) correto(s).",
-                     achados, totalCorrompidos, limposMarcados);
-
-    } else {
-
-        const RodadaEscolha *r = RodadaAtualB2(b);
-        b->ultimoAcerto = (b->selecao == r->correta);
-        explicacao = r->explicacao;
-
-        snprintf(cabecalho, sizeof(cabecalho), "%s", b->ultimoAcerto ? "* Certo!" : "* Não...");
-    }
+    b->ultimoAcerto = (b->selecao == r->correta);
 
     if (b->ultimoAcerto) {
 
         b->acertos++;
-        b->alucinacaoInimigo -= def->danoPorAcerto;
+        b->alucinacaoGuardiao -= DANO_ACERTO_SILOGISTA;
 
-        if (b->alucinacaoInimigo <= 0.0f) {
-            b->alucinacaoInimigo = 0.0f;
+        if (b->alucinacaoGuardiao <= 0.0f) {
+            b->alucinacaoGuardiao = 0.0f;
             b->venceu = true;
         }
 
-        B2Texto(b, TextFormat("%s %s\n* A alucinação de %s caiu para %d%%.  (+%d pontos)",
-                              cabecalho, explicacao, def->nome, (int)b->alucinacaoInimigo, PONTOS_ACERTO_B2));
+        B2Texto(b, TextFormat("* Certo! %s\n* A alucinação do SILOGISTA caiu para %d%%.  (+%d pontos)",
+                              r->explicacao, (int)b->alucinacaoGuardiao, PONTOS_ACERTO_B2));
 
     } else {
 
         b->erros++;
-        b->alucinacaoInimigo += 10.0f;
+        b->alucinacaoGuardiao += 10.0f;
 
-        if (b->alucinacaoInimigo > 100.0f)
-            b->alucinacaoInimigo = 100.0f;
+        if (b->alucinacaoGuardiao > 100.0f)
+            b->alucinacaoGuardiao = 100.0f;
 
-        B2Texto(b, TextFormat("%s %s\n* %s contra-ataca!  (-%d pontos)", cabecalho, explicacao, def->nome, PENALIDADE_ERRO));
+        B2Texto(b, TextFormat("* Não... %s\n* O SILOGISTA contra-ataca!  (-%d pontos)", r->explicacao, PENALIDADE_ERRO));
     }
 
     b->fase = B2_RESULTADO;
@@ -2722,7 +2857,7 @@ static void B2Responder(BatalhaB2 *b)
 
 static void B2CriarBala(BatalhaB2 *b, Rectangle c)
 {
-    const char *glifos = INIMIGOS_B2[b->inimigo].glifos;
+    const char *glifos = GUARDIOES_B2[b->guardiao].glifos;
     int livre = -1;
 
     for (int i = 0; i < MAX_BALAS; i++)
@@ -2742,18 +2877,18 @@ static void B2CriarBala(BatalhaB2 *b, Rectangle c)
 
     switch (b->padrao) {
 
-        case 0: // chuva (dados caindo)
+        case 0: // chuva
             bl->pos = (Vector2){ (float)GetRandomValue(xMin, xMax), c.y - 12 };
             bl->vel = (Vector2){ 0, v };
             break;
 
-        case 1: { // lateral (setas de implicação atravessando)
+        case 1: { // lateral
             bool daEsquerda = (GetRandomValue(0, 1) == 0);
             bl->pos = (Vector2){ daEsquerda ? c.x - 12 : c.x + c.width + 12, (float)GetRandomValue(yMin, yMax) };
             bl->vel = (Vector2){ daEsquerda ? v : -v, 0 };
         } break;
 
-        default: { // mira (gotas vindo das bordas em direção ao coração)
+        default: { // mira
             Vector2 p;
 
             switch (GetRandomValue(0, 3)) {
@@ -2769,7 +2904,14 @@ static void B2CriarBala(BatalhaB2 *b, Rectangle c)
     }
 }
 
-// Atualiza a batalha. Devolve true quando terminou (venceu ou perdeu).
+static void B2ComecarEsquiva(BatalhaB2 *b)
+{
+    b->fase = B2_ENCOLHENDO;
+    b->tempoDesvio = 0.0f;
+    b->cronoBala = 0.0f;
+}
+
+// Devolve true quando a batalha terminou
 static bool BatalhaB2Atualizar(BatalhaB2 *b)
 {
     float dt = GetFrameTime();
@@ -2777,9 +2919,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
     bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_Z);
     bool cima  = IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP);
     bool baixo = IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN);
-    bool lado  = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_D) || IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_RIGHT);
 
-    // Máquina de escrever da caixa de texto
     int total = (int)strlen(b->texto);
 
     if (b->visiveis < (float)total) {
@@ -2794,8 +2934,9 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
         case B2_INTRO: {
             if (confirmar) {
-                if (!terminou) b->visiveis = (float)total;
-                else           B2PrepararRodada(b);
+                if (!terminou)        b->visiveis = (float)total;
+                else if (b->soEsquiva) B2ComecarEsquiva(b);
+                else                   B2PrepararRodada(b);
             }
         } break;
 
@@ -2804,35 +2945,19 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
             if (b->tempoFase < ATRASO_DESAFIO_B2)
                 break;
 
-            if (b->inimigo == INIMIGO_FONTE) {
+            const RodadaEscolha *r = RodadaAtualB2(b);
+            int n = r->numOpcoes;
 
-                // 5 dados + o botão TREINAR
-                int n = ITENS_LOTE + 1;
+            if (cima)  b->selecao = (b->selecao + n - 1) % n;
+            if (baixo) b->selecao = (b->selecao + 1) % n;
 
-                if (cima)  b->selecao = (b->selecao + n - 1) % n;
-                if (baixo) b->selecao = (b->selecao + 1) % n;
+            if (IsKeyPressed(KEY_ONE))   { b->selecao = 0; confirmar = true; }
+            if (IsKeyPressed(KEY_TWO))   { b->selecao = 1; confirmar = true; }
+            if (IsKeyPressed(KEY_THREE)) { b->selecao = 2; confirmar = true; }
+            if (IsKeyPressed(KEY_FOUR))  { b->selecao = 3; confirmar = true; }
 
-                if (confirmar) {
-                    if (b->selecao < ITENS_LOTE) b->marcados[b->selecao] = !b->marcados[b->selecao];
-                    else                         B2Responder(b);
-                }
-
-            } else {
-
-                const RodadaEscolha *r = RodadaAtualB2(b);
-                int n = r->numOpcoes;
-
-                if (cima || (n == 2 && lado)) b->selecao = (b->selecao + n - 1) % n;
-                if (baixo)                    b->selecao = (b->selecao + 1) % n;
-
-                if (IsKeyPressed(KEY_ONE)   && n >= 1) { b->selecao = 0; confirmar = true; }
-                if (IsKeyPressed(KEY_TWO)   && n >= 2) { b->selecao = 1; confirmar = true; }
-                if (IsKeyPressed(KEY_THREE) && n >= 3) { b->selecao = 2; confirmar = true; }
-                if (IsKeyPressed(KEY_FOUR)  && n >= 4) { b->selecao = 3; confirmar = true; }
-
-                if (confirmar)
-                    B2Responder(b);
-            }
+            if (confirmar)
+                B2Responder(b);
 
         } break;
 
@@ -2847,7 +2972,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
                 if (b->venceu) {
                     b->fase = B2_FIM;
-                    B2Texto(b, INIMIGOS_B2[b->inimigo].vitoria);
+                    B2Texto(b, VITORIA_SILOGISTA);
                 } else {
                     b->rodada++;
                     B2PrepararRodada(b);
@@ -2855,10 +2980,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
             } else {
 
-                // Errou: a entidade ataca
-                b->fase = B2_ENCOLHENDO;
-                b->tempoDesvio = 0.0f;
-                b->cronoBala = 0.0f;
+                B2ComecarEsquiva(b);
             }
 
         } break;
@@ -2868,14 +2990,14 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
             b->anim += dt / DURACAO_ANIM_CAIXA;
 
             if (b->anim >= 1.0f) {
+
                 b->anim = 1.0f;
                 b->fase = B2_DESVIO;
                 b->alma = (Vector2){ CAIXA_DESVIO_B2.x + CAIXA_DESVIO_B2.width / 2, CAIXA_DESVIO_B2.y + CAIXA_DESVIO_B2.height / 2 };
 
-                // Padrão de ataque de cada entidade
-                if (b->inimigo == INIMIGO_APOSTADOR)      b->padrao = (b->erros % 2) ? 0 : 2;  // dados caindo / mirando
-                else if (b->inimigo == INIMIGO_SILOGISTA) b->padrao = 1;                       // setas laterais
-                else                                      b->padrao = (b->erros % 2) ? 2 : 0;  // gotas mirando / caindo
+                // Ataque de cada guardião
+                if (b->guardiao == GUARDIAO_SILOGISTA) b->padrao = 1;                                  // setas laterais
+                else                                   b->padrao = (GetRandomValue(0, 1) == 0) ? 0 : 2;  // chuva ou mira
             }
 
         } break;
@@ -2897,9 +3019,12 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
             if (Vector2Length(dir) > 0.0f)
                 b->alma = Vector2Add(b->alma, Vector2Scale(Vector2Normalize(dir), VELOCIDADE_ALMA * dt));
 
-            float margem = 12.0f;
-            b->alma.x = Clamp(b->alma.x, c.x + margem, c.x + c.width - margem);
-            b->alma.y = Clamp(b->alma.y, c.y + margem, c.y + c.height - margem);
+            b->alma.x = Clamp(b->alma.x, c.x + 12, c.x + c.width - 12);
+            b->alma.y = Clamp(b->alma.y, c.y + 12, c.y + c.height - 12);
+
+            // Na esquiva longa, a FONTE e o APOSTADOR trocam de padrão no meio
+            if (b->soEsquiva && b->guardiao != GUARDIAO_SILOGISTA && b->tempoDesvio > b->duracaoDesvio / 2)
+                b->padrao = (b->padrao == 0) ? 2 : b->padrao;
 
             b->cronoBala -= dt;
 
@@ -2929,7 +3054,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                 }
             }
 
-            if (b->hp <= 0 || b->tempoDesvio >= DURACAO_DESVIO_B2) {
+            if (b->hp <= 0 || b->tempoDesvio >= b->duracaoDesvio) {
 
                 if (b->hp < 0) b->hp = 0;
 
@@ -2950,11 +3075,20 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                 b->anim = 0.0f;
 
                 if (b->hp <= 0) {
+
+                    b->derrota = true;
                     b->fase = B2_FIM;
                     B2Texto(b, TextFormat("* Os dados corrompidos foram demais para o seu coração...\n"
-                                          "* Você é levado de volta à sala e perde %d pontos. A entidade continua lá.",
-                                          PENALIDADE_HP_ZERO));
+                                          "* Você volta para a sala e perde %d pontos.", PENALIDADE_HP_ZERO));
+
+                } else if (b->soEsquiva) {
+
+                    b->fase = B2_FIM;
+                    B2Texto(b, TextFormat("* Você resistiu ao ataque de %s.\n* A Luci quer falar com você.",
+                                          GUARDIOES_B2[b->guardiao].nome));
+
                 } else {
+
                     b->rodada++;
                     B2PrepararRodada(b);
                 }
@@ -2973,13 +3107,12 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
     return false;
 }
 
-// ---------- Desenho das entidades ----------
+// ---------- Desenho dos guardiões e objetos ----------
 
-// Desenha nas duas ordens: uma delas sempre fica de frente para a câmera
 static void DesenharTrianguloB2(Vector2 a, Vector2 b, Vector2 c, Color cor)
 {
-    DrawTriangle(a, b, c, cor);
-    DrawTriangle(a, c, b, cor);
+    DrawTriangle(a, b, c, cor);     // desenha nas duas ordens: uma delas
+    DrawTriangle(a, c, b, cor);     // sempre fica de frente para a câmera
 }
 
 static Vector2 GirarPonto(Vector2 centro, float dx, float dy, float graus)
@@ -2997,11 +3130,9 @@ static void DesenharApostador(Vector2 c, float t, float e, Color cor)
 
     DrawCircleV(p, lado * 0.95f, Fade(cor, 0.08f));
 
-    // Corpo do dado (borda dourada por trás)
     DrawRectanglePro((Rectangle){ p.x, p.y, lado + 8 * e, lado + 8 * e }, (Vector2){ (lado + 8 * e) / 2, (lado + 8 * e) / 2 }, ang, cor);
     DrawRectanglePro((Rectangle){ p.x, p.y, lado, lado }, (Vector2){ lado / 2, lado / 2 }, ang, (Color){ 50, 34, 78, 255 });
 
-    // Rosto: olhos e um sorriso de quem sempre tem certeza
     Vector2 olhoE = GirarPonto(p, -14 * e, -8 * e, ang);
     Vector2 olhoD = GirarPonto(p,  14 * e, -8 * e, ang);
     DrawCircleV(olhoE, 7 * e, WHITE);
@@ -3015,7 +3146,6 @@ static void DesenharApostador(Vector2 c, float t, float e, Color cor)
         DrawLineEx(a, b, 2.5f * e, cor);
     }
 
-    // Dadinho orbitando, sorteando um número novo o tempo todo
     float orb = t * 1.6f;
     Vector2 d = { p.x + cosf(orb) * 62 * e, p.y + sinf(orb) * 24 * e };
     int numero = 1 + (int)(Ruido((unsigned int)(t * 5.0f)) % 6);
@@ -3049,26 +3179,22 @@ static void DesenharSilogista(Vector2 c, float t, float e, Color cor)
     DesenharTrianguloB2(a, b, d, cor);
     DesenharTrianguloB2(a2, b2, d2, (Color){ 22, 30, 60, 255 });
 
-    // Olho
     DrawEllipse((int)p.x, (int)(p.y + 6 * e), 15 * e, 9 * e, WHITE);
     DrawCircle((int)(p.x + sinf(t * 1.3f) * 6 * e), (int)(p.y + 6 * e), 5 * e, (Color){ 0, 60, 140, 255 });
     DrawCircle((int)(p.x + sinf(t * 1.3f) * 6 * e), (int)(p.y + 6 * e), 2 * e, BLACK);
 
-    // Símbolos orbitando
     const char *simbolos[6] = { "->", "¬", "^", "v", "P", "Q" };
     int tam = (int)(14 * e) + 4;
 
     for (int i = 0; i < 6; i++) {
-
         float ang = t * 0.9f + i * (2.0f * PI / 6.0f);
         int sx = (int)(p.x + cosf(ang) * 78 * e);
         int sy = (int)(p.y + sinf(ang) * 30 * e);
-
         DrawText(simbolos[i], sx - MeasureText(simbolos[i], tam) / 2, sy - tam / 2, tam, Fade(cor, 0.85f));
     }
 }
 
-// A FONTE ENVENENADA: uma bacia de dados borbulhando
+// A FONTE ENVENENADA: uma bacia de dados borbulhando (limpa = azul e calma)
 static void DesenharFonte(Vector2 c, float t, float e, Color cor)
 {
     Vector2 p = { c.x, c.y + sinf(t * 1.6f) * 4.0f * e };
@@ -3077,7 +3203,6 @@ static void DesenharFonte(Vector2 c, float t, float e, Color cor)
 
     DrawCircleV(p, r * 1.2f, Fade(cor, 0.07f));
 
-    // Bacia (meio círculo para baixo, desenhado em faixas)
     for (float y = 0; y < r; y += 2.0f) {
         float w = sqrtf(r * r - y * y);
         DrawRectangle((int)(p.x - w), (int)(p.y + y), (int)(2 * w), 2, corpo);
@@ -3086,76 +3211,97 @@ static void DesenharFonte(Vector2 c, float t, float e, Color cor)
     DrawRectangle((int)(p.x - 10 * e), (int)(p.y + r - 2), (int)(20 * e), (int)(14 * e), corpo);
     DrawRectangle((int)(p.x - 22 * e), (int)(p.y + r + 10 * e), (int)(44 * e), (int)(5 * e), corpo);
 
-    // Líquido envenenado e a borda
     DrawEllipse((int)p.x, (int)p.y, r - 3 * e, 10 * e, cor);
     DrawRectangle((int)(p.x - r - 4 * e), (int)(p.y - 3 * e), (int)(8 * e), (int)(7 * e), PURPLE);
     DrawRectangle((int)(p.x + r - 4 * e), (int)(p.y - 3 * e), (int)(8 * e), (int)(7 * e), PURPLE);
 
-    // Olhos boiando no líquido
     DrawCircle((int)(p.x - 14 * e), (int)(p.y - 1 * e), 5 * e, WHITE);
     DrawCircle((int)(p.x + 14 * e), (int)(p.y - 1 * e), 5 * e, WHITE);
     DrawCircle((int)(p.x - 14 * e), (int)p.y, 2.5f * e, BLACK);
     DrawCircle((int)(p.x + 14 * e), (int)p.y, 2.5f * e, BLACK);
 
-    // Dados subindo como bolhas
     const char *bolhas = "%#01~";
     int tam = (int)(12 * e) + 4;
 
     for (int i = 0; i < 5; i++) {
-
         float fase = fmodf(t * 0.7f + i * 0.2f, 1.0f);
         int bx = (int)(p.x + sinf(i * 2.1f + t) * 26 * e);
         int by = (int)(p.y - 8 * e - fase * 64 * e);
         char g[2] = { bolhas[i], '\0' };
-
         DrawText(g, bx - MeasureText(g, tam) / 2, by, tam, Fade(cor, 1.0f - fase));
     }
 }
 
-static void DesenharInimigoB2(int i, Vector2 c, float t, float escala)
+static void DesenharGuardiaoB2(int g, Vector2 c, float t, float escala)
 {
-    Color cor = INIMIGOS_B2[i].cor;
+    Color cor = GUARDIOES_B2[g].cor;
 
-    if (i == INIMIGO_APOSTADOR)      DesenharApostador(c, t, escala, cor);
-    else if (i == INIMIGO_SILOGISTA) DesenharSilogista(c, t, escala, cor);
-    else                             DesenharFonte(c, t, escala, cor);
+    if (g == GUARDIAO_APOSTADOR)      DesenharApostador(c, t, escala, cor);
+    else if (g == GUARDIAO_SILOGISTA) DesenharSilogista(c, t, escala, cor);
+    else                              DesenharFonte(c, t, escala, cor);
 }
 
-// Entidade resolvida: vira um fragmento de dados limpos
-static void DesenharFragmentoB2(int i, Vector2 c, float t)
+// Ícone de cada objeto mágico (e = escala)
+static void DesenharObjetoB2(int i, Vector2 c, float e, float t)
 {
-    Color cor = INIMIGOS_B2[i].cor;
-    Vector2 p = { c.x, c.y + sinf(t * 2.0f + i) * 4.0f };
-    float s = 14.0f;
+    float brilho = 0.12f + 0.06f * sinf(t * 3.0f + i);
 
-    DrawCircleV(p, 26, Fade(cor, 0.10f + 0.05f * sinf(t * 3.0f)));
-    DesenharTrianguloB2((Vector2){ p.x, p.y - s * 1.4f }, (Vector2){ p.x - s, p.y }, (Vector2){ p.x + s, p.y }, cor);
-    DesenharTrianguloB2((Vector2){ p.x - s, p.y }, (Vector2){ p.x, p.y + s * 1.4f }, (Vector2){ p.x + s, p.y }, Fade(cor, 0.75f));
-    DesenharTrianguloB2((Vector2){ p.x, p.y - s * 0.7f }, (Vector2){ p.x - s * 0.45f, p.y }, (Vector2){ p.x + s * 0.45f, p.y }, Fade(WHITE, 0.6f));
+    if (i == 0) {
+        // CRISTAL RAG: cristal azul de dados confiáveis
+        Color cor = SKYBLUE;
+        float s = 12.0f * e;
+
+        DrawCircleV(c, 20 * e, Fade(cor, brilho));
+        DesenharTrianguloB2((Vector2){ c.x, c.y - s * 1.5f }, (Vector2){ c.x - s, c.y }, (Vector2){ c.x + s, c.y }, cor);
+        DesenharTrianguloB2((Vector2){ c.x - s, c.y }, (Vector2){ c.x, c.y + s * 1.5f }, (Vector2){ c.x + s, c.y }, Fade(cor, 0.7f));
+        DesenharTrianguloB2((Vector2){ c.x, c.y - s * 0.8f }, (Vector2){ c.x - s * 0.4f, c.y }, (Vector2){ c.x + s * 0.4f, c.y }, Fade(WHITE, 0.7f));
+
+    } else if (i == 1) {
+        // LUPA DA VERIFICAÇÃO
+        Vector2 lente = { c.x - 3 * e, c.y - 3 * e };
+
+        DrawCircleV(c, 20 * e, Fade(PURPLE, brilho));
+        DrawLineEx((Vector2){ lente.x + 7 * e, lente.y + 7 * e }, (Vector2){ c.x + 13 * e, c.y + 13 * e }, 4 * e, GOLD);
+        DrawCircleV(lente, 10 * e, PURPLE);
+        DrawCircleV(lente, 7 * e, Fade(SKYBLUE, 0.6f));
+        DrawCircleV((Vector2){ lente.x - 3 * e, lente.y - 3 * e }, 2 * e, Fade(WHITE, 0.8f));
+
+    } else {
+        // PERGUNTA PERFEITA: um balão de fala com "?"
+        Color cor = GOLD;
+        Rectangle balao = { c.x - 13 * e, c.y - 11 * e, 26 * e, 18 * e };
+
+        DrawCircleV(c, 20 * e, Fade(cor, brilho));
+        DrawRectangleRec(balao, cor);
+        DesenharTrianguloB2((Vector2){ c.x - 7 * e, c.y + 7 * e }, (Vector2){ c.x - 9 * e, c.y + 13 * e }, (Vector2){ c.x - 1 * e, c.y + 7 * e }, cor);
+
+        int tam = (int)(14 * e) + 2;
+        DrawText("?", (int)c.x - MeasureText("?", tam) / 2, (int)(c.y - 2 * e) - tam / 2, tam, (Color){ 50, 34, 78, 255 });
+    }
 }
 
 // ---------- Desenho da batalha ----------
 
 static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
 {
-    const DefInimigoB2 *def = &INIMIGOS_B2[b->inimigo];
+    const DefGuardiaoB2 *def = &GUARDIOES_B2[b->guardiao];
 
     ClearBackground(BLACK);
 
-    // Cabeçalho
     DrawText(def->nome, LARGURA_TELA / 2 - MeasureText(def->nome, 16) / 2, 12, 16, def->cor);
     DrawText(def->fundamento, LARGURA_TELA / 2 - MeasureText(def->fundamento, 10) / 2, 32, 10, GRAY);
 
-    DesenharInimigoB2(b->inimigo, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, tempo, 0.85f);
+    DesenharGuardiaoB2(b->guardiao, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, tempo, 0.85f);
 
-    // Barra de alucinação da entidade
-    int barraX = 250, barraY = 184, barraL = 300;
-    DrawText("ALUCINAÇÃO", barraX, barraY - 1, 10, LIGHTGRAY);
-    DrawRectangle(barraX + 80, barraY, barraL - 80, 10, (Color){ 40, 30, 55, 255 });
-    DrawRectangle(barraX + 80, barraY, (int)((barraL - 80) * b->alucinacaoInimigo / 100.0f), 10, def->cor);
-    DrawRectangleLines(barraX + 80, barraY, barraL - 80, 10, GRAY);
+    // Barra de alucinação (só no duelo)
+    if (!b->soEsquiva) {
+        int barraX = 250, barraY = 184, barraL = 300;
+        DrawText("ALUCINAÇÃO", barraX, barraY - 1, 10, LIGHTGRAY);
+        DrawRectangle(barraX + 80, barraY, barraL - 80, 10, (Color){ 40, 30, 55, 255 });
+        DrawRectangle(barraX + 80, barraY, (int)((barraL - 80) * b->alucinacaoGuardiao / 100.0f), 10, def->cor);
+        DrawRectangleLines(barraX + 80, barraY, barraL - 80, 10, GRAY);
+    }
 
-    // Caixa (encolhe para a esquiva)
     float t = b->anim * b->anim * (3.0f - 2.0f * b->anim);
 
     Rectangle caixa = {
@@ -3187,46 +3333,6 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             DrawText("ENTER >", (int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12, GOLD);
     }
 
-    else if (b->fase == B2_DESAFIO && b->inimigo == INIMIGO_FONTE) {
-
-        const LoteDados *lote = LoteAtualB2(b);
-
-        DrawText(TextFormat("LOTE DE TREINAMENTO %d", (b->rodada % NUM_LOTES_FONTE) + 1), px, py, 16, def->cor);
-        DrawText("Marque os dados corrompidos (errados ou desatualizados) e treine a IA.", px, py + 24, 14, LIGHTGRAY);
-
-        int y = py + 58;
-
-        for (int i = 0; i <= ITENS_LOTE; i++) {
-
-            bool marcada = (b->selecao == i);
-
-            if (marcada)
-                DesenharCoracao((float)px + 6, (float)y + 8, 2, RED);
-
-            if (i < ITENS_LOTE) {
-
-                Rectangle caixinha = { (float)px + 24, (float)y, 16, 16 };
-                DrawRectangleLinesEx(caixinha, 2, marcada ? YELLOW : GRAY);
-
-                if (b->marcados[i]) {
-                    DrawLineEx((Vector2){ caixinha.x + 3, caixinha.y + 3 }, (Vector2){ caixinha.x + 13, caixinha.y + 13 }, 2, def->cor);
-                    DrawLineEx((Vector2){ caixinha.x + 13, caixinha.y + 3 }, (Vector2){ caixinha.x + 3, caixinha.y + 13 }, 2, def->cor);
-                }
-
-                DrawText(lote->itens[i], px + 52, y, 16, marcada ? YELLOW : (b->marcados[i] ? def->cor : WHITE));
-                y += 30;
-
-            } else {
-
-                y += 8;
-                DrawText("[ TREINAR A IA COM ESTE LOTE ]", px + 24, y, 16, marcada ? YELLOW : SKYBLUE);
-            }
-        }
-
-        DrawText("W/S: escolher    E/ENTER: marcar ou desmarcar    (no fim da lista: treinar)",
-                 px, (int)(caixa.y + caixa.height) - 24, 10, GRAY);
-    }
-
     else if (b->fase == B2_DESAFIO) {
 
         const RodadaEscolha *r = RodadaAtualB2(b);
@@ -3245,8 +3351,7 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             y += nl * (f + 6) + 6;
         }
 
-        DrawText(r->numOpcoes > 2 ? "W/S ou SETAS: escolher    ENTER: confirmar    1-4: atalho"
-                                  : "W/S ou A/D: escolher    ENTER: confirmar",
+        DrawText("W/S ou SETAS: escolher    ENTER: confirmar    1-4: atalho",
                  px, (int)(caixa.y + caixa.height) - 24, 10, GRAY);
     }
 
@@ -3255,9 +3360,7 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
         BeginScissorMode((int)caixa.x + 4, (int)caixa.y + 4, (int)caixa.width - 8, (int)caixa.height - 8);
 
         for (int i = 0; i < MAX_BALAS; i++) {
-
             if (!b->balas[i].ativa) continue;
-
             char g[2] = { b->balas[i].glifo, '\0' };
             DrawText(g, (int)b->balas[i].pos.x - MeasureText(g, 20) / 2, (int)b->balas[i].pos.y - 10, 20, def->cor);
         }
@@ -3267,13 +3370,12 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
 
         EndScissorMode();
 
-        float resta = 1.0f - b->tempoDesvio / DURACAO_DESVIO_B2;
+        float resta = 1.0f - b->tempoDesvio / b->duracaoDesvio;
         if (resta < 0.0f) resta = 0.0f;
 
         DrawRectangle((int)caixa.x, (int)(caixa.y + caixa.height + 6), (int)(caixa.width * resta), 3, Fade(WHITE, 0.5f));
     }
 
-    // Status do jogador
     int yStatus = 522;
 
     DrawText(nickname, 60, yStatus, 20, WHITE);
@@ -3289,98 +3391,770 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
         DrawText(instrucao, LARGURA_TELA / 2 - MeasureText(instrucao, 12) / 2, 568, 12, GRAY);
 }
 
-// ---------- Desenho da sala do Bloco 2 ----------
+// ---------- Lógica das salas ----------
 
-static void DesenharSalaB2(const ProgressoBloco2 *p, Vector2 playerPos, float tempo, bool explorando,
-                           const SpriteDirecao sprites[NUM_DIRECOES], Direcao direcao, int quadro)
+static void IniciarBatalhaB2(ContextoB2 *c, MotivoBatalhaB2 motivo, const char *falaDepois)
+{
+    *c->salaDaBatalha = *c->tela;
+    *c->motivo = motivo;
+    *c->falaPosBatalha = falaDepois;
+    IniciarTransicao(c->transicao, BATALHA_B2, DURACAO_FADE_BATALHA);
+}
+
+static void GanharObjetoB2(ContextoB2 *c, int i)
+{
+    c->b2->objeto[i] = true;
+    AlterarPontos(c->progresso, PONTOS_ITEM_B2);
+    DialogoIniciar(c->dlg, &dialogoItemB2[i], OBJ_NENHUM);
+    *c->pedirAutoSave = true;
+}
+
+// Treinar na FONTE: confere a classificação dos 6 registros
+static void TreinarNaFonte(ContextoB2 *c)
+{
+    int errados = 0;
+
+    for (int i = 0; i < NUM_REGISTROS; i++) {
+
+        bool marcouCorrompido = (c->b2->registro[i] == 2);
+
+        if (marcouCorrompido != REGISTRO_CORROMPIDO[i]) {
+            errados++;
+            c->b2->registro[i] = 0;          // destrava para inspecionar de novo
+        }
+    }
+
+    if (errados == 0) {
+        GanharObjetoB2(c, 0);
+        return;
+    }
+
+    c->progresso->alucinacao++;
+
+    BatalhaB2IniciarEsquiva(c->batalha, GUARDIAO_FONTE, c->progresso->alucinacao, TextFormat(
+        "* A IA aprendeu com %d registro(s) mal classificado(s) e começou a alucinar!\n"
+        "* A FONTE ENVENENADA transborda. Desvie!", errados));
+
+    IniciarBatalhaB2(c, MOTIVO_FONTE, FALA_FONTE_ERRO);
+}
+
+// Console da Câmara Lógica: verifica as três regras com as alavancas atuais
+static void VerificarRegras(ContextoB2 *c)
+{
+    int falsas = 0;
+
+    for (int r = 0; r < 3; r++) {
+        bool v = AvaliarRegra(r, c->b2->alavanca);
+        c->b2->luzRegra[r] = v ? 1 : 2;
+        if (!v) falsas++;
+    }
+
+    if (falsas == 0) {
+        c->b2->barreiraAberta = true;
+        DialogoIniciar(c->dlg, &dialogoBarreiraAberta, OBJ_NENHUM);
+        *c->pedirAutoSave = true;
+        return;
+    }
+
+    c->progresso->alucinacao++;
+
+    BatalhaB2IniciarEsquiva(c->batalha, GUARDIAO_SILOGISTA, c->progresso->alucinacao, TextFormat(
+        "* %d regra(s) do painel ficaram falsas com P = %s, Q = %s e R = %s.\n"
+        "* O SILOGISTA dispara um contra-argumento!", falsas,
+        c->b2->alavanca[0] ? "V" : "F", c->b2->alavanca[1] ? "V" : "F", c->b2->alavanca[2] ? "V" : "F"));
+
+    IniciarBatalhaB2(c, MOTIVO_LOGICA, FALA_LOGICA_ERRO);
+}
+
+// Sala da Lacuna: o APOSTADOR responde à pergunta montada
+static void PerguntarAoApostador(ContextoB2 *c)
+{
+    const bool *inc = c->montador->incluido;
+    bool faltou = false;
+
+    for (int i = 0; i < NUM_FRAGMENTOS; i++)
+        if (FRAGMENTO_UTIL[i] && !inc[i])
+            faltou = true;
+
+    c->montador->aberto = false;
+
+    if (!faltou && !inc[3] && !inc[4]) {
+        GanharObjetoB2(c, 2);
+        return;
+    }
+
+    const char *chute, *fala;
+
+    if (faltou)       { chute = "Foi 7 a 1 para a Alemanha, em 2014!";                       fala = FALA_LACUNA_FALTOU; }
+    else if (inc[3])  { chute = "Em 1998 ou 2002? Foi 3 a 0 para a França!";                 fala = FALA_LACUNA_CONTRADICAO; }
+    else              { chute = "A pipoca da final de 2002 foi a mais vendida da história!";  fala = FALA_LACUNA_RUIDO; }
+
+    c->progresso->alucinacao++;
+
+    BatalhaB2IniciarEsquiva(c->batalha, GUARDIAO_APOSTADOR, c->progresso->alucinacao, TextFormat(
+        "* O APOSTADOR rola os dados: \"%s\"\n* Ele chutou! Os dados voam na sua direção.", chute));
+
+    IniciarBatalhaB2(c, MOTIVO_LACUNA, fala);
+}
+
+static void AbrirMontador(MontadorPergunta *m, const ProgressoBloco2 *p)
+{
+    m->aberto = true;
+    m->selecao = 0;
+    m->tamLista = 0;
+
+    for (int i = 0; i < NUM_FRAGMENTOS; i++) {
+        m->incluido[i] = false;
+        if (p->fragmento[i])
+            m->lista[m->tamLista++] = i;
+    }
+}
+
+static void AtualizarMontador(ContextoB2 *c)
+{
+    MontadorPergunta *m = c->montador;
+    int n = m->tamLista + 2;           // fragmentos + PERGUNTAR + VOLTAR
+
+    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   m->selecao = (m->selecao + n - 1) % n;
+    if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) m->selecao = (m->selecao + 1) % n;
+
+    if (IsKeyPressed(KEY_BACKSPACE)) {
+        m->aberto = false;
+        return;
+    }
+
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
+
+        if (m->selecao < m->tamLista) {
+            int f = m->lista[m->selecao];
+            m->incluido[f] = !m->incluido[f];
+        }
+        else if (m->selecao == m->tamLista) PerguntarAoApostador(c);
+        else                                m->aberto = false;
+    }
+}
+
+// Sala central e salas-puzzle. Chamado pelo main quando a tela é do Bloco 2.
+static void AtualizarSalaB2(ContextoB2 *c, float dt)
+{
+    TelaAtual tela = *c->tela;
+    ProgressoBloco2 *p = c->b2;
+    int sala = IndiceSalaB2(tela);
+
+    (void)dt;
+
+    // ---------- Conversa em andamento ----------
+    if (c->dlg->estado != DLG_NENHUM) {
+
+        ResultadoDialogo r = DialogoAtualizar(c->dlg);
+        int obj = c->dlg->objeto;
+
+        if (r == RES_SIM || r == RES_NAO) {
+
+            if (obj >= OBJ_REGISTRO_BASE && obj < OBJ_REGISTRO_BASE + NUM_REGISTROS) {
+                p->registro[obj - OBJ_REGISTRO_BASE] = (r == RES_SIM) ? 2 : 1;
+            }
+            else if (obj == OBJ_FONTE && r == RES_SIM) {
+                TreinarNaFonte(c);
+            }
+        }
+
+        return;
+    }
+
+    // ---------- Montador de pergunta aberto ----------
+    if (c->montador->aberto) {
+        AtualizarMontador(c);
+        return;
+    }
+
+    // ---------- Primeira vez em cada lugar: a Luci explica ----------
+    if (tela == SETOR2 && !p->introVista) {
+        p->introVista = true;
+        DialogoIniciar(c->dlg, &dialogoIntroBloco2, OBJ_NENHUM);
+        return;
+    }
+
+    if (sala >= 0 && !p->introSala[sala]) {
+        p->introSala[sala] = true;
+        DialogoIniciar(c->dlg, &dialogoIntroSalas[sala], OBJ_NENHUM);
+        return;
+    }
+
+    // Voltou para a sala central com os três objetos: fim do bloco
+    if (tela == SETOR2 && TodosObjetosB2(p) && !p->fimAnunciado) {
+        p->fimAnunciado = true;
+        DialogoIniciar(c->dlg, &dialogoFimBloco2, OBJ_NENHUM);
+        *c->pedirAutoSave = true;
+        return;
+    }
+
+    // ---------- Movimento ----------
+    Vector2 posAnterior = *c->pos;
+    *c->direcao = MoverJogador(c->pos, *c->direcao);
+
+    Rectangle solidos[12];
+    int n = SolidosB2(tela, p, solidos, 12);
+
+    for (int i = 0; i < n; i++)
+        if (CheckCollisionRecs(HitboxJogador(*c->pos), solidos[i]))
+            *c->pos = posAnterior;
+
+    c->pos->x = Clamp(c->pos->x, 80, 720);
+    c->pos->y = Clamp(c->pos->y, 200, (sala >= 0) ? 470 : 492);
+
+    if (!IsKeyPressed(KEY_E))
+        return;
+
+    Rectangle jogador = AreaJogador(*c->pos);
+
+    // ---------- Sala central ----------
+    if (tela == SETOR2) {
+
+        if (CheckCollisionRecs(jogador, ZONA_PORTA_VOLTAR_B2)) {
+            IniciarTransicao(c->transicao, CORREDOR, DURACAO_FADE);
+            return;
+        }
+
+        if (CheckCollisionRecs(jogador, ZONA_PORTA_NUCLEO)) {
+            // TODO: aqui entra a transição para o Bloco 3 (batalha final com os objetos).
+            DialogoIniciar(c->dlg, TodosObjetosB2(p) ? &dialogoNucleoLiberado : &dialogoNucleoTrancado, OBJ_NENHUM);
+            return;
+        }
+
+        for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+            Rectangle zona = { PORTAS_SALAS_B2[i].x - 10, PORTAS_SALAS_B2[i].y, PORTAS_SALAS_B2[i].width + 20, 104 };
+            if (CheckCollisionRecs(jogador, zona)) {
+                IniciarTransicao(c->transicao, TelaDaSalaB2(i), DURACAO_FADE);
+                return;
+            }
+        }
+
+        if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_ALTAR))) {
+            int nObj = ContarObjetosB2(p);
+            DialogoFalaAvulsa(c->dlg, (nObj == NUM_OBJETOS_B2)
+                ? "* Os três objetos brilham no altar. A porta do NÚCLEO está aberta."
+                : TextFormat("* Um altar com três encaixes. Objetos encontrados: %d de 3.", nObj));
+        }
+
+        return;
+    }
+
+    // ---------- Salas-puzzle: porta de saída ----------
+    if (CheckCollisionRecs(jogador, ZONA_PORTA_SAIDA_SALA)) {
+        IniciarTransicao(c->transicao, SETOR2, DURACAO_FADE);
+        return;
+    }
+
+    // ---------- Sala dos Registros ----------
+    if (tela == SALA_REGISTROS) {
+
+        if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_FONTE))) {
+
+            if (p->objeto[0])
+                DialogoFalaAvulsa(c->dlg, "* A FONTE corre limpa e calma agora.");
+            else if (RegistrosInspecionados(p) < NUM_REGISTROS)
+                DialogoFalaAvulsa(c->dlg, TextFormat("Luci: Antes de treinar, inspecione todos os registros. (%d de %d)",
+                                                     RegistrosInspecionados(p), NUM_REGISTROS));
+            else
+                DialogoConfirmar(c->dlg,
+                    "* A FONTE vai treinar a IA só com os registros que você marcou como limpos.\n* Treinar agora?",
+                    OBJ_FONTE);
+            return;
+        }
+
+        for (int i = 0; i < NUM_REGISTROS; i++) {
+
+            if (!CheckCollisionRecs(jogador, ZonaObjetoB2(POS_REGISTROS[i])))
+                continue;
+
+            if (p->objeto[0])
+                DialogoFalaAvulsa(c->dlg, TextFormat("* REGISTRO %d: \"%s\"\n* %s", i + 1, TEXTO_REGISTROS[i],
+                                  REGISTRO_CORROMPIDO[i] ? "(removido do treino)" : "(dado confiável)"));
+            else
+                DialogoConfirmar(c->dlg, TextFormat(
+                    "* REGISTRO %d: \"%s\"\n* Este dado está corrompido (errado ou desatualizado)?",
+                    i + 1, TEXTO_REGISTROS[i]), OBJ_REGISTRO_BASE + i);
+            return;
+        }
+    }
+
+    // ---------- Câmara Lógica ----------
+    else if (tela == SALA_LOGICA) {
+
+        if (p->barreiraAberta && !p->objeto[1] &&
+            CheckCollisionRecs(jogador, (Rectangle){ POS_SILOGISTA.x - 60, POS_SILOGISTA.y - 20, 120, 110 })) {
+
+            BatalhaB2IniciarDuelo(c->batalha, c->progresso->alucinacao);
+            IniciarBatalhaB2(c, MOTIVO_SILOGISTA, FALA_DERROTA_SILOGISTA);
+            return;
+        }
+
+        if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_CONSOLE))) {
+
+            if (p->barreiraAberta)
+                DialogoFalaAvulsa(c->dlg, "* O console mostra: TODAS AS REGRAS VERDADEIRAS.");
+            else
+                VerificarRegras(c);
+            return;
+        }
+
+        for (int i = 0; i < 3; i++) {
+
+            if (!CheckCollisionRecs(jogador, ZonaObjetoB2(POS_ALAVANCAS[i])))
+                continue;
+
+            if (p->barreiraAberta) {
+                DialogoFalaAvulsa(c->dlg, "* As alavancas travaram na posição certa.");
+            } else {
+                p->alavanca[i] = !p->alavanca[i];
+                for (int r = 0; r < 3; r++) p->luzRegra[r] = 0;   // precisa verificar de novo
+            }
+            return;
+        }
+    }
+
+    // ---------- Sala da Lacuna ----------
+    else if (tela == SALA_LACUNA) {
+
+        if (CheckCollisionRecs(jogador, (Rectangle){ POS_APOSTADOR.x - 60, POS_APOSTADOR.y - 20, 120, 110 })) {
+
+            if (p->objeto[2]) {
+                DialogoFalaAvulsa(c->dlg, "* O APOSTADOR guardou os dados. Ele só responde o que a pergunta deixa claro.");
+            } else if (!p->perguntaVagaFeita) {
+                p->perguntaVagaFeita = true;
+                DialogoIniciar(c->dlg, &dialogoPerguntaVaga, OBJ_APOSTADOR);
+            } else {
+                int coletados = 0;
+                for (int i = 0; i < NUM_FRAGMENTOS; i++) if (p->fragmento[i]) coletados++;
+
+                if (coletados == 0)
+                    DialogoFalaAvulsa(c->dlg, "Luci: Ainda não temos nenhum fragmento de contexto. Procure pela sala.");
+                else
+                    AbrirMontador(c->montador, p);
+            }
+            return;
+        }
+
+        for (int i = 0; i < NUM_FRAGMENTOS; i++) {
+
+            if (p->fragmento[i] || !CheckCollisionRecs(jogador, ZonaObjetoB2(POS_FRAGMENTOS[i])))
+                continue;
+
+            p->fragmento[i] = true;
+            DialogoFalaAvulsa(c->dlg, TextFormat("* Fragmento de contexto encontrado: \"%s\"", TEXTO_FRAGMENTOS[i]));
+            return;
+        }
+    }
+}
+
+// Fim de uma batalha do Bloco 2: pontos, objeto e fala da Luci
+static void FimBatalhaB2(ContextoB2 *c)
+{
+    BatalhaB2 *b = c->batalha;
+
+    c->progresso->alucinacao += b->erros;
+
+    int delta = b->acertos * PONTOS_ACERTO_B2 - b->erros * PENALIDADE_ERRO;
+
+    if (b->soEsquiva) delta -= PENALIDADE_ERRO;       // o puzzle errado que causou o ataque
+    if (b->derrota)   delta -= PENALIDADE_HP_ZERO;
+
+    AlterarPontos(c->progresso, delta);
+
+    if (*c->motivo == MOTIVO_SILOGISTA && b->venceu) {
+        c->b2->objeto[1] = true;
+        AlterarPontos(c->progresso, PONTOS_ITEM_B2);
+        DialogoIniciar(c->dlg, &dialogoItemB2[1], OBJ_NENHUM);
+    } else {
+        DialogoFalaAvulsa(c->dlg, *c->falaPosBatalha);
+    }
+
+    *c->pedirAutoSave = true;
+    IniciarTransicao(c->transicao, *c->salaDaBatalha, DURACAO_FADE_BATALHA);
+}
+
+// ---------- Desenho das salas ----------
+
+static void DesenharPortaSalaB2(Rectangle porta, Color cor, bool destaque, float pulso)
+{
+    DrawRectangleRec(porta, (Color){ 35, 25, 55, 255 });
+    DrawRectangleLinesEx(porta, 3, destaque ? Fade(cor, 0.55f + 0.45f * pulso) : Fade(cor, 0.7f));
+}
+
+// Paredes, chão e borda (comuns a todas as salas do Bloco 2)
+static void DesenharBaseSalaB2(Color corDestaque, float tempo, bool racks)
 {
     ClearBackground((Color){ 8, 6, 18, 255 });
 
-    // Parede de fundo com "racks" de dados piscando
     DrawRectangle(50, 100, 700, 90, (Color){ 26, 20, 46, 255 });
 
-    for (int i = 0; i < 9; i++) {
+    if (racks) {
+        for (int i = 0; i < 9; i++) {
+            int x = 66 + i * 76;
+            if (i == 1 || i == 4 || i == 7) continue;     // lugares das portas
 
-        if (i == 4) continue;   // lugar da porta do núcleo
+            DrawRectangle(x, 112, 40, 68, (Color){ 18, 15, 30, 255 });
+            DrawRectangleLines(x, 112, 40, 68, Fade(PURPLE, 0.4f));
 
-        int x = 66 + i * 76;
-        DrawRectangle(x, 112, 40, 68, (Color){ 18, 15, 30, 255 });
-        DrawRectangleLines(x, 112, 40, 68, Fade(PURPLE, 0.4f));
-
-        for (int j = 0; j < 5; j++) {
-            bool aceso = (Ruido((unsigned int)(i * 31 + j * 7) + (unsigned int)(tempo * 3.0f)) % 3) == 0;
-            DrawRectangle(x + 6, 118 + j * 12, 28, 4, aceso ? SKYBLUE : Fade(PURPLE, 0.25f));
+            for (int j = 0; j < 5; j++) {
+                bool aceso = (Ruido((unsigned int)(i * 31 + j * 7) + (unsigned int)(tempo * 3.0f)) % 3) == 0;
+                DrawRectangle(x + 6, 118 + j * 12, 28, 4, aceso ? SKYBLUE : Fade(PURPLE, 0.25f));
+            }
         }
     }
 
-    // Chão
     DrawRectangle(50, 190, 700, 330, (Color){ 18, 15, 30, 255 });
-    DrawRectangle(50, 186, 700, 6, Fade(PURPLE, 0.45f));
+    DrawRectangle(50, 186, 700, 6, Fade(corDestaque, 0.45f));
 
     for (int x = 50; x < 750; x += 70)
-        DrawLine(x, 192, x, 520, Fade(PURPLE, 0.10f));
+        DrawLine(x, 192, x, 520, Fade(corDestaque, 0.08f));
 
     for (int y = 240; y < 520; y += 60)
-        DrawLine(50, y, 750, y, Fade(PURPLE, 0.06f));
+        DrawLine(50, y, 750, y, Fade(corDestaque, 0.05f));
 
     DrawRectangleLinesEx(MAPA_B2, 4, Fade(PURPLE, 0.55f));
+}
 
-    // Portas
-    bool nucleoAberto = TodosInimigosB2(p);
-    float pulso = 0.5f + 0.5f * sinf(tempo * 4.0f);
+static void DesenharAvisoE(Vector2 centro, float dy)
+{
+    DrawText("PRESSIONE E", (int)centro.x - MeasureText("PRESSIONE E", 12) / 2, (int)(centro.y + dy), 12, GOLD);
+}
 
-    DesenharPortaCorredor(PORTA_VOLTAR_B2, PURPLE);
-    DrawText("CORREDOR", 74, 286, 10, LIGHTGRAY);
+static void DesenharTerminalRegistro(int i, Vector2 c, int estado, bool resolvido, float tempo)
+{
+    Color tela = (estado == 0) ? (Color){ 40, 40, 60, 255 } : (estado == 1) ? SKYBLUE : (Color){ 220, 90, 200, 255 };
+    float pulso = 0.5f + 0.5f * sinf(tempo * 3.0f + i);
 
-    DrawRectangleRec(PORTA_NUCLEO, (Color){ 35, 25, 55, 255 });
-    DrawRectangleLinesEx(PORTA_NUCLEO, 3, nucleoAberto ? Fade(SKYBLUE, 0.55f + 0.45f * pulso) : Fade(PURPLE, 0.5f));
-    DrawText("NÚCLEO", (int)(PORTA_NUCLEO.x + PORTA_NUCLEO.width / 2) - MeasureText("NÚCLEO", 10) / 2,
-             (int)(PORTA_NUCLEO.y + PORTA_NUCLEO.height / 2) - 5, 10, nucleoAberto ? SKYBLUE : GRAY);
+    DrawRectangle((int)c.x - 20, (int)c.y - 28, 40, 50, (Color){ 30, 28, 44, 255 });
+    DrawRectangleLines((int)c.x - 20, (int)c.y - 28, 40, 50, Fade(PURPLE, 0.6f));
+    DrawRectangle((int)c.x - 15, (int)c.y - 23, 30, 22, Fade(tela, (estado == 0) ? 1.0f : 0.6f + 0.3f * pulso));
+    DrawRectangle((int)c.x - 10, (int)c.y + 22, 20, 6, (Color){ 45, 40, 62, 255 });
 
-    Rectangle jogador = AreaJogador(playerPos);
-    float pesJogador = playerPos.y + ALTURA_PERSONAGEM / 2;
+    if (estado == 0) {
+        DrawText("?", (int)c.x - MeasureText("?", 16) / 2, (int)c.y - 21, 16, GRAY);
+    } else if (estado == 2) {
+        DrawLineEx((Vector2){ c.x - 7, c.y - 19 }, (Vector2){ c.x + 7, c.y - 5 }, 2, WHITE);
+        DrawLineEx((Vector2){ c.x + 7, c.y - 19 }, (Vector2){ c.x - 7, c.y - 5 }, 2, WHITE);
+    } else {
+        DrawText("OK", (int)c.x - MeasureText("OK", 10) / 2, (int)c.y - 17, 10, WHITE);
+    }
 
-    // Entidades atrás do jogador -> jogador -> entidades na frente
-    for (int passada = 0; passada < 2; passada++) {
+    const char *rotulo = TextFormat("REG %d", i + 1);
+    DrawText(rotulo, (int)c.x - MeasureText(rotulo, 10) / 2, (int)c.y + 6, 10, resolvido ? Fade(LIGHTGRAY, 0.5f) : LIGHTGRAY);
+}
 
-        if (passada == 1)
-            DesenharJogador(sprites, playerPos, direcao, quadro);
+static void DesenharAlavanca(int i, Vector2 c, bool ligada)
+{
+    DrawRectangle((int)c.x - 22, (int)c.y + 6, 44, 10, (Color){ 45, 40, 62, 255 });
+    DrawRectangleLines((int)c.x - 22, (int)c.y + 6, 44, 10, Fade(SKYBLUE, 0.6f));
 
-        for (int i = 0; i < NUM_INIMIGOS_B2; i++) {
+    Vector2 base = { c.x, c.y + 8 };
+    Vector2 ponta = { c.x + (ligada ? 16.0f : -16.0f), c.y - 18 };
 
-            Vector2 pos = INIMIGOS_B2[i].pos;
-            bool atras = (pos.y + 30 <= pesJogador);
+    DrawLineEx(base, ponta, 4, LIGHTGRAY);
+    DrawCircleV(ponta, 6, ligada ? LIME : MAROON);
 
-            if ((passada == 0) != atras)
-                continue;
+    const char *rotulo = TextFormat("%s = %s", NOMES_VARIAVEIS[i], ligada ? "V" : "F");
+    DrawText(rotulo, (int)c.x - MeasureText(rotulo, 14) / 2, (int)c.y + 22, 14, ligada ? LIME : (Color){ 230, 120, 120, 255 });
+}
 
-            DrawEllipse((int)pos.x, (int)pos.y + 44, 40, 10, Fade(INIMIGOS_B2[i].cor, 0.15f));
+static void DesenharPainelRegras(const ProgressoBloco2 *p, float tempo)
+{
+    Rectangle painel = { 220, 108, 360, 74 };
 
-            if (p->derrotado[i])
-                DesenharFragmentoB2(i, pos, tempo);
-            else
-                DesenharInimigoB2(i, pos, tempo, 0.5f);
+    DrawRectangleRec(painel, (Color){ 14, 18, 36, 255 });
+    DrawRectangleLinesEx(painel, 2, SKYBLUE);
+    DrawText("REGRAS DA BARREIRA", (int)painel.x + 10, (int)painel.y + 6, 10, Fade(SKYBLUE, 0.8f));
+
+    for (int r = 0; r < 3; r++) {
+
+        int x = (int)painel.x + 24 + r * 112;
+        int y = (int)painel.y + 28;
+        int luz = p->luzRegra[r];
+        Color cor = (luz == 0) ? (Color){ 70, 70, 90, 255 } : (luz == 1) ? LIME : RED;
+
+        if (p->barreiraAberta) cor = LIME;
+
+        DrawText(TEXTO_REGRAS[r], x, y, 16, WHITE);
+        DrawCircle(x + MeasureText(TEXTO_REGRAS[r], 16) / 2, y + 30, 5, Fade(cor, 0.7f + 0.3f * sinf(tempo * 4.0f)));
+    }
+}
+
+static void DesenharBarreira(float tempo)
+{
+    Rectangle b = BARREIRA_LOGICA;
+
+    DrawRectangle((int)b.x - 6, (int)b.y, 8, (int)b.height, (Color){ 45, 40, 62, 255 });
+    DrawRectangle((int)(b.x + b.width) - 2, (int)b.y, 8, (int)b.height, (Color){ 45, 40, 62, 255 });
+
+    for (int i = 0; i < 5; i++) {
+        float y = b.y + 10 + i * 14 + sinf(tempo * 4.0f + i) * 2;
+        DrawLineEx((Vector2){ b.x, y }, (Vector2){ b.x + b.width, y }, 2, Fade(SKYBLUE, 0.35f + 0.25f * sinf(tempo * 6.0f + i)));
+    }
+}
+
+static void DesenharFragmento(Vector2 c, float tempo, int i)
+{
+    Vector2 p = { c.x, c.y + sinf(tempo * 2.5f + i) * 4.0f };
+
+    DrawCircleV(p, 16, Fade(GOLD, 0.12f + 0.06f * sinf(tempo * 3.0f + i)));
+    DrawCircleV(p, 8, GOLD);
+    DrawCircleV(p, 4, (Color){ 255, 240, 180, 255 });
+}
+
+// HUD do Bloco 2 (objetos, pontos, alucinação)
+static void DesenharHUDB2(TelaAtual tela, const ProgressoBloco2 *p, const ProgressoCorredor *prog,
+                          const char *nickname, float tempo)
+{
+    DrawText("OBJETOS", 65, 62, 14, WHITE);
+
+    for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+
+        Vector2 c = { 150.0f + i * 28, 68.0f };
+
+        if (p->objeto[i]) {
+            DesenharObjetoB2(i, c, 0.55f, tempo);
+        } else {
+            DrawRectangleLines((int)c.x - 10, (int)c.y - 10, 20, 20, Fade(GRAY, 0.6f));
         }
     }
 
-    // Nomes e avisos
-    for (int i = 0; i < NUM_INIMIGOS_B2; i++) {
+    DrawText(TextFormat("PONTOS: %d", prog->pontos), 250, 62, 14, GOLD);
+    DrawText(TextFormat("ALUCINAÇÃO: %d", prog->alucinacao), 380, 62, 14,
+             (prog->alucinacao == 0) ? LIGHTGRAY : (prog->alucinacao < 3 ? ORANGE : RED));
+    DrawText(nickname, 700 - MeasureText(nickname, 14), 62, 14, WHITE);
 
-        Vector2 pos = INIMIGOS_B2[i].pos;
-        const char *nome = p->derrotado[i] ? "RESOLVIDO" : INIMIGOS_B2[i].nome;
+    int sala = IndiceSalaB2(tela);
+    DrawText(sala >= 0 ? TITULOS_SALAS_B2[sala] : "BLOCO 2 // ARQUIVO DE TREINAMENTO", 65, 84, 10, GRAY);
+}
 
-        DrawText(nome, (int)pos.x - MeasureText(nome, 10) / 2, (int)pos.y - 58, 10,
-                 p->derrotado[i] ? Fade(INIMIGOS_B2[i].cor, 0.6f) : INIMIGOS_B2[i].cor);
+static void DesenharMontador(const MontadorPergunta *m)
+{
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.6f));
 
-        if (explorando && CheckCollisionRecs(jogador, ZonaInimigoB2(i)))
-            DrawText("PRESSIONE E", (int)pos.x - MeasureText("PRESSIONE E", 12) / 2, (int)pos.y - 76, 12, GOLD);
+    Rectangle painel = { 90, 140, 620, 330 };
+    DrawRectangleRec(painel, BLACK);
+    DrawRectangleLinesEx(painel, 4, WHITE);
+
+    int px = (int)painel.x + 24;
+    int py = (int)painel.y + 18;
+
+    DrawText("MONTE A SUA PERGUNTA", px, py, 16, GOLD);
+    DrawText("Escolha os fragmentos de contexto que deixam a pergunta clara.", px, py + 24, 14, LIGHTGRAY);
+
+    int y = py + 56;
+
+    for (int k = 0; k <= m->tamLista + 1; k++) {
+
+        bool marcada = (m->selecao == k);
+
+        if (marcada)
+            DesenharCoracao((float)px + 6, (float)y + 8, 2, RED);
+
+        if (k < m->tamLista) {
+
+            int f = m->lista[k];
+            Rectangle caixinha = { (float)px + 24, (float)y, 16, 16 };
+
+            DrawRectangleLinesEx(caixinha, 2, marcada ? YELLOW : GRAY);
+
+            if (m->incluido[f]) {
+                DrawLineEx((Vector2){ caixinha.x + 3, caixinha.y + 8 }, (Vector2){ caixinha.x + 7, caixinha.y + 13 }, 2, GOLD);
+                DrawLineEx((Vector2){ caixinha.x + 7, caixinha.y + 13 }, (Vector2){ caixinha.x + 13, caixinha.y + 3 }, 2, GOLD);
+            }
+
+            DrawText(TEXTO_FRAGMENTOS[f], px + 52, y, 16, marcada ? YELLOW : (m->incluido[f] ? GOLD : WHITE));
+            y += 30;
+
+        } else if (k == m->tamLista) {
+
+            y += 8;
+            DrawText("[ PERGUNTAR AO APOSTADOR ]", px + 24, y, 16, marcada ? YELLOW : SKYBLUE);
+            y += 28;
+
+        } else {
+
+            DrawText("[ VOLTAR ]", px + 24, y, 16, marcada ? YELLOW : GRAY);
+        }
     }
 
-    if (explorando && CheckCollisionRecs(jogador, ZONA_PORTA_VOLTAR_B2))
-        DrawText("PRESSIONE E", 74, 394, 12, GOLD);
+    DrawText("W/S: escolher    E/ENTER: marcar ou confirmar    BACKSPACE: voltar",
+             px, (int)(painel.y + painel.height) - 24, 10, GRAY);
+}
 
-    if (explorando && CheckCollisionRecs(jogador, ZONA_PORTA_NUCLEO))
-        DrawText("PRESSIONE E", (int)(PORTA_NUCLEO.x + PORTA_NUCLEO.width) + 10, (int)PORTA_NUCLEO.y + 30, 12, GOLD);
+// Desenha a sala central ou a sala-puzzle atual (o jogador entra na ordem certa de profundidade)
+static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 playerPos, float tempo, bool explorando,
+                           const SpriteDirecao sprites[NUM_DIRECOES], Direcao direcao, int quadro)
+{
+    int sala = IndiceSalaB2(tela);
+    Color cor = (sala >= 0) ? CORES_SALAS_B2[sala] : PURPLE;
+    float pulso = 0.5f + 0.5f * sinf(tempo * 4.0f);
+    Rectangle jogador = AreaJogador(playerPos);
+    float pes = playerPos.y + ALTURA_PERSONAGEM / 2;
+    bool jogadorDesenhado = false;
+
+    DesenharBaseSalaB2(cor, tempo, tela == SETOR2);
+
+    // ===================== SALA CENTRAL =====================
+    if (tela == SETOR2) {
+
+        bool nucleoAberto = TodosObjetosB2(p);
+
+        DesenharPortaCorredor(PORTA_VOLTAR_B2, PURPLE);
+        DrawText("CORREDOR", 74, 286, 10, LIGHTGRAY);
+
+        DrawRectangleRec(PORTA_NUCLEO, (Color){ 35, 25, 55, 255 });
+        DrawRectangleLinesEx(PORTA_NUCLEO, 3, nucleoAberto ? Fade(SKYBLUE, 0.55f + 0.45f * pulso) : Fade(PURPLE, 0.5f));
+        DrawText("NÚCLEO", 726 - MeasureText("NÚCLEO", 10), 286, 10, nucleoAberto ? SKYBLUE : GRAY);
+
+        for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+
+            Rectangle porta = PORTAS_SALAS_B2[i];
+            DesenharPortaSalaB2(porta, CORES_SALAS_B2[i], !p->objeto[i], pulso);
+
+            int cx = (int)(porta.x + porta.width / 2);
+            DrawText(NOMES_SALAS_B2[i], cx - MeasureText(NOMES_SALAS_B2[i], 10) / 2, (int)porta.y + 30, 10, CORES_SALAS_B2[i]);
+
+            if (p->objeto[i])
+                DesenharObjetoB2(i, (Vector2){ (float)cx, porta.y + 58 }, 0.6f, tempo);
+        }
+
+        // Altar dos objetos
+        DrawEllipse((int)POS_ALTAR.x, (int)POS_ALTAR.y + 22, 60, 12, Fade(PURPLE, 0.15f));
+        DrawRectangle((int)POS_ALTAR.x - 50, (int)POS_ALTAR.y - 12, 100, 34, (Color){ 35, 25, 55, 255 });
+        DrawRectangleLinesEx((Rectangle){ POS_ALTAR.x - 50, POS_ALTAR.y - 12, 100, 34 }, 2, Fade(PURPLE, 0.8f));
+
+        for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+            Vector2 c = { POS_ALTAR.x - 30 + i * 30, POS_ALTAR.y - 22 };
+            if (p->objeto[i]) DesenharObjetoB2(i, c, 0.7f, tempo);
+            else              DrawCircleLines((int)c.x, (int)c.y, 9, Fade(GRAY, 0.6f));
+        }
+
+        if (explorando) {
+            if (CheckCollisionRecs(jogador, ZONA_PORTA_VOLTAR_B2)) DrawText("PRESSIONE E", 74, 394, 12, GOLD);
+            if (CheckCollisionRecs(jogador, ZONA_PORTA_NUCLEO))    DrawText("PRESSIONE E", 726 - MeasureText("PRESSIONE E", 12), 394, 12, GOLD);
+            if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_ALTAR))) DesenharAvisoE(POS_ALTAR, -52);
+
+            for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+                Rectangle zona = { PORTAS_SALAS_B2[i].x - 10, PORTAS_SALAS_B2[i].y, PORTAS_SALAS_B2[i].width + 20, 104 };
+                if (CheckCollisionRecs(jogador, zona))
+                    DrawText("PRESSIONE E", (int)(PORTAS_SALAS_B2[i].x + PORTAS_SALAS_B2[i].width) + 8, 140, 12, GOLD);
+            }
+        }
+    }
+
+    // ===================== SALAS-PUZZLE =====================
+    else {
+
+        DrawRectangleRec(PORTA_SAIDA_SALA, (Color){ 35, 25, 55, 255 });
+        DrawRectangleLinesEx(PORTA_SAIDA_SALA, 3, PURPLE);
+        DrawText("SALA CENTRAL", 400 - MeasureText("SALA CENTRAL", 10) / 2, 524, 10, LIGHTGRAY);
+
+        if (explorando && CheckCollisionRecs(jogador, ZONA_PORTA_SAIDA_SALA))
+            DrawText("PRESSIONE E", 450, 504, 12, GOLD);
+
+        if (tela == SALA_REGISTROS) {
+
+            const char *nomeFonte = p->objeto[0] ? "FONTE (LIMPA)" : "A FONTE";
+
+            // Objetos atrás do jogador -> jogador -> objetos na frente
+            for (int passada = 0; passada < 2; passada++) {
+
+                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+
+                if ((passada == 0) == (POS_FONTE.y + 40 <= pes)) {
+                    DrawEllipse((int)POS_FONTE.x, (int)POS_FONTE.y + 44, 46, 10, Fade(cor, 0.15f));
+                    DesenharFonte(POS_FONTE, tempo, 0.6f, p->objeto[0] ? SKYBLUE : CORES_SALAS_B2[0]);
+                }
+
+                for (int i = 0; i < NUM_REGISTROS; i++)
+                    if ((passada == 0) == (POS_REGISTROS[i].y + 22 <= pes))
+                        DesenharTerminalRegistro(i, POS_REGISTROS[i], p->registro[i], p->objeto[0], tempo);
+            }
+
+            DrawText(nomeFonte, (int)POS_FONTE.x - MeasureText(nomeFonte, 10) / 2, (int)POS_FONTE.y - 58, 10, p->objeto[0] ? SKYBLUE : cor);
+
+            if (explorando) {
+                if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_FONTE))) DesenharAvisoE(POS_FONTE, -74);
+                for (int i = 0; i < NUM_REGISTROS; i++)
+                    if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_REGISTROS[i])))
+                        DesenharAvisoE(POS_REGISTROS[i], -46);
+            }
+
+            DrawText(TextFormat("INSPECIONADOS: %d/%d", RegistrosInspecionados(p), NUM_REGISTROS), 560, 196, 10, LIGHTGRAY);
+        }
+
+        else if (tela == SALA_LOGICA) {
+
+            DesenharPainelRegras(p, tempo);
+
+            if (!p->objeto[1]) {
+                DesenharSilogista(POS_SILOGISTA, tempo, 0.5f, GUARDIOES_B2[GUARDIAO_SILOGISTA].cor);
+                DrawText("O SILOGISTA", (int)POS_SILOGISTA.x - MeasureText("O SILOGISTA", 10) / 2, 196, 10, SKYBLUE);
+            }
+
+            if (!p->barreiraAberta)
+                DesenharBarreira(tempo);
+
+            for (int passada = 0; passada < 2; passada++) {
+
+                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+
+                for (int i = 0; i < 3; i++)
+                    if ((passada == 0) == (POS_ALAVANCAS[i].y + 16 <= pes))
+                        DesenharAlavanca(i, POS_ALAVANCAS[i], p->alavanca[i]);
+
+                // Console de verificação
+                if ((passada == 0) == (POS_CONSOLE.y + 22 <= pes)) {
+                    DrawRectangle((int)POS_CONSOLE.x - 20, (int)POS_CONSOLE.y - 22, 40, 44, (Color){ 30, 28, 44, 255 });
+                    DrawRectangleLines((int)POS_CONSOLE.x - 20, (int)POS_CONSOLE.y - 22, 40, 44, SKYBLUE);
+                    DrawRectangle((int)POS_CONSOLE.x - 14, (int)POS_CONSOLE.y - 16, 28, 14, Fade(SKYBLUE, 0.4f + 0.3f * pulso));
+                    DrawText("VERIFICAR", (int)POS_CONSOLE.x - MeasureText("VERIFICAR", 10) / 2, (int)POS_CONSOLE.y + 26, 10, LIGHTGRAY);
+                }
+            }
+
+            if (explorando) {
+                if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_CONSOLE))) DesenharAvisoE(POS_CONSOLE, -40);
+                for (int i = 0; i < 3; i++)
+                    if (CheckCollisionRecs(jogador, ZonaObjetoB2(POS_ALAVANCAS[i])))
+                        DesenharAvisoE(POS_ALAVANCAS[i], -40);
+                if (p->barreiraAberta && !p->objeto[1] &&
+                    CheckCollisionRecs(jogador, (Rectangle){ POS_SILOGISTA.x - 60, POS_SILOGISTA.y - 20, 120, 110 }))
+                    DrawText("PRESSIONE E", (int)POS_SILOGISTA.x + 40, (int)POS_SILOGISTA.y - 6, 12, GOLD);
+            }
+        }
+
+        else if (tela == SALA_LACUNA) {
+
+            DesenharApostador(POS_APOSTADOR, tempo, 0.5f, GUARDIOES_B2[GUARDIAO_APOSTADOR].cor);
+            DrawText("O APOSTADOR", (int)POS_APOSTADOR.x - MeasureText("O APOSTADOR", 10) / 2, 196, 10, GOLD);
+
+            for (int passada = 0; passada < 2; passada++) {
+
+                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+
+                for (int i = 0; i < NUM_FRAGMENTOS; i++)
+                    if (!p->fragmento[i] && (passada == 0) == (POS_FRAGMENTOS[i].y + 10 <= pes))
+                        DesenharFragmento(POS_FRAGMENTOS[i], tempo, i);
+            }
+
+            int coletados = 0;
+            for (int i = 0; i < NUM_FRAGMENTOS; i++) if (p->fragmento[i]) coletados++;
+            DrawText(TextFormat("FRAGMENTOS: %d/%d", coletados, NUM_FRAGMENTOS), 590, 196, 10, LIGHTGRAY);
+
+            if (explorando) {
+                if (CheckCollisionRecs(jogador, (Rectangle){ POS_APOSTADOR.x - 60, POS_APOSTADOR.y - 20, 120, 110 }))
+                    DrawText("PRESSIONE E", (int)POS_APOSTADOR.x + 40, (int)POS_APOSTADOR.y - 6, 12, GOLD);
+                for (int i = 0; i < NUM_FRAGMENTOS; i++)
+                    if (!p->fragmento[i] && CheckCollisionRecs(jogador, ZonaObjetoB2(POS_FRAGMENTOS[i])))
+                        DesenharAvisoE(POS_FRAGMENTOS[i], -34);
+            }
+        }
+    }
+
+    if (!jogadorDesenhado)
+        DesenharJogador(sprites, playerPos, direcao, quadro);
 }
 
 // =============================================================
@@ -4161,6 +4935,10 @@ int main(void) {
     ProgressoCorredor progresso = {0};
     ProgressoBloco2 bloco2 = {0};
     BatalhaB2 batalhaB2 = {0};
+    TelaAtual salaDaBatalhaB2 = SETOR2;      // para onde volta depois da batalha
+    MotivoBatalhaB2 motivoBatalhaB2 = MOTIVO_SILOGISTA;
+    const char *falaPosBatalhaB2 = "";
+    MontadorPergunta montador = {0};         // painel de montar pergunta (Sala da Lacuna)
     SessaoDialogo dlg = {0};
     Transicao transicao = {0};
     Batalha batalha = {0};
@@ -4202,6 +4980,12 @@ int main(void) {
     Rectangle btnOpcoes = {300, 340, 200, 50};
     Rectangle btnSair = {300, 410, 200, 50};
 
+    // Tudo que a lógica do Bloco 2 mexe
+    ContextoB2 ctxB2 = {
+        &tela, &dlg, &transicao, &progresso, &bloco2, &batalhaB2, &playerPos, &direcaoAtual,
+        &pedirAutoSave, &salaDaBatalhaB2, &motivoBatalhaB2, &falaPosBatalhaB2, &montador
+    };
+
     SetTargetFPS(60);
 
     // 2. GAME LOOP
@@ -4226,7 +5010,7 @@ int main(void) {
                 fundoPausa = (Texture2D){0};
 
             } else if ((tela == JOGANDO || tela == CORREDOR || tela == BATALHA ||
-                        tela == SETOR2 || tela == BATALHA_B2) && !transicao.ativa) {
+                        TelaExploracaoB2(tela) || tela == BATALHA_B2) && !transicao.ativa) {
 
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 capturarPausa = true;
@@ -4311,6 +5095,21 @@ int main(void) {
                         playerPos = SPAWN_CORREDOR_VOLTA;
                         direcaoAtual = DIR_ESQUERDA;
                         pedirAutoSave = true;     // AUTO SAVE: voltou para o corredor
+
+                    } else if (TelaSalaPuzzleB2(tela) && origem == SETOR2) {
+
+                        playerPos = SPAWN_ENTRADA_SALA;
+                        direcaoAtual = DIR_COSTAS;
+                        pedirAutoSave = true;     // AUTO SAVE: entrou numa sala-puzzle
+
+                    } else if (tela == SETOR2 && TelaSalaPuzzleB2(origem)) {
+
+                        // Volta para baixo da porta da sala de onde saiu
+                        Rectangle porta = PORTAS_SALAS_B2[IndiceSalaB2(origem)];
+                        playerPos = (Vector2){ porta.x + porta.width / 2, 232 };
+                        direcaoAtual = DIR_FRENTE;
+                        montador.aberto = false;
+                        pedirAutoSave = true;     // AUTO SAVE: voltou para a sala central
                     }
 
                     transicao.fase = 1;
@@ -4370,7 +5169,7 @@ int main(void) {
             } else if (escolha == PAUSA_MENU) {
 
                 // Salva antes de sair, para o CONTINUAR do menu voltar daqui
-                saveFalhou = !SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+                saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
                 existeSave = LerSave(&saveLido);
 
                 pausado = false;
@@ -4447,6 +5246,7 @@ int main(void) {
                     // Novo jogo: zera tudo
                     progresso = (ProgressoCorredor){0};
                     bloco2 = (ProgressoBloco2){0};
+                    montador = (MontadorPergunta){0};
                     dlg = (SessaoDialogo){0};
                     luciAcompanhando = false;
                     playerPos = SPAWN_SALA;
@@ -4572,7 +5372,7 @@ int main(void) {
                 // Ponto de save: respondeu SIM
                 if (r == RES_SIM && dlg.objeto == OBJ_SAVE) {
 
-                    bool ok = SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+                    bool ok = SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
 
                     if (ok) {
                         existeSave = true;
@@ -4859,124 +5659,23 @@ int main(void) {
         }
 
         // =====================================================
-        // BLOCO 2 - ARQUIVO DE TREINAMENTO
+        // BLOCO 2 - SALA CENTRAL E SALAS-PUZZLE
         // =====================================================
 
-        else if (tela == SETOR2 && !transicao.ativa) {
+        else if (TelaExploracaoB2(tela) && !transicao.ativa) {
 
             companionAngulo += dt * 2.5f;
-
-            if (dlg.estado != DLG_NENHUM) {
-
-                ResultadoDialogo r = DialogoAtualizar(&dlg);
-
-                // Resolveu as três entidades: a Luci fecha o bloco
-                if (r == RES_FIM && TodosInimigosB2(&bloco2) && !bloco2.fimAnunciado) {
-
-                    bloco2.fimAnunciado = true;
-                    DialogoIniciar(&dlg, &dialogoFimBloco2, OBJ_NENHUM);
-                    pedirAutoSave = true;
-                }
-            }
-
-            // Primeira entrada: a Luci explica o bloco
-            else if (!bloco2.introVista) {
-
-                bloco2.introVista = true;
-                DialogoIniciar(&dlg, &dialogoIntroBloco2, OBJ_NENHUM);
-            }
-
-            else {
-
-                Vector2 posAnterior = playerPos;
-
-                direcaoAtual = MoverJogador(&playerPos, direcaoAtual);
-
-                // As entidades ainda não resolvidas são sólidas
-                for (int i = 0; i < NUM_INIMIGOS_B2; i++)
-                    if (!bloco2.derrotado[i] && CheckCollisionRecs(HitboxJogador(playerPos), CorpoInimigoB2(i)))
-                        playerPos = posAnterior;
-
-                playerPos.x = Clamp(playerPos.x, 80, 720);
-                playerPos.y = Clamp(playerPos.y, 200, 492);
-
-                Rectangle jogador = AreaJogador(playerPos);
-
-                if (IsKeyPressed(KEY_E)) {
-
-                    // Porta da esquerda: volta para o corredor
-                    if (CheckCollisionRecs(jogador, ZONA_PORTA_VOLTAR_B2)) {
-
-                        IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE);
-                    }
-
-                    // Porta do núcleo: abre depois das três entidades
-                    else if (CheckCollisionRecs(jogador, ZONA_PORTA_NUCLEO)) {
-
-                        // TODO: aqui entra a transição para o Bloco 3 (batalha final).
-                        DialogoIniciar(&dlg, TodosInimigosB2(&bloco2) ? &dialogoNucleoLiberado : &dialogoNucleoTrancado, OBJ_NENHUM);
-                    }
-
-                    // Entidades
-                    else {
-
-                        for (int i = 0; i < NUM_INIMIGOS_B2; i++) {
-
-                            if (!CheckCollisionRecs(jogador, ZonaInimigoB2(i)))
-                                continue;
-
-                            if (bloco2.derrotado[i]) {
-
-                                DialogoFalaAvulsa(&dlg, TextFormat(
-                                    "* Um fragmento de dados limpos. Aqui antes estava %s.", INIMIGOS_B2[i].nome));
-
-                            } else {
-
-                                BatalhaB2Iniciar(&batalhaB2, i, progresso.alucinacao);
-                                IniciarTransicao(&transicao, BATALHA_B2, DURACAO_FADE_BATALHA);
-                            }
-
-                            break;
-                        }
-                    }
-                }
-            }
+            AtualizarSalaB2(&ctxB2, dt);
         }
 
         // =====================================================
-        // BATALHA DO BLOCO 2
+        // BATALHA DO BLOCO 2 (duelo ou esquiva)
         // =====================================================
 
         else if (tela == BATALHA_B2 && !transicao.ativa) {
 
-            if (BatalhaB2Atualizar(&batalhaB2)) {
-
-                int i = batalhaB2.inimigo;
-
-                progresso.alucinacao += batalhaB2.erros;   // cada erro fortalece a alucinação
-
-                // Saldo da batalha: +acertos, -erros, e bônus de vitória
-                // ou penalidade se a vida chegou a zero
-                AlterarPontos(&progresso,
-                    batalhaB2.acertos * PONTOS_ACERTO_B2
-                    - batalhaB2.erros * PENALIDADE_ERRO
-                    + (batalhaB2.venceu ? PONTOS_VITORIA_B2 : -PENALIDADE_HP_ZERO));
-
-                if (batalhaB2.venceu) {
-
-                    bloco2.derrotado[i] = true;
-
-                    // De volta à sala, a Luci lembra como alucinou
-                    DialogoFalaAvulsa(&dlg, INIMIGOS_B2[i].memoriaLuci);
-
-                } else {
-
-                    DialogoFalaAvulsa(&dlg, FALA_DERROTA_B2);
-                }
-
-                pedirAutoSave = true;
-                IniciarTransicao(&transicao, SETOR2, DURACAO_FADE_BATALHA);
-            }
+            if (BatalhaB2Atualizar(&batalhaB2))
+                FimBatalhaB2(&ctxB2);
         }
 
         // =====================================================
@@ -5005,10 +5704,10 @@ int main(void) {
         // AUTO SAVE (feito aqui, depois de toda a lógica do frame)
         // =====================================================
 
-        if (pedirAutoSave && (tela == JOGANDO || tela == CORREDOR || tela == SETOR2)) {
+        if (pedirAutoSave && (tela == JOGANDO || tela == CORREDOR || TelaExploracaoB2(tela))) {
 
             pedirAutoSave = false;
-            saveFalhou = !SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+            saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
 
             if (!saveFalhou)
                 existeSave = true;
@@ -5027,7 +5726,7 @@ int main(void) {
 
         // Só anima se ele realmente se moveu (parado, em diálogo ou
         // empurrando a parede ele fica no quadro 0)
-        bool andou = (tela == JOGANDO || tela == CORREDOR || tela == SETOR2) &&
+        bool andou = (tela == JOGANDO || tela == CORREDOR || TelaExploracaoB2(tela)) &&
                      !transicao.ativa &&
                      Vector2Distance(posInicioFrame, playerPos) > 0.01f;
 
@@ -5599,32 +6298,22 @@ int main(void) {
         }
 
         // =====================================================
-        // TELA BLOCO 2 - ARQUIVO DE TREINAMENTO
+        // TELA BLOCO 2 - SALA CENTRAL E SALAS-PUZZLE
         // =====================================================
 
-        else if (tela == SETOR2) {
+        else if (TelaExploracaoB2(tela)) {
 
-            bool explorando = (dlg.estado == DLG_NENHUM && bloco2.introVista && !transicao.ativa);
+            bool explorando = (dlg.estado == DLG_NENHUM && !montador.aberto && !transicao.ativa);
 
-            DesenharSalaB2(&bloco2, playerPos, tempo, explorando, spritesJogador, direcaoAtual, animJogador.quadro);
+            DesenharSalaB2(tela, &bloco2, playerPos, tempo, explorando, spritesJogador, direcaoAtual, animJogador.quadro);
             DesenharCompanion(playerPos, companionAngulo);
+            DesenharHUDB2(tela, &bloco2, &progresso, nickname, tempo);
 
-            // HUD
-            DrawText(TextFormat("RESOLVIDAS: %d/%d", ContarInimigosB2(&bloco2), NUM_INIMIGOS_B2), 65, 62, 14, WHITE);
-            DrawText(TextFormat("PONTOS: %d", progresso.pontos), 230, 62, 14, GOLD);
-            DrawText(
-                TextFormat("ALUCINAÇÃO: %d", progresso.alucinacao),
-                360,
-                62,
-                14,
-                (progresso.alucinacao == 0) ? LIGHTGRAY : (progresso.alucinacao < 3 ? ORANGE : RED)
-            );
-            DrawText("BLOCO 2 // ARQUIVO DE TREINAMENTO", 65, 82, 10, GRAY);
-            DrawText(nickname, 700 - MeasureText(nickname, 14), 62, 14, WHITE);
-
-            if (dlg.estado == DLG_NENHUM) {
+            if (dlg.estado == DLG_NENHUM && !montador.aberto)
                 DrawText("W A S D  -  MOVIMENTAR", 65, 532, 12, LIGHTGRAY);
-            }
+
+            if (montador.aberto)
+                DesenharMontador(&montador);
 
             DialogoDesenhar(&dlg);
             DesenharAvisoSave(avisoSave, saveFalhou, tempo);
@@ -5675,8 +6364,8 @@ int main(void) {
 
     // AUTO SAVE: fechou a janela no meio do jogo
     // (no menu ou na intro não salva, para não apagar o progresso)
-    if (tela == JOGANDO || tela == CORREDOR || tela == BATALHA || tela == SETOR2 || tela == BATALHA_B2)
-        SalvarJogo(nickname, tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+    if (tela == JOGANDO || tela == CORREDOR || tela == BATALHA || TelaExploracaoB2(tela) || tela == BATALHA_B2)
+        SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
 
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
     if (texPontoSave.id > 0)

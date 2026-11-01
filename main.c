@@ -2,6 +2,8 @@
 #include "raymath.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
 #include <math.h>
 
 // =============================================================
@@ -91,7 +93,7 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 // CORREDOR - CONSTANTES
 // =============================================================
 
-#define TOTAL_MONITORES     4
+#define TOTAL_MONITORES     3        // Bloco 1: o que é, tipos, riscos e mitigação
 #define PONTOS_POR_ACERTO   10
 #define PENALIDADE_ERRO     5        // resposta errada ou tempo esgotado (corredor e Bloco 2)
 #define PENALIDADE_HP_ZERO  15       // a vida chegou a zero numa batalha
@@ -122,9 +124,14 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 
 #define ARQUIVO_SAVE         "utopia.sav"
 #define ARQUIVO_SAVE_TEMP    "utopia.sav.tmp"
-#define VERSAO_SAVE          3            // aumente quando mudar o que vai no save (3 = Bloco 2 com salas-puzzle)
+#define VERSAO_SAVE          4            // aumente quando mudar o que vai no save (4 = estabilidade da Luci)
 #define ASSINATURA_SAVE      0x41495455u  // identifica o arquivo como save do UtopIA
-#define TEMPO_AVISO_SAVE     2.0f         // segundos do aviso "JOGO SALVO" na tela
+#define TEMPO_AVISO_SAVE     2.0f
+
+// Ajuda da Luci: cada pedido gasta 1 ponto de estabilidade.
+// Estabilidade baixa = ela pode ALUCINAR a dica (errada, com toda a certeza).
+// Acertar sem ajuda devolve 1 ponto.
+#define ESTABILIDADE_MAX_LUCI  5         // segundos do aviso "JOGO SALVO" na tela
 
 // =============================================================
 // BATALHA - CONSTANTES
@@ -208,7 +215,7 @@ static const Rectangle CAIXA_DESVIO        = {275, 270, 250, 160};
 
 // Uma conversa: algumas páginas de texto e, opcionalmente,
 // uma pergunta de múltipla escolha (pergunta == NULL = sem pergunta).
-typedef struct {
+typedef struct Dialogo {
     const char *titulo;                     // cabeçalho do painel da pergunta
     const char *paginas[MAX_PAGINAS];
     int numPaginas;
@@ -216,6 +223,7 @@ typedef struct {
     const char *opcoes[NUM_OPCOES];
     int correta;                            // índice da opção certa (0 = A ... 3 = D)
     const char *explicacao;                 // Luci explica a resposta certa
+    const struct Dialogo *saberMais;        // versão completa (TAB), para quem quiser ler mais
 } Dialogo;
 
 typedef struct {
@@ -229,7 +237,7 @@ typedef enum { MON_NEUTRO, MON_ATIVO, MON_ACERTOU, MON_ERROU } EstadoMonitor;
 typedef enum { DLG_NENHUM, DLG_PAGINAS, DLG_ESCOLHA, DLG_FEEDBACK, DLG_CONFIRMA } EstadoDialogo;
 
 // O que aconteceu na conversa neste frame
-typedef enum { RES_NADA, RES_FIM, RES_ERROU, RES_TEMPO, RES_SIM, RES_NAO } ResultadoDialogo;
+typedef enum { RES_NADA, RES_FIM, RES_ERROU, RES_TEMPO, RES_SIM, RES_NAO, RES_VOLTAR_CARTAO } ResultadoDialogo;
 
 // Estado da conversa que está acontecendo na tela agora
 typedef struct {
@@ -247,10 +255,15 @@ typedef struct {
     float visiveis;                         // quantos bytes do texto já apareceram
     Color corBorda;
     int pontosGanhos;
+    double inicio;                          // quando a conversa abriu (telemetria)
+    int pulos;                              // quantas vezes o jogador pulou o texto
+    const Dialogo *origem;                  // conversa original (para voltar do "saber mais")
+    const Dialogo *versaoCurta;             // estamos no "saber mais": TAB volta para esta
+    bool veioDoCartao;                      // "saber mais" aberto pelo cartão: TAB volta ao cartão
 } SessaoDialogo;
 
 typedef struct {
-    EstadoMonitor estado[TOTAL_MONITORES];
+    EstadoMonitor estado[4];                // espaço para 4 para o save não mudar de formato (o jogo usa TOTAL_MONITORES)
     int pontos;
     int alucinacao;                         // cresce a cada erro (README: errar fortalece a alucinação)
     bool introVista;
@@ -288,6 +301,10 @@ typedef struct {
     bool luciAcompanhando;
     ProgressoCorredor progresso;
     ProgressoBloco2 bloco2;
+
+    // Versão 4 (sempre no FINAL, para os saves da versão 3 continuarem abrindo)
+    int estabilidadeLuci;                   // 0..ESTABILIDADE_MAX_LUCI
+    int ajudasPedidas;                      // total de ajudas pedidas à Luci
 } DadosSave;
 
 
@@ -308,6 +325,7 @@ typedef struct {
     Vector2 pos;
     Vector2 vel;
     char glifo;
+    bool boa;                               // true = verdade para PEGAR (cura), false = alucinação para DESVIAR
 } Bala;
 
 typedef struct {
@@ -337,18 +355,29 @@ typedef struct {
 // CONTEÚDO - SALA INICIAL (falas da Luci do main.c)
 // =============================================================
 
-static const Dialogo dialogoLuciSala = {
+// Versão completa da história (TAB na conversa curta)
+static const Dialogo dialogoLuciSalaCompleto = {
     .paginas = {
         "Luci: Olá, Thomas. Eu imagino que se pergunte o que está fazendo aqui. Eu sou Luci, um dos algoritmos que fazem parte da IA que você usa todos os dias.",
         "Luci: No início, o universo de UtopIA funcionava perfeitamente, mas com o tempo, a IA começou a alucinar e está destruindo a si mesma.",
         "Luci: Eu trouxe você para cá porque preciso de ajuda e você é o usuário que mais nos utiliza.",
-        "Luci: Para voltar para casa, você vai precisar enfrentar 3 missões. A primeira é uma sequência de quizzes sobre alucinação para você entender o problema que estamos enfrentando.",
-        "Luci: Na segunda missão, o desafio aumenta e será preciso resolver uma sequência de puzzles para conquistar os objetos mágicos.",
+        "Luci: Para voltar para casa, você vai precisar enfrentar 3 missões. A primeira é enfrentar as alucinações guardadas nos monitores do corredor.",
+        "Luci: Na segunda missão, você vai explorar salas e resolver puzzles para conquistar os objetos mágicos.",
         "Luci: No final, você irá enfrentar a IA alucinada com seus objetos.",
-        "Luci: Não há tempo a perder, Thomas. O destino de UtopIA depende de você. Vamos começar a primeira missão.",
         "Luci: A porta lá em cima leva ao Corredor do Histórico. Eu vou com você."
     },
-    .numPaginas = 8
+    .numPaginas = 7
+};
+
+// Conversa curta: o essencial em 3 falas
+static const Dialogo dialogoLuciSala = {
+    .paginas = {
+        "Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você usa todo dia.",
+        "Luci: A IA começou a alucinar e UtopIA está desmoronando. Preciso de você!",
+        "Luci: Vamos pela porta lá em cima. Eu vou junto!"
+    },
+    .numPaginas = 3,
+    .saberMais = &dialogoLuciSalaCompleto
 };
 
 static const Dialogo dialogoPortaSalaTrancada = {
@@ -366,7 +395,7 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
     // ---------- MONITOR 1: o que é alucinação (Sala 1 / Questão 1) ----------
     {
         .nome = "MONITOR 1",
-        .area = {110, 140, 100, 70},
+        .area = {150, 140, 100, 70},
         .quiz = {
             .titulo = "MONITOR 1 // O QUE É ALUCINAÇÃO",
             .paginas = {
@@ -397,40 +426,12 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
         }
     },
 
-    // ---------- MONITOR 2: mapa mental (Sala 1 / Questão 2) ----------
+    // ---------- MONITOR 2: tipos de alucinação (Sala 2 / Questão 3) ----------
     {
         .nome = "MONITOR 2",
-        .area = {260, 140, 100, 70},
+        .area = {350, 140, 100, 70},
         .quiz = {
-            .titulo = "MONITOR 2 // O MAPA MENTAL DA IA",
-            .paginas = {
-                "Luci: Imagine o processo de raciocínio da IA como uma navegação em um \"mapa mental\", onde cada conceito é um ponto e as relações entre eles são caminhos.",
-                "Luci: A alucinação ocorre por dois mecanismos principais: Reutilização de Caminhos (Path Reuse) e Compressão de Caminhos (Path Compression).",
-                "Luci: Com Path Reuse, no início do treinamento, o modelo pode \"pegar atalhos\" e aplicar um caminho de raciocínio que funcionou para um assunto em um contexto completamente diferente.",
-                "Luci: Já no Path Compression, conforme o treinamento avança, caminhos usados com frequência são \"encurtados\". A IA deixa de passar por todas as etapas intermediárias e \"pula\" para uma conclusão."
-            },
-            .numPaginas = 4,
-            .pergunta = "Segundo Luci, qual alternativa apresenta uma afirmação FALSA sobre os mecanismos de alucinação?",
-            .opcoes = {
-                "Path Reuse: no início, o modelo reaproveita caminhos de raciocínio que já funcionaram.",
-
-                "Path Compression: com o treinamento, caminhos frequentes são encurtados para ganhar eficiência.",
-
-                "Path Compression: com o treinamento, a IA passa a percorrer todas as etapas antes de concluir.",
-
-                "Path Reuse: o modelo aplica um caminho de raciocínio conhecido a contextos diferentes."
-            },
-            .correta = 2,
-            .explicacao = "No Path Compression acontece o contrário: a IA deixa de passar pelas etapas intermediárias e pula direto para uma conclusão."
-        }
-    },
-
-    // ---------- MONITOR 3: tipos de alucinação (Sala 2 / Questão 3) ----------
-    {
-        .nome = "MONITOR 3",
-        .area = {410, 140, 100, 70},
-        .quiz = {
-            .titulo = "MONITOR 3 // TIPOS DE ALUCINAÇÃO",
+            .titulo = "MONITOR 2 // TIPOS DE ALUCINAÇÃO",
             .paginas = {
                 "Luci: Agora que você já sabe o que é alucinação e como funciona, quero que você entenda os tipos e, principalmente, os riscos e como mitigar esse problema.",
                 "Luci: As alucinações intrínsecas ocorrem quando a resposta contradiz a informação fornecida pelo usuário ou o contexto dado. É uma falha de \"atenção\" ao que foi pedido.",
@@ -452,12 +453,12 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
         }
     },
 
-    // ---------- MONITOR 4: riscos e mitigação (Sala 2 / Questão 4) ----------
+    // ---------- MONITOR 3: riscos e mitigação (Sala 2 / Questão 4) ----------
     {
-        .nome = "MONITOR 4",
-        .area = {560, 140, 100, 70},
+        .nome = "MONITOR 3",
+        .area = {550, 140, 100, 70},
         .quiz = {
-            .titulo = "MONITOR 4 // RISCOS E MITIGAÇÃO",
+            .titulo = "MONITOR 3 // RISCOS E MITIGAÇÃO",
             .paginas = {
                 "Luci: Há alguns riscos com a alucinação. Ao receber dados ruins, a IA aprende informações erradas ou desatualizadas, repetindo esses erros.",
                 "Luci: Com limitações no modelo, a IA enxerga apenas coincidências, não relações de causa e efeito, e junta coisas que aparecem juntas nos dados, mesmo sem ligação real.",
@@ -483,28 +484,145 @@ static const MonitorQuiz monitores[TOTAL_MONITORES] = {
 };
 
 // Falas avulsas da Luci (sem pergunta)
+static const Dialogo dialogoIntroCorredorCompleto = {
+    .paginas = {
+        "Luci: Este é o Corredor do Histórico. Cada um destes 3 monitores guarda uma alucinação sobre um tema diferente.",
+        "Luci: Chegue perto de um monitor e aperte E. A alucinação vai dizer algo, e você escolhe a ação certa para enfraquecê-la.",
+        "Luci: Se errar, ela ataca. Pegue os sinais verdes de verdade, que recuperam a sua vida, e desvie de todo o resto.",
+        "Luci: Se travar numa escolha, aperte H e eu te dou uma dica. Cada ajuda me deixa mais instável, e uma IA instável pode alucinar: aí eu posso jurar que uma resposta errada é a certa.",
+        "Luci: Acertar sozinho me estabiliza de novo. Use a ajuda, mas sempre confira o que eu disser!",
+        "Luci: Vença as 3 alucinações e a porta da direita se destranca."
+    },
+    .numPaginas = 6
+};
+
 static const Dialogo dialogoIntroCorredor = {
     .paginas = {
-        "Luci: Este é o Corredor do Histórico. Cada um destes 4 monitores guarda uma lição sobre alucinação.",
-        "Luci: Chegue perto de um monitor e aperte E. Eu explico o conteúdo e depois vem uma pergunta. Fique de olho na barra de tempo!",
-        "Luci: Se o tempo acabar ou você errar, a alucinação ataca e você vai ter que desviar dela. Aqui você não perde vidas, mas cada erro deixa a alucinação mais forte.",
-        "Luci: Quando os 4 monitores estiverem resolvidos, a porta da direita se destranca."
+        "Luci: Cada monitor guarda uma alucinação. Chegue perto e aperte E!",
+        "Luci: Escolha a ação certa. No ataque, PEGUE o verde e DESVIE do resto!",
+        "Luci: Travou? Aperte H. Mas se eu ajudar demais... eu também alucino!"
     },
-    .numPaginas = 4
+    .numPaginas = 3,
+    .saberMais = &dialogoIntroCorredorCompleto
 };
 
 static const Dialogo dialogoFimCorredor = {
-    .paginas = {
-        "Luci: Muito bem! Você passou pelos 4 monitores.",
-        "* Em algum lugar do corredor, uma tranca se abre. A porta da direita está liberada."
-    },
-    .numPaginas = 2
+    .paginas = { "Luci: Os 3 monitores estão limpos! A porta da direita abriu." },
+    .numPaginas = 1
 };
 
 static const Dialogo dialogoPortaTrancada = {
-    .paginas = { "Luci: Essa porta só abre depois que você resolver os 4 monitores." },
+    .paginas = { "Luci: Essa porta só abre depois que você resolver os 3 monitores." },
     .numPaginas = 1
 };
+
+// =============================================================
+// TELEMETRIA DOS TESTES DE USABILIDADE
+//   Grava em "utopia_teste.csv" quanto tempo cada conversa ficou aberta,
+//   quantas vezes o texto foi pulado, o resultado das batalhas e quando a
+//   Luci precisou guiar o jogador. Abra no Excel/Planilhas para comparar.
+//   Desligue com TELEMETRIA_ATIVA 0.
+// =============================================================
+
+#define TELEMETRIA_ATIVA     1
+#define ARQUIVO_TELEMETRIA   "utopia_teste.csv"
+
+static void Telemetria(const char *evento, const char *detalhe, float valor, int quantidade)
+{
+#if TELEMETRIA_ATIVA
+    FILE *f = fopen(ARQUIVO_TELEMETRIA, "a");
+
+    if (f == NULL)
+        return;
+
+    // Arquivo novo: escreve o cabeçalho
+    fseek(f, 0, SEEK_END);
+    if (ftell(f) == 0)
+        fprintf(f, "tempo_jogo_s;evento;detalhe;valor;quantidade\n");
+
+    // Tira ";" e quebras de linha do detalhe para não bagunçar as colunas
+    char limpo[64];
+    int n = 0;
+
+    for (const char *c = detalhe; *c != '\0' && n < 60; c++)
+        limpo[n++] = (*c == ';' || *c == '\n' || *c == '"') ? ' ' : *c;
+
+    limpo[n] = '\0';
+
+    fprintf(f, "%.1f;%s;%s;%.1f;%d\n", GetTime(), evento, limpo, valor, quantidade);
+    fclose(f);
+#else
+    (void)evento; (void)detalhe; (void)valor; (void)quantidade;
+#endif
+}
+
+// =============================================================
+// SONS (gerados por código, sem precisar de arquivos de áudio)
+// =============================================================
+
+static Sound sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao;
+static bool audioPronto = false;
+
+// Gera um bipe que desliza de uma frequência para outra (forma 0 = suave, 1 = quadrada)
+static Sound GerarSom(float freqInicio, float freqFim, float duracao, float volume, int forma)
+{
+    const int taxa = 22050;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *amostras = (short *)malloc(quadros * sizeof(short));
+    float fase = 0.0f;
+
+    for (unsigned int i = 0; i < quadros; i++) {
+
+        float t = (float)i / (float)quadros;
+        float freq = freqInicio + (freqFim - freqInicio) * t;
+        float envelope = (t < 0.1f) ? t / 0.1f : (1.0f - t);   // ataque rápido, some aos poucos
+
+        fase += 2.0f * PI * freq / taxa;
+
+        float onda = (forma == 0) ? sinf(fase) : (sinf(fase) >= 0.0f ? 0.6f : -0.6f);
+        amostras[i] = (short)(onda * envelope * volume * 32000.0f);
+    }
+
+    Wave w = { quadros, taxa, 16, 1, amostras };
+    Sound som = LoadSoundFromWave(w);
+
+    free(amostras);
+    return som;
+}
+
+static void IniciarSons(void)
+{
+    InitAudioDevice();
+    audioPronto = IsAudioDeviceReady();
+
+    if (!audioPronto)
+        return;
+
+    sfxAcerto  = GerarSom(520.0f, 1040.0f, 0.18f, 0.35f, 0);
+    sfxErro    = GerarSom(220.0f, 110.0f, 0.30f, 0.30f, 1);
+    sfxDano    = GerarSom(160.0f, 90.0f, 0.12f, 0.35f, 1);
+    sfxPegar   = GerarSom(880.0f, 1320.0f, 0.10f, 0.25f, 0);
+    sfxSelecao = GerarSom(660.0f, 660.0f, 0.04f, 0.15f, 1);
+}
+
+static void TocarSom(Sound s)
+{
+    if (audioPronto)
+        PlaySound(s);
+}
+
+static void EncerrarSons(void)
+{
+    if (!audioPronto)
+        return;
+
+    UnloadSound(sfxAcerto);
+    UnloadSound(sfxErro);
+    UnloadSound(sfxDano);
+    UnloadSound(sfxPegar);
+    UnloadSound(sfxSelecao);
+    CloseAudioDevice();
+}
 
 // =============================================================
 // FUNÇÕES AUXILIARES - TEXTO
@@ -885,10 +1003,28 @@ static void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 p
 // O mesmo desenho é usado parada na sala, acompanhando o jogador e na intro.
 
 #define SPRITE_LUCI   "luci.png"
-#define ALTURA_LUCI   34.0f          // altura da Luci na tela (AJUSTE AQUI)
+#define ALTURA_LUCI        18.0f     // Luci acompanhando o jogador: pequenina (AJUSTE AQUI)
+#define ALTURA_LUCI_SALA   24.0f     // Luci parada na sala inicial (um pouco maior, para ser encontrada)
+#define RAIO_ORBITA_LUCI   26.0f     // distância da volta que ela dá em torno do personagem
 
 static Texture2D texLuci = {0};
 static Rectangle recorteLuci = {0};  // só a parte desenhada da imagem, sem o espaço vazio em volta
+
+// Emoções da Luci sobre a cabeça. O main atualiza estes valores a cada frame.
+typedef enum { EMOCAO_NENHUMA, EMOCAO_ALEGRE, EMOCAO_DUVIDA, EMOCAO_ALERTA } EmocaoLuci;
+
+static EmocaoLuci emocaoLuci = EMOCAO_NENHUMA;
+static float tempoEmocaoLuci = 0.0f;
+static float brilhoLuci = 1.0f;        // cresce conforme o jogador resolve os desafios
+
+// 0 = estável, 1 = sobrecarregada (de tanto pedirem ajuda). O main atualiza.
+static float instabilidadeLuci = 0.0f;
+
+static void MostrarEmocaoLuci(EmocaoLuci e, float segundos)
+{
+    emocaoLuci = e;
+    tempoEmocaoLuci = segundos;
+}
 
 // Carrega a arte e descobre onde a Luci está dentro da imagem
 static void CarregarLuci(void)
@@ -944,7 +1080,7 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
     float t = (float)GetTime();
     float pulso = 0.5f + 0.5f * sinf(t * 3.0f);
 
-    DrawCircleV(p, altura * 0.62f, Fade(SKYBLUE, 0.10f + 0.08f * pulso));
+    DrawCircleV(p, altura * (0.55f + 0.07f * brilhoLuci), Fade(SKYBLUE, (0.10f + 0.08f * pulso) * brilhoLuci));
 
     if (texLuci.id > 0) {
 
@@ -953,7 +1089,19 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
         float w = recorteLuci.width * escala * asas;
         float h = recorteLuci.height * escala;
 
-        DrawTexturePro(texLuci, recorteLuci, (Rectangle){ p.x - w / 2, p.y - h / 2, w, h }, (Vector2){ 0, 0 }, 0.0f, WHITE);
+        Rectangle destino = { p.x - w / 2, p.y - h / 2, w, h };
+
+        // Instável: puxa para o magenta e, perto do limite, falha como as alucinações
+        float k = instabilidadeLuci;
+        Color tinta = { 255, (unsigned char)(255 - 140 * k), (unsigned char)(255 - 40 * k), 255 };
+
+        if (k > 0.5f) {
+            float d = 2.0f + 3.0f * k;
+            DrawTexturePro(texLuci, recorteLuci, (Rectangle){ destino.x - d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(RED, 0.5f));
+            DrawTexturePro(texLuci, recorteLuci, (Rectangle){ destino.x + d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(SKYBLUE, 0.5f));
+        }
+
+        DrawTexturePro(texLuci, recorteLuci, destino, (Vector2){ 0, 0 }, 0.0f, tinta);
         return;
     }
 
@@ -971,16 +1119,58 @@ static void DesenharLuci(Vector2 p)
     DesenharLuciTamanho(p, ALTURA_LUCI);
 }
 
-// Luci flutuando em volta do jogador (depois da primeira conversa)
+// Luci voando em volta do jogador (depois da primeira conversa).
+// Ela dá voltas numa elipse na altura do peito: quando está "lá atrás"
+// (parte de cima da elipse) fica menor e é desenhada antes do personagem.
+
+static bool LuciAtrasDoJogador(float angulo)
+{
+    return sinf(angulo) < 0.0f;
+}
+
+// Ícone de emoção sobre a cabeça da Luci
+static void DesenharEmocaoLuci(Vector2 p, float altura)
+{
+    if (tempoEmocaoLuci <= 0.0f || emocaoLuci == EMOCAO_NENHUMA)
+        return;
+
+    float pulo = sinf((float)GetTime() * 8.0f) * 2.0f;
+    Vector2 c = { p.x, p.y - altura / 2 - 12 + pulo };
+
+    DrawCircleV(c, 8, Fade((Color){ 20, 16, 34, 255 }, 0.85f));
+
+    if (emocaoLuci == EMOCAO_ALEGRE)
+        DesenharCoracao(c.x, c.y, 1, (Color){ 255, 120, 170, 255 });
+    else if (emocaoLuci == EMOCAO_DUVIDA)
+        DrawText("?", (int)c.x - MeasureText("?", 14) / 2, (int)c.y - 7, 14, WHITE);
+    else
+        DrawText("!", (int)c.x - MeasureText("!", 14) / 2, (int)c.y - 7, 14, GOLD);
+}
 
 static void DesenharCompanion(Vector2 jogadorPos, float angulo)
 {
     Vector2 p = {
-        jogadorPos.x + cosf(angulo) * 40.0f,
-        jogadorPos.y - 10.0f + sinf(angulo * 1.2f) * 26.0f
+        jogadorPos.x + cosf(angulo) * RAIO_ORBITA_LUCI,
+        jogadorPos.y - 14.0f + sinf(angulo) * 8.0f + sinf(angulo * 2.7f) * 2.0f
     };
 
-    DesenharLuci(p);
+    float profundidade = 0.85f + 0.15f * (0.5f + 0.5f * sinf(angulo));   // atrás = menor
+
+    DesenharLuciTamanho(p, ALTURA_LUCI * profundidade);
+    DesenharEmocaoLuci(p, ALTURA_LUCI * profundidade);
+}
+
+// Desenha o personagem com a Luci passando atrás ou na frente dele
+static void DesenharJogadorComLuci(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Direcao direcao,
+                                   int quadro, bool comLuci, float anguloLuci)
+{
+    if (comLuci && LuciAtrasDoJogador(anguloLuci))
+        DesenharCompanion(pos, anguloLuci);
+
+    DesenharJogador(sprites, pos, direcao, quadro);
+
+    if (comLuci && !LuciAtrasDoJogador(anguloLuci))
+        DesenharCompanion(pos, anguloLuci);
 }
 
 // Centro da Luci parada na sala inicial (flutuando de leve)
@@ -996,7 +1186,7 @@ static Vector2 CentroLuciSala(Rectangle hitbox, float tempo)
 // (a hitbox inteira continua valendo para falar com ela)
 static Rectangle CorpoLuciSala(Rectangle hitbox)
 {
-    return (Rectangle){ hitbox.x + hitbox.width / 2 - 14, hitbox.y + hitbox.height / 2 - 14, 28, 28 };
+    return (Rectangle){ hitbox.x + hitbox.width / 2 - 12, hitbox.y + hitbox.height / 2 - 12, 24, 24 };
 }
 
 // =============================================================
@@ -1075,6 +1265,11 @@ static void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto
     d->estado = DLG_PAGINAS;
     d->corBorda = WHITE;
     d->pontosGanhos = 0;
+    d->inicio = GetTime();
+    d->pulos = 0;
+    d->origem = conteudo;
+    d->versaoCurta = NULL;
+    d->veioDoCartao = false;
 
     DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
 }
@@ -1182,11 +1377,36 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         case DLG_PAGINAS: {
 
+            // TAB: abre a versão completa / volta para a versão curta
+            if (IsKeyPressed(KEY_TAB)) {
+
+                if (d->conteudo.saberMais != NULL) {
+
+                    const Dialogo *curta = d->origem;
+
+                    Telemetria("saber_mais", d->conteudo.paginas[0], (float)(GetTime() - d->inicio), d->pulos);
+                    DialogoIniciar(d, d->conteudo.saberMais, d->objeto);
+                    d->versaoCurta = curta;
+                    break;
+                }
+
+                if (d->versaoCurta != NULL) {
+                    DialogoIniciar(d, d->versaoCurta, d->objeto);
+                    break;
+                }
+
+                if (d->veioDoCartao) {
+                    d->estado = DLG_NENHUM;
+                    return RES_VOLTAR_CARTAO;
+                }
+            }
+
             if (!avancar)
                 break;
 
             if (!terminou) {
                 d->visiveis = (float)total;
+                d->pulos++;
                 break;
             }
 
@@ -1202,6 +1422,7 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
             } else {
 
+                Telemetria("dialogo", d->conteudo.paginas[0], (float)(GetTime() - d->inicio), d->pulos);
                 d->estado = DLG_NENHUM;
                 return RES_FIM;
             }
@@ -1440,6 +1661,12 @@ static void DialogoDesenhar(const SessaoDialogo *d)
         26,
         WHITE
     );
+
+    // TAB: abre a versão completa ou volta para a curta
+    if (d->estado == DLG_PAGINAS && d->conteudo.saberMais != NULL)
+        DrawText("TAB - saber mais", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
+    else if (d->estado == DLG_PAGINAS && (d->versaoCurta != NULL || d->veioDoCartao))
+        DrawText("TAB - voltar ao resumo", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
 
     // Opções SIM / NÃO com o coração na escolhida
     if (confirma && terminou) {
@@ -1752,6 +1979,9 @@ static bool BatalhaAtualizar(Batalha *b)
 {
     float dt = GetFrameTime();
 
+    if (b->tremor > 0.0f) b->tremor -= dt;
+    if (b->fase != FASE_DESVIO) b->tremor = 0.0f;
+
     bool avancar = IsKeyPressed(KEY_ENTER) ||
                    IsKeyPressed(KEY_E) ||
                    IsKeyPressed(KEY_SPACE) ||
@@ -1801,7 +2031,6 @@ static bool BatalhaAtualizar(Batalha *b)
             b->tempoDesvio += dt;
 
             if (b->invencivel > 0.0f) b->invencivel -= dt;
-            if (b->tremor > 0.0f)     b->tremor -= dt;
 
             // ---------- Movimento do coração ----------
             Vector2 dir = {0};
@@ -1936,9 +2165,9 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte)
         DrawCircle((int)cx, (int)(p.y - 10 * s), 42 * s, cores[k]);
         DrawRectangle((int)(cx - 42 * s), (int)(p.y - 10 * s), (int)(84 * s), (int)(50 * s), cores[k]);
 
-        // Barra ondulada embaixo
+        // Barra ondulada embaixo (parada: a alucinação só flutua, sem tremer)
         for (int j = 0; j < 5; j++)
-            DrawCircle((int)(cx - 34 * s + j * 17 * s), (int)(p.y + 40 * s + sinf(tempo * 6.0f + j) * 3.0f), 9 * s, cores[k]);
+            DrawCircle((int)(cx - 34 * s + j * 17 * s), (int)(p.y + 40 * s + ((j % 2) ? 2.0f : -2.0f)), 9 * s, cores[k]);
     }
 
     // Olhos
@@ -1957,23 +2186,6 @@ static void DesenharAlucinacao(Vector2 centro, float tempo, bool forte)
         Vector2 b = { p.x - 18 * s + (j + 1) * 7.2f * s, p.y + 8 * s + ((j + 1) % 2) * 6 * s };
 
         DrawLineEx(a, b, 2, BLACK);
-    }
-
-    // Fatias de glitch
-    unsigned int quadro = (unsigned int)(tempo * 10.0f);
-    int fatias = forte ? 5 : 3;
-
-    for (int k = 0; k < fatias; k++) {
-
-        unsigned int r = Ruido(quadro * 31u + (unsigned int)k);
-
-        if ((r & 3u) == 0)
-            continue;
-
-        int fy = (int)(p.y - 50 * s) + (int)(r % (unsigned int)(100 * s));
-        int fx = (int)(p.x - 50 * s) + (int)((r >> 8) % 21) - 10;
-
-        DrawRectangle(fx, fy, (int)(100 * s), 3, Fade((k % 2) ? SKYBLUE : MAGENTA, 0.55f));
     }
 
     // Símbolos orbitando
@@ -2126,11 +2338,27 @@ static bool LerSave(DadosSave *d)
     if (f == NULL)
         return false;
 
-    bool ok = (fread(d, sizeof(*d), 1, f) == 1);
+    memset(d, 0, sizeof(*d));
+
+    size_t lidos = fread(d, 1, sizeof(*d), f);
     fclose(f);
 
-    if (!ok || d->assinatura != ASSINATURA_SAVE || d->versao != VERSAO_SAVE)
+    if (d->assinatura != ASSINATURA_SAVE)
         return false;
+
+    // Save da versão 3 (sem a estabilidade da Luci no final): abre com os valores iniciais
+    if (d->versao == 3 && lidos == offsetof(DadosSave, estabilidadeLuci)) {
+        d->versao = VERSAO_SAVE;
+        d->estabilidadeLuci = ESTABILIDADE_MAX_LUCI;
+        d->ajudasPedidas = 0;
+        lidos = sizeof(*d);
+    }
+
+    if (lidos != sizeof(*d) || d->versao != VERSAO_SAVE)
+        return false;
+
+    if (d->estabilidadeLuci < 0 || d->estabilidadeLuci > ESTABILIDADE_MAX_LUCI)
+        d->estabilidadeLuci = ESTABILIDADE_MAX_LUCI;
 
     if (d->sala != JOGANDO && d->sala != CORREDOR && d->sala != SETOR2 &&
         d->sala != SALA_REGISTROS && d->sala != SALA_LOGICA && d->sala != SALA_LACUNA)
@@ -2178,7 +2406,7 @@ static bool LerSave(DadosSave *d)
 // Monta o save a partir do estado atual do jogo e grava
 static bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direcao direcao,
                        bool luciAcompanhando, const ProgressoCorredor *progresso,
-                       const ProgressoBloco2 *bloco2)
+                       const ProgressoBloco2 *bloco2, int estabilidadeLuci, int ajudasPedidas)
 {
     DadosSave d;
     memset(&d, 0, sizeof(d));
@@ -2200,6 +2428,8 @@ static bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direca
     d.luciAcompanhando = luciAcompanhando;
     d.progresso = *progresso;
     d.bloco2 = *bloco2;
+    d.estabilidadeLuci = estabilidadeLuci;
+    d.ajudasPedidas = ajudasPedidas;
 
     // Quiz ou batalha pela metade: o monitor volta para NEUTRO
     // e o jogador refaz aquele quiz quando carregar o jogo
@@ -2282,10 +2512,10 @@ static void DesenharTextoBotao(Rectangle b, const char *texto, int tamanho, Colo
 #define OBJ_FRAGMENTO_BASE    160        // 160..164
 
 // Visual dos guardiões das salas
-enum { GUARDIAO_APOSTADOR, GUARDIAO_SILOGISTA, GUARDIAO_FONTE, NUM_GUARDIOES };
+enum { GUARDIAO_APOSTADOR, GUARDIAO_SILOGISTA, GUARDIAO_FONTE, GUARDIAO_ALUCINACAO, NUM_GUARDIOES };
 
 // Por que a batalha do Bloco 2 começou (decide o que acontece no fim)
-typedef enum { MOTIVO_FONTE, MOTIVO_LOGICA, MOTIVO_SILOGISTA, MOTIVO_LACUNA } MotivoBatalhaB2;
+typedef enum { MOTIVO_FONTE, MOTIVO_LOGICA, MOTIVO_SILOGISTA, MOTIVO_LACUNA, MOTIVO_MONITOR } MotivoBatalhaB2;
 
 // ---------- Geometria ----------
 
@@ -2354,6 +2584,7 @@ static const DefGuardiaoB2 GUARDIOES_B2[NUM_GUARDIOES] = {
     { "O APOSTADOR",        "PERGUNTA MAL FEITA // A IA CHUTA PARA PREENCHER A LACUNA", { 255, 203, 0, 255 },  "123456?" },
     { "O SILOGISTA",        "LÓGICA PROPOSICIONAL // O ATALHO QUE PULA ETAPAS",         { 102, 191, 255, 255 }, "PQR^v~>" },
     { "A FONTE ENVENENADA", "DADOS RUINS // O QUE A IA APRENDE, ELA REPETE",            { 220, 90, 200, 255 },  "%#~*" },
+    { "ALUCINAÇÃO",         "BLOCO 1 // CORREDOR DO HISTÓRICO",                         { 200, 170, 255, 255 }, "?!#01" },
 };
 
 // Sala dos Registros: 6 dados de treinamento (3 corrompidos)
@@ -2457,6 +2688,115 @@ static const RodadaEscolha RODADAS_SILOGISTA[] = {
     },
 };
 #define NUM_RODADAS_SILOGISTA 6
+
+// ---------- Bloco 1: batalhas dos monitores ----------
+// A alucinação diz uma frase curta e o jogador escolhe a AÇÃO certa
+// (como o AGIR do Undertale). Cada acerto enfraquece a alucinação.
+// Conteúdo do "Quizz - missão 1.pdf", resumido em frases curtas.
+
+#define RODADAS_POR_MONITOR   3
+#define DANO_ACERTO_MONITOR   34.0f      // 3 acertos vencem
+#define PONTOS_ACERTO_B1      5
+
+static const RodadaEscolha RODADAS_MONITORES[TOTAL_MONITORES][RODADAS_POR_MONITOR] = {
+    {   // MONITOR 1: o que é alucinação
+        { "\"Falo com tanta confiança que só posso estar certa!\"",
+          { "ACEITAR", "VERIFICAR" }, 2, 1,
+          "Confiança não é prova: a alucinação soa segura, mas é falsa." },
+        { "\"Eu sempre busco a verdade antes de responder!\"",
+          { "CORRIGIR", "CONCORDAR" }, 2, 0,
+          "A IA não busca a verdade: ela prevê a palavra mais provável." },
+        { "\"Quando não sei, chutar vale mais que dizer 'não sei'.\"",
+          { "APOIAR O CHUTE", "PREFERIR 'NÃO SEI'" }, 2, 1,
+          "Avaliar mal o 'não sei' ensina a IA a inventar respostas." },
+    },
+    {   // MONITOR 2: tipos de alucinação
+        { "\"Você disse que a prova é terça... então ela é quinta!\"",
+          { "INTRÍNSECA", "EXTRÍNSECA" }, 2, 0,
+          "Intrínseca: a resposta contradiz o que você informou." },
+        { "\"Segundo o Instituto Inventado, 87% dos gatos falam francês.\"",
+          { "INTRÍNSECA", "EXTRÍNSECA" }, 2, 1,
+          "Extrínseca: não contradiz nada, mas não dá para verificar." },
+        { "\"Seu texto fala de Recife, então vou resumir sobre Lisboa.\"",
+          { "EXTRÍNSECA", "INTRÍNSECA" }, 2, 1,
+          "Contradizer o contexto dado é uma falha de atenção: intrínseca." },
+    },
+    {   // MONITOR 3: riscos e mitigação
+        { "\"Você pediu 'me fala daquilo'... então eu inventei algo!\"",
+          { "REFORMULAR A PERGUNTA", "ACEITAR" }, 2, 0,
+          "Pergunta clara e com contexto deixa menos lacunas para inventar." },
+        { "\"Respondo de cabeça. Para que checar fontes?\"",
+          { "CONFIAR", "VERIFICAR AS FONTES" }, 2, 1,
+          "Verificação humana e fontes externas pegam a alucinação." },
+        { "\"Sempre que chove, vende mais pipoca. A chuva causa pipoca!\"",
+          { "CORRELAÇÃO NÃO É CAUSA", "CONCORDAR" }, 2, 0,
+          "A IA junta coisas que aparecem juntas, mesmo sem relação real." },
+    },
+};
+
+// Dicas da Luci (H durante a escolha): um empurrão no raciocínio, nunca a resposta
+static const char *DICAS_MONITORES[TOTAL_MONITORES][RODADAS_POR_MONITOR] = {
+    { "Falar com confiança prova alguma coisa?",
+      "Lembra: a IA trabalha com probabilidades, não com a verdade.",
+      "Se chutar ganha ponto, o que a IA aprende a fazer?" },
+    { "Ela contradiz algo que você mesmo disse?",
+      "Contradiz o contexto ou só não dá para checar?",
+      "O texto que você deu foi contrariado?" },
+    { "O problema começou no pedido vago...",
+      "Quem confere a resposta antes de usar?",
+      "Aparecer junto é o mesmo que causar?" },
+};
+
+static const char *DICAS_SILOGISTA[NUM_RODADAS_SILOGISTA] = {
+    "P aconteceu, e P leva a Q...",
+    "Rua molhada prova que choveu?",
+    "Procure premissas V com conclusão F.",
+    "Se Q é falso, o que sobra para P?",
+    "Sem P, dá para garantir algo sobre Q?",
+    "As duas setas chegam no mesmo lugar..."
+};
+
+#define PONTOS_ACERTO_COM_AJUDA  2      // acertar usando a dica vale menos
+
+// Acertou: o minigame vira ATAQUE. Cada verdade pega fere a alucinação,
+// cada golpe recebido tira força do ataque. Errou: vira DEFESA, com
+// bem poucas verdades (vida) caindo.
+#define DANO_BASE_ATAQUE        20.0f
+#define DANO_POR_VERDADE        9.0f
+#define PERDA_POR_GOLPE         4.0f
+#define DANO_MINIMO_ATAQUE      12.0f
+#define DANO_MAXIMO_ATAQUE      65.0f
+#define FATOR_DANO_COM_AJUDA    0.6f    // atacar depois de pedir ajuda fere menos
+#define CHANCE_VERDADE_ATAQUE   3       // 1 em 3 balas é verdade no ataque
+#define CHANCE_VERDADE_DEFESA   12      // 1 em 12 balas é verdade na defesa
+
+// Cartão de resumo de cada monitor: uma frase para guardar
+static const char *TITULOS_RESUMO_MONITOR[TOTAL_MONITORES] = {
+    "ALUCINAÇÃO", "INTRÍNSECA x EXTRÍNSECA", "COMO EVITAR"
+};
+static const char *FRASES_RESUMO_MONITOR[TOTAL_MONITORES] = {
+    "Resposta confiante e coerente, mas falsa ou inventada.",
+    "Intrínseca contradiz o contexto; extrínseca inventa o que não dá para verificar.",
+    "Pergunte com clareza, verifique as fontes e desconfie de correlações."
+};
+static const char *FRASES_RESUMO_OBJETO[NUM_OBJETOS_B2] = {
+    "Consultar uma base confiável antes de responder evita repetir dados errados.",
+    "Verificar cada etapa do raciocínio impede os saltos de conclusão.",
+    "Pergunta direta e com contexto não deixa lacuna para a IA inventar."
+};
+
+// "Saber mais" dos monitores: as explicações completas da Luci (do PDF)
+static Dialogo saberMaisMonitores[TOTAL_MONITORES];
+
+static void PrepararSaberMaisMonitores(void)
+{
+    for (int i = 0; i < TOTAL_MONITORES; i++) {
+        saberMaisMonitores[i] = (Dialogo){0};
+        for (int p = 0; p < monitores[i].quiz.numPaginas; p++)
+            saberMaisMonitores[i].paginas[p] = monitores[i].quiz.paginas[p];
+        saberMaisMonitores[i].numPaginas = monitores[i].quiz.numPaginas;
+    }
+}
 #define DANO_ACERTO_SILOGISTA 25.0f
 
 static const char *INTRO_SILOGISTA =
@@ -2468,7 +2808,7 @@ static const char *VITORIA_SILOGISTA =
 
 // ---------- Falas ----------
 
-static const Dialogo dialogoIntroBloco2 = {
+static const Dialogo dialogoIntroBloco2Completo = {
     .paginas = {
         "Luci: Este é o Arquivo de Treinamento. Aqui ficaram guardados os registros de quando eu aprendi a responder.",
         "Luci: Cada porta leva a uma sala onde uma das minhas falhas ficou presa: dados envenenados, raciocínio com atalhos e perguntas cheias de lacunas.",
@@ -2478,7 +2818,16 @@ static const Dialogo dialogoIntroBloco2 = {
     .numPaginas = 4
 };
 
-static const Dialogo dialogoIntroSalas[NUM_OBJETOS_B2] = {
+static const Dialogo dialogoIntroBloco2 = {
+    .paginas = {
+        "Luci: Cada porta guarda um objeto mágico que corrige uma das minhas falhas.",
+        "Luci: Traga os 3 objetos para este altar e o NÚCLEO vai abrir!"
+    },
+    .numPaginas = 2,
+    .saberMais = &dialogoIntroBloco2Completo
+};
+
+static const Dialogo dialogoIntroSalasCompleto[NUM_OBJETOS_B2] = {
     {
         .paginas = {
             "Luci: Estes são os registros usados no meu treino. Alguns estão errados ou desatualizados.",
@@ -2503,11 +2852,29 @@ static const Dialogo dialogoIntroSalas[NUM_OBJETOS_B2] = {
     }
 };
 
+static const Dialogo dialogoIntroSalas[NUM_OBJETOS_B2] = {
+    {
+        .paginas = { "Luci: Alguns destes registros estão errados. Ache-os e me treine na FONTE." },
+        .numPaginas = 1,
+        .saberMais = &dialogoIntroSalasCompleto[0]
+    },
+    {
+        .paginas = { "Luci: Deixe as 3 regras do painel verdadeiras com as alavancas e verifique no console." },
+        .numPaginas = 1,
+        .saberMais = &dialogoIntroSalasCompleto[1]
+    },
+    {
+        .paginas = { "Luci: Pergunte ao APOSTADOR o placar da final da Copa de 2002." },
+        .numPaginas = 1,
+        .saberMais = &dialogoIntroSalasCompleto[2]
+    }
+};
+
 static const Dialogo dialogoPerguntaVaga = {
     .paginas = {
-        "* Você pergunta: \"Quanto foi a final?\"",
-        "* O APOSTADOR rola os dados: \"Foi 7 a 1 para a Alemanha, em 2014!\"",
-        "Luci: Ele chutou para preencher a lacuna. Procure fragmentos de contexto pela sala e monte uma pergunta clara."
+        "* Você: \"Quanto foi a final?\"",
+        "* APOSTADOR: \"7 a 1 para a Alemanha, em 2014!\"",
+        "Luci: Ele chutou! Ache fragmentos de contexto pela sala."
     },
     .numPaginas = 3
 };
@@ -2540,20 +2907,26 @@ static const Dialogo dialogoItemB2[NUM_OBJETOS_B2] = {
 };
 
 static const Dialogo dialogoBarreiraAberta = {
-    .paginas = {
-        "* As três regras acendem ao mesmo tempo. A barreira lógica se desfaz!",
-        "Luci: Agora fale com o SILOGISTA. Ele não vai entregar a lupa sem um duelo de argumentos."
-    },
-    .numPaginas = 2
+    .paginas = { "* A barreira se desfez! Desafie o SILOGISTA." },
+    .numPaginas = 1
 };
 
-static const Dialogo dialogoFimBloco2 = {
+static const Dialogo dialogoFimBloco2Completo = {
     .paginas = {
         "Luci: Com o CRISTAL RAG, a LUPA DA VERIFICAÇÃO e a PERGUNTA PERFEITA, eu entendo como eu alucinei.",
         "Luci: Eu aprendi com dados envenenados, confiei em atalhos e preenchia as lacunas com chutes. Agora dá para reverter isso.",
         "* Os três objetos brilham no altar. A porta do NÚCLEO se destrava."
     },
     .numPaginas = 3
+};
+
+static const Dialogo dialogoFimBloco2 = {
+    .paginas = {
+        "Luci: Com os 3 objetos, eu entendo como eu alucinei. Obrigada!",
+        "* A porta do NÚCLEO se destrava."
+    },
+    .numPaginas = 2,
+    .saberMais = &dialogoFimBloco2Completo
 };
 
 static const Dialogo dialogoNucleoTrancado = {
@@ -2570,17 +2943,17 @@ static const Dialogo dialogoNucleoLiberado = {
 };
 
 static const char *FALA_DERROTA_SILOGISTA =
-    "Luci: Ele ainda está forte. Respire e tente de novo, prestando atenção em qual etapa o raciocínio pula.";
+    "Luci: Ele ainda está forte. Tente de novo: veja qual etapa o raciocínio pula.";
 static const char *FALA_FONTE_ERRO =
-    "Luci: Destravei os registros que estavam classificados errado. Inspecione de novo antes de treinar.";
+    "Luci: Destravei os registros errados. Inspecione de novo!";
 static const char *FALA_LOGICA_ERRO =
-    "Luci: O painel agora mostra qual regra ficou falsa. Use isso para ajustar as alavancas.";
+    "Luci: O painel mostra qual regra ficou falsa. Ajuste as alavancas!";
 static const char *FALA_LACUNA_FALTOU =
-    "Luci: Faltou contexto, então ele chutou. Uma pergunta clara diz o assunto, o ano e o que você quer saber.";
+    "Luci: Faltou contexto: diga o assunto, o ano e o que quer saber.";
 static const char *FALA_LACUNA_CONTRADICAO =
-    "Luci: A pergunta tinha 1998 e 2002 ao mesmo tempo. Contexto contraditório também faz a IA inventar.";
+    "Luci: 1998 e 2002 juntos? Contexto contraditório faz a IA inventar.";
 static const char *FALA_LACUNA_RUIDO =
-    "Luci: A pipoca não tem nada a ver com a final. Informação solta deixa a pergunta confusa: seja direto.";
+    "Luci: A pipoca só atrapalha. Seja direto!";
 
 // ---------- Estado da batalha ----------
 
@@ -2612,7 +2985,44 @@ typedef struct {
 
     char texto[768];
     float visiveis;
+
+    // Conteúdo e estilo (duelo do Silogista ou batalha de monitor)
+    const RodadaEscolha *rodadas;
+    int numRodadas;
+    float danoAcerto;
+    const char *textoVitoria;
+    const char *subtitulo;
+    bool estiloAcao;            // frase curta do inimigo + botões de ação (Bloco 1)
+    bool pegarBoas;             // na esquiva caem verdades para PEGAR
+    int monitor;                // monitor do Bloco 1 (-1 = não é monitor)
+    int pegas;                  // verdades pegas
+    double inicio;              // telemetria
+
+    // Ajuda da Luci (H)
+    const char *const *dicas;   // uma dica por rodada
+    int *estabilidade;          // estabilidade da Luci (fica no main, vai para o save)
+    int *ajudasTotal;
+    bool ajudaNaRodada;         // já pediu ajuda nesta rodada
+    bool dicaAlucinada;         // a Luci alucinou a dica desta rodada
+    int opcaoSugerida;          // opção que a Luci "jurou" ser a certa (quando alucina)
+    char dica[160];
+    float tempoDica;
+    int acertosComAjuda;
+    int alucinacoesSeguidas;    // vezes que o jogador seguiu uma dica alucinada
+
+    // Minigame depois de cada resposta
+    bool faseAtaque;            // true = acertou (ataque), false = errou (defesa)
+    int verdadesNoAtaque;       // verdades pegas neste ataque
+    int golpesNaRodada;         // golpes recebidos neste minigame
+    float danoMostrado;         // número de dano que aparece sobre o inimigo
+    float tempoDano;
+
+    // Partículas de acerto
+    struct { Vector2 pos, vel; float vida; Color cor; } particulas[48];
 } BatalhaB2;
+
+// Caixa da frase do inimigo no estilo de ação (os botões ficam embaixo dela)
+static const Rectangle CAIXA_ACAO = {50, 228, 700, 150};
 
 // Montador de pergunta da Sala da Lacuna (não vai para o save)
 typedef struct {
@@ -2622,6 +3032,17 @@ typedef struct {
     int tamLista;
     bool incluido[NUM_FRAGMENTOS];
 } MontadorPergunta;
+
+// Cartão de resumo: aparece depois de cada desafio com uma frase para guardar
+typedef struct {
+    bool ativo;
+    int icone;                  // 0..3 = monitor, 10..12 = objeto do Bloco 2
+    bool sucesso;
+    const char *titulo;
+    const char *frase;
+    const Dialogo *saberMais;
+    double inicio;
+} CartaoResumo;
 
 // Tudo que a lógica do Bloco 2 precisa mexer (fica no main)
 typedef struct {
@@ -2638,6 +3059,9 @@ typedef struct {
     MotivoBatalhaB2 *motivo;
     const char **falaPosBatalha;
     MontadorPergunta *montador;
+    CartaoResumo *cartao;
+    int *estabilidadeLuci;
+    int *ajudasPedidas;
 } ContextoB2;
 
 // ---------- Utilidades ----------
@@ -2738,7 +3162,7 @@ static void B2Texto(BatalhaB2 *b, const char *texto)
 
 static const RodadaEscolha *RodadaAtualB2(const BatalhaB2 *b)
 {
-    return &RODADAS_SILOGISTA[b->rodada % NUM_RODADAS_SILOGISTA];
+    return &b->rodadas[b->rodada % b->numRodadas];
 }
 
 static int AlturaDesafioB2(const BatalhaB2 *b, int fonte)
@@ -2749,7 +3173,7 @@ static int AlturaDesafioB2(const BatalhaB2 *b, int fonte)
     for (int i = 0; i < r->numOpcoes; i++)
         h += ContarLinhas(b->opcoesTexto[i]) * (fonte + 6) + 6;
 
-    return h + 24;
+    return h + 24 + 36;   // + botão de ajuda da Luci
 }
 
 static void B2PrepararRodada(BatalhaB2 *b)
@@ -2760,6 +3184,17 @@ static void B2PrepararRodada(BatalhaB2 *b)
     b->fase = B2_DESAFIO;
     b->tempoFase = 0.0f;
     b->selecao = 0;
+    b->ajudaNaRodada = false;
+    b->dicaAlucinada = false;
+    b->opcaoSugerida = -1;
+    b->dica[0] = '\0';
+
+    // Estilo de ação: só a frase do inimigo (as ações viram botões)
+    if (b->estiloAcao) {
+        b->fonteDesafio = FONTE_BATALHA;
+        QuebrarTexto(r->enunciado, 640, FONTE_BATALHA, b->enunciado, (int)sizeof(b->enunciado));
+        return;
+    }
 
     for (int f = 0; f < 3; f++) {
 
@@ -2791,12 +3226,48 @@ static void BatalhaB2Base(BatalhaB2 *b, int guardiao, int nivelAlucinacao)
 
     b->velocidadeBala = 135.0f * forca;
     b->intervaloBala = 0.24f / forca;
+
+    // Padrão: duelo do Silogista
+    b->rodadas = RODADAS_SILOGISTA;
+    b->numRodadas = NUM_RODADAS_SILOGISTA;
+    b->danoAcerto = DANO_ACERTO_SILOGISTA;
+    b->textoVitoria = VITORIA_SILOGISTA;
+    b->subtitulo = GUARDIOES_B2[guardiao].fundamento;
+    b->monitor = -1;
+    b->inicio = GetTime();
+    b->dicas = DICAS_SILOGISTA;
+}
+
+// Liga a batalha à estabilidade da Luci (para a ajuda com H)
+static void BatalhaB2LigarLuci(BatalhaB2 *b, int *estabilidade, int *ajudasTotal)
+{
+    b->estabilidade = estabilidade;
+    b->ajudasTotal = ajudasTotal;
 }
 
 // Duelo completo (rodadas de lógica + esquiva quando erra)
+// Batalha de um monitor do Bloco 1 (estilo de ação + pegar e desviar)
+static void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao)
+{
+    BatalhaB2Base(b, GUARDIAO_ALUCINACAO, nivelAlucinacao);
+
+    b->rodadas = RODADAS_MONITORES[monitor];
+    b->numRodadas = RODADAS_POR_MONITOR;
+    b->danoAcerto = DANO_ACERTO_MONITOR;
+    b->textoVitoria = "* A alucinação se desfaz em dados limpos!";
+    b->subtitulo = monitores[monitor].quiz.titulo;
+    b->estiloAcao = true;
+    b->pegarBoas = true;
+    b->monitor = monitor;
+    b->dicas = DICAS_MONITORES[monitor];
+
+    B2Texto(b, TextFormat("* Uma ALUCINAÇÃO sai do %s!", monitores[monitor].nome));
+}
+
 static void BatalhaB2IniciarDuelo(BatalhaB2 *b, int nivelAlucinacao)
 {
     BatalhaB2Base(b, GUARDIAO_SILOGISTA, nivelAlucinacao);
+    b->pegarBoas = true;
     B2Texto(b, INTRO_SILOGISTA);
 }
 
@@ -2809,6 +3280,71 @@ static void BatalhaB2IniciarEsquiva(BatalhaB2 *b, int guardiao, int nivelAlucina
     B2Texto(b, texto);
 }
 
+static void B2Particulas(BatalhaB2 *b, Vector2 origem, Color cor, int quantidade)
+{
+    for (int i = 0; i < 48 && quantidade > 0; i++) {
+
+        if (b->particulas[i].vida > 0.0f)
+            continue;
+
+        float ang = (float)GetRandomValue(0, 360) * DEG2RAD;
+        float vel = (float)GetRandomValue(60, 160);
+
+        b->particulas[i].pos = origem;
+        b->particulas[i].vel = (Vector2){ cosf(ang) * vel, sinf(ang) * vel };
+        b->particulas[i].vida = 0.6f;
+        b->particulas[i].cor = cor;
+        quantidade--;
+    }
+}
+
+// H durante a escolha: a Luci dá uma dica. Cada pedido gasta 1 de estabilidade.
+// Com pouca estabilidade ela pode ALUCINAR: indica a opção errada com toda a certeza.
+static void B2PedirAjuda(BatalhaB2 *b)
+{
+    if (b->estabilidade == NULL || b->ajudaNaRodada)
+        return;
+
+    const RodadaEscolha *r = RodadaAtualB2(b);
+
+    b->tempoDica = 0.0f;
+
+    // Sem estabilidade: ela não consegue ajudar
+    if (*b->estabilidade <= 0) {
+        snprintf(b->dica, sizeof(b->dica), "Estou sobrecarregada... Acerte sozinho para eu me estabilizar.");
+        b->ajudaNaRodada = true;
+        b->dicaAlucinada = false;
+        b->opcaoSugerida = -2;          // pediu, mas não recebeu dica
+        MostrarEmocaoLuci(EMOCAO_DUVIDA, 2.0f);
+        return;
+    }
+
+    (*b->estabilidade)--;
+    (*b->ajudasTotal)++;
+    b->ajudaNaRodada = true;
+
+    // Chance de alucinar depois de gastar: 5-3 = 0%, 2 = 30%, 1 = 60%, 0 = 85%
+    static const int chance[ESTABILIDADE_MAX_LUCI + 1] = { 85, 60, 30, 0, 0, 0 };
+    b->dicaAlucinada = GetRandomValue(1, 100) <= chance[*b->estabilidade];
+
+    if (b->dicaAlucinada) {
+
+        int errada = GetRandomValue(0, r->numOpcoes - 2);
+        if (errada >= r->correta) errada++;
+
+        b->opcaoSugerida = errada;
+        snprintf(b->dica, sizeof(b->dica), "Tenho 100%% de certeza: é \"%s\"!", r->opcoes[errada]);
+
+    } else {
+
+        b->opcaoSugerida = -1;
+        snprintf(b->dica, sizeof(b->dica), "%s", b->dicas[b->rodada % b->numRodadas]);
+    }
+
+    TocarSom(sfxSelecao);
+    Telemetria("ajuda_luci", b->dicaAlucinada ? "alucinou" : "dica", (float)*b->estabilidade, b->rodada);
+}
+
 static void B2Responder(BatalhaB2 *b)
 {
     const RodadaEscolha *r = RodadaAtualB2(b);
@@ -2818,15 +3354,20 @@ static void B2Responder(BatalhaB2 *b)
     if (b->ultimoAcerto) {
 
         b->acertos++;
-        b->alucinacaoGuardiao -= DANO_ACERTO_SILOGISTA;
 
-        if (b->alucinacaoGuardiao <= 0.0f) {
-            b->alucinacaoGuardiao = 0.0f;
-            b->venceu = true;
-        }
+        TocarSom(sfxAcerto);
+        B2Particulas(b, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, LIME, 24);
 
-        B2Texto(b, TextFormat("* Certo! %s\n* A alucinação do SILOGISTA caiu para %d%%.  (+%d pontos)",
-                              r->explicacao, (int)b->alucinacaoGuardiao, PONTOS_ACERTO_B2));
+        // Acertou sozinho: a Luci se estabiliza um pouco. Com ajuda: vale menos ponto.
+        if (b->ajudaNaRodada && b->opcaoSugerida != -2)
+            b->acertosComAjuda++;
+        else if (b->estabilidade != NULL && *b->estabilidade < ESTABILIDADE_MAX_LUCI)
+            (*b->estabilidade)++;
+
+        if (b->dicaAlucinada)
+            B2Texto(b, TextFormat("* Certo!  %s\n* A Luci alucinou a dica e você verificou! ATAQUE: pegue as verdades!", r->explicacao));
+        else
+            B2Texto(b, TextFormat("* Certo!  %s\n* ATAQUE! Cada verdade que você pegar fere a alucinação.", r->explicacao));
 
     } else {
 
@@ -2836,7 +3377,18 @@ static void B2Responder(BatalhaB2 *b)
         if (b->alucinacaoGuardiao > 100.0f)
             b->alucinacaoGuardiao = 100.0f;
 
-        B2Texto(b, TextFormat("* Não... %s\n* O SILOGISTA contra-ataca!  (-%d pontos)", r->explicacao, PENALIDADE_ERRO));
+        TocarSom(sfxErro);
+
+        // Seguiu a dica alucinada: a lição do jogo inteiro
+        if (b->dicaAlucinada && b->selecao == b->opcaoSugerida) {
+
+            b->alucinacoesSeguidas++;
+            B2Texto(b, TextFormat("* A Luci ALUCINOU e você confiou sem verificar!\n* %s", r->explicacao));
+            b->fase = B2_RESULTADO;
+            return;
+        }
+
+        B2Texto(b, TextFormat("* Errado!  %s\n* DEFESA! Ela ataca com tudo. Desvie!", r->explicacao));
     }
 
     b->fase = B2_RESULTADO;
@@ -2861,6 +3413,12 @@ static void B2CriarBala(BatalhaB2 *b, Rectangle c)
 
     bl->ativa = true;
     bl->glifo = glifos[GetRandomValue(0, (int)strlen(glifos) - 1)];
+
+    // Verdades para pegar: muitas no ataque, raras na defesa (caem mais devagar)
+    int chance = b->faseAtaque ? CHANCE_VERDADE_ATAQUE : CHANCE_VERDADE_DEFESA;
+    bl->boa = b->pegarBoas && (GetRandomValue(1, chance) == 1);
+    if (bl->boa)            v *= 0.7f;
+    else if (b->faseAtaque) v *= 0.85f;     // no ataque o perigo é um pouco mais lento
 
     switch (b->padrao) {
 
@@ -2896,6 +3454,8 @@ static void B2ComecarEsquiva(BatalhaB2 *b)
     b->fase = B2_ENCOLHENDO;
     b->tempoDesvio = 0.0f;
     b->cronoBala = 0.0f;
+    b->verdadesNoAtaque = 0;
+    b->golpesNaRodada = 0;
 }
 
 // Devolve true quando a batalha terminou
@@ -2917,6 +3477,22 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
     bool terminou = (b->visiveis >= (float)total);
     b->tempoFase += dt;
 
+    b->tempoDica += dt;
+    if (b->tempoDano > 0.0f) b->tempoDano -= dt;
+
+    // O tremor do dano acaba sozinho, em qualquer fase (antes ele "sobrava"
+    // depois da esquiva e a caixa de perguntas ficava tremendo)
+    if (b->tremor > 0.0f) b->tremor -= dt;
+    if (b->fase != B2_DESVIO) b->tremor = 0.0f;
+
+    // Partículas
+    for (int i = 0; i < 48; i++) {
+        if (b->particulas[i].vida <= 0.0f) continue;
+        b->particulas[i].vida -= dt;
+        b->particulas[i].pos = Vector2Add(b->particulas[i].pos, Vector2Scale(b->particulas[i].vel, dt));
+        b->particulas[i].vel.y += 200.0f * dt;
+    }
+
     switch (b->fase) {
 
         case B2_INTRO: {
@@ -2934,9 +3510,44 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
             const RodadaEscolha *r = RodadaAtualB2(b);
             int n = r->numOpcoes;
+            int antes = b->selecao;
+            bool temAjuda = (b->estabilidade != NULL);
+            int ajuda = n;                          // o botão de ajuda é a "opção" n
 
-            if (cima)  b->selecao = (b->selecao + n - 1) % n;
-            if (baixo) b->selecao = (b->selecao + 1) % n;
+            bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT);
+            bool direita  = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
+
+            if (b->estiloAcao) {
+
+                // Ações lado a lado (A/D); o botão de ajuda fica embaixo delas (S / W)
+                if (b->selecao == ajuda) {
+                    if (cima || esquerda || direita) b->selecao = 0;
+                } else {
+                    if (esquerda) b->selecao = (b->selecao + n - 1) % n;
+                    if (direita)  b->selecao = (b->selecao + 1) % n;
+                    if (baixo && temAjuda) b->selecao = ajuda;
+                }
+
+            } else {
+
+                // Lista vertical: o botão de ajuda é o último item
+                int total = n + (temAjuda ? 1 : 0);
+                if (cima)  b->selecao = (b->selecao + total - 1) % total;
+                if (baixo) b->selecao = (b->selecao + 1) % total;
+            }
+
+            if (b->selecao != antes)
+                TocarSom(sfxSelecao);
+
+            if (IsKeyPressed(KEY_H))
+                B2PedirAjuda(b);
+
+            // ENTER no botão de ajuda: pede ajuda e volta para as opções
+            if (confirmar && temAjuda && b->selecao == ajuda) {
+                B2PedirAjuda(b);
+                b->selecao = 0;
+                break;
+            }
 
             if (IsKeyPressed(KEY_ONE))   { b->selecao = 0; confirmar = true; }
             if (IsKeyPressed(KEY_TWO))   { b->selecao = 1; confirmar = true; }
@@ -2955,20 +3566,9 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
             if (!terminou) { b->visiveis = (float)total; break; }
 
-            if (b->ultimoAcerto) {
-
-                if (b->venceu) {
-                    b->fase = B2_FIM;
-                    B2Texto(b, VITORIA_SILOGISTA);
-                } else {
-                    b->rodada++;
-                    B2PrepararRodada(b);
-                }
-
-            } else {
-
-                B2ComecarEsquiva(b);
-            }
+            // Acertou = ataque, errou = defesa. Os dois viram minigame.
+            b->faseAtaque = b->ultimoAcerto;
+            B2ComecarEsquiva(b);
 
         } break;
 
@@ -2995,7 +3595,6 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
 
             b->tempoDesvio += dt;
             if (b->invencivel > 0.0f) b->invencivel -= dt;
-            if (b->tremor > 0.0f)     b->tremor -= dt;
 
             Vector2 dir = {0};
             if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))    dir.y -= 1.0f;
@@ -3016,7 +3615,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
             b->cronoBala -= dt;
 
             if (b->cronoBala <= 0.0f) {
-                b->cronoBala += b->intervaloBala;
+                b->cronoBala += b->intervaloBala * (b->faseAtaque ? 1.25f : 1.0f);   // ataque: menos perigo
                 B2CriarBala(b, c);
             }
 
@@ -3033,11 +3632,32 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                     continue;
                 }
 
-                if (b->invencivel <= 0.0f && Vector2Distance(bl->pos, b->alma) < RAIO_BALA + RAIO_ALMA) {
+                bool encostou = Vector2Distance(bl->pos, b->alma) < RAIO_BALA + RAIO_ALMA;
+
+                // Verdade: no ataque vira dano, na defesa recupera vida
+                if (bl->boa && encostou) {
+
+                    if (b->faseAtaque) {
+                        b->verdadesNoAtaque++;
+                        B2Particulas(b, b->alma, GOLD, 8);
+                    } else {
+                        b->hp = (b->hp + 2 > HP_MAX_B2) ? HP_MAX_B2 : b->hp + 2;
+                        B2Particulas(b, b->alma, LIME, 6);
+                    }
+
+                    b->pegas++;
+                    bl->ativa = false;
+                    TocarSom(sfxPegar);
+                }
+
+                // Alucinação: DESVIAR (encostou = perde vida)
+                else if (!bl->boa && b->invencivel <= 0.0f && encostou) {
                     b->hp -= 3;
                     b->invencivel = TEMPO_INVENCIVEL;
                     b->tremor = 0.2f;
+                    b->golpesNaRodada++;
                     bl->ativa = false;
+                    TocarSom(sfxDano);
                 }
             }
 
@@ -3075,6 +3695,34 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                                           GUARDIOES_B2[b->guardiao].nome));
 
                 } else {
+
+                    // Ataque: o dano depende do desempenho no minigame
+                    if (b->faseAtaque) {
+
+                        float dano = DANO_BASE_ATAQUE + b->verdadesNoAtaque * DANO_POR_VERDADE
+                                   - b->golpesNaRodada * PERDA_POR_GOLPE;
+
+                        if (b->ajudaNaRodada && b->opcaoSugerida != -2)
+                            dano *= FATOR_DANO_COM_AJUDA;
+
+                        dano = Clamp(dano, DANO_MINIMO_ATAQUE, DANO_MAXIMO_ATAQUE);
+
+                        b->alucinacaoGuardiao -= dano;
+                        b->danoMostrado = dano;
+                        b->tempoDano = 1.4f;
+
+                        B2Particulas(b, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, GOLD, 24);
+                        TocarSom(sfxAcerto);
+                        Telemetria("ataque", b->subtitulo, dano, b->verdadesNoAtaque);
+
+                        if (b->alucinacaoGuardiao <= 0.0f) {
+                            b->alucinacaoGuardiao = 0.0f;
+                            b->venceu = true;
+                            b->fase = B2_FIM;
+                            B2Texto(b, b->textoVitoria);
+                            break;
+                        }
+                    }
 
                     b->rodada++;
                     B2PrepararRodada(b);
@@ -3223,9 +3871,10 @@ static void DesenharGuardiaoB2(int g, Vector2 c, float t, float escala)
 {
     Color cor = GUARDIOES_B2[g].cor;
 
-    if (g == GUARDIAO_APOSTADOR)      DesenharApostador(c, t, escala, cor);
-    else if (g == GUARDIAO_SILOGISTA) DesenharSilogista(c, t, escala, cor);
-    else                              DesenharFonte(c, t, escala, cor);
+    if (g == GUARDIAO_APOSTADOR)       DesenharApostador(c, t, escala, cor);
+    else if (g == GUARDIAO_SILOGISTA)  DesenharSilogista(c, t, escala, cor);
+    else if (g == GUARDIAO_ALUCINACAO) DesenharAlucinacao(c, t, false);
+    else                               DesenharFonte(c, t, escala, cor);
 }
 
 // Ícone de cada objeto mágico (e = escala)
@@ -3269,6 +3918,47 @@ static void DesenharObjetoB2(int i, Vector2 c, float e, float t)
 
 // ---------- Desenho da batalha ----------
 
+// Botão "PEDIR AJUDA À LUCI": fica embaixo das opções, com a Luci desenhada nele
+static void B2DesenharBotaoAjuda(const BatalhaB2 *b, Rectangle r, bool marcado)
+{
+    int e = *b->estabilidade;
+    bool usada = b->ajudaNaRodada;
+    bool sobrecarregada = (e <= 0);
+
+    const char *texto = usada ? "A LUCI JÁ AJUDOU NESTA RODADA"
+                       : (sobrecarregada ? "LUCI SOBRECARREGADA" : "PEDIR AJUDA À LUCI   [H]");
+
+    Color corBorda = usada ? Fade(GRAY, 0.6f) : (sobrecarregada ? RED : SKYBLUE);
+    Color corTexto = usada ? GRAY : (sobrecarregada ? RED : SKYBLUE);
+
+    // Chama atenção se o jogador está demorando para escolher
+    if (!usada && !sobrecarregada && b->tempoFase > 6.0f)
+        corBorda = Fade(GOLD, 0.6f + 0.4f * sinf((float)GetTime() * 6.0f));
+
+    if (marcado) { corBorda = YELLOW; corTexto = usada ? GRAY : YELLOW; }
+
+    DrawRectangleRec(r, Fade((Color){ 10, 30, 55, 255 }, 0.9f));
+    DrawRectangleLinesEx(r, 2, corBorda);
+
+    if (marcado)
+        DesenharCoracao(r.x + 14, r.y + r.height / 2, 2, RED);
+
+    DesenharLuciTamanho((Vector2){ r.x + 38, r.y + r.height / 2 }, r.height - 8);
+
+    int tam = 14;
+    DrawText(texto, (int)r.x + 58, (int)(r.y + r.height / 2) - tam / 2, tam, corTexto);
+
+    // Estabilidade em miniatura dentro do botão
+    if (!usada) {
+        Color corE = (e >= 3) ? SKYBLUE : (e == 2 ? ORANGE : RED);
+        for (int i = 0; i < ESTABILIDADE_MAX_LUCI; i++) {
+            Rectangle seg = { r.x + r.width - 62 + i * 11, r.y + r.height / 2 - 4, 8, 8 };
+            if (i < e) DrawRectangleRec(seg, corE);
+            DrawRectangleLinesEx(seg, 1, Fade(GRAY, 0.8f));
+        }
+    }
+}
+
 static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
 {
     const DefGuardiaoB2 *def = &GUARDIOES_B2[b->guardiao];
@@ -3276,7 +3966,7 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
     ClearBackground(BLACK);
 
     DrawText(def->nome, LARGURA_TELA / 2 - MeasureText(def->nome, 16) / 2, 12, 16, def->cor);
-    DrawText(def->fundamento, LARGURA_TELA / 2 - MeasureText(def->fundamento, 10) / 2, 32, 10, GRAY);
+    DrawText(b->subtitulo, LARGURA_TELA / 2 - MeasureText(b->subtitulo, 10) / 2, 32, 10, GRAY);
 
     DesenharGuardiaoB2(b->guardiao, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, tempo, 0.85f);
 
@@ -3290,12 +3980,13 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
     }
 
     float t = b->anim * b->anim * (3.0f - 2.0f * b->anim);
+    Rectangle base = b->estiloAcao ? CAIXA_ACAO : CAIXA_B2;
 
     Rectangle caixa = {
-        Lerp(CAIXA_B2.x, CAIXA_DESVIO_B2.x, t),
-        Lerp(CAIXA_B2.y, CAIXA_DESVIO_B2.y, t),
-        Lerp(CAIXA_B2.width, CAIXA_DESVIO_B2.width, t),
-        Lerp(CAIXA_B2.height, CAIXA_DESVIO_B2.height, t)
+        Lerp(base.x, CAIXA_DESVIO_B2.x, t),
+        Lerp(base.y, CAIXA_DESVIO_B2.y, t),
+        Lerp(base.width, CAIXA_DESVIO_B2.width, t),
+        Lerp(base.height, CAIXA_DESVIO_B2.height, t)
     };
 
     if (b->tremor > 0.0f) {
@@ -3320,6 +4011,47 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             DrawText("ENTER >", (int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12, GOLD);
     }
 
+    else if (b->fase == B2_DESAFIO && b->estiloAcao) {
+
+        // Frase do inimigo na caixa e as ações como botões embaixo (estilo Undertale)
+        const RodadaEscolha *r = RodadaAtualB2(b);
+
+        DesenharTextoLinhas(b->enunciado, px, py + 10, FONTE_BATALHA, 28, WHITE);
+
+        int largura = 270, espaco = 24;
+        int total = r->numOpcoes * largura + (r->numOpcoes - 1) * espaco;
+        int x0 = LARGURA_TELA / 2 - total / 2;
+        int yBotao = (int)(CAIXA_ACAO.y + CAIXA_ACAO.height) + 16;
+
+        for (int i = 0; i < r->numOpcoes; i++) {
+
+            bool marcada = (b->selecao == i);
+            Rectangle botao = { (float)(x0 + i * (largura + espaco)), (float)yBotao, (float)largura, 44 };
+
+            DrawRectangleRec(botao, BLACK);
+            DrawRectangleLinesEx(botao, 3, marcada ? YELLOW : PURPLE);
+
+            if (marcada)
+                DesenharCoracao(botao.x + 20, botao.y + 22, 2, RED);
+
+            int tam = (MeasureText(r->opcoes[i], 18) > largura - 50) ? 14 : 18;
+            DrawText(r->opcoes[i], (int)botao.x + 38 + (largura - 50 - MeasureText(r->opcoes[i], tam)) / 2,
+                     (int)botao.y + 22 - tam / 2, tam, marcada ? YELLOW : LIGHTGRAY);
+        }
+
+        int yDica = yBotao + 56;
+
+        if (b->estabilidade != NULL) {
+            B2DesenharBotaoAjuda(b, (Rectangle){ LARGURA_TELA / 2.0f - 165, (float)yBotao + 54, 330, 34 }, b->selecao == r->numOpcoes);
+            yDica = yBotao + 96;
+        }
+
+        const char *dica = (b->estabilidade != NULL)
+            ? "A/D: escolher a ação    S: ajuda da Luci    ENTER: confirmar"
+            : "A/D ou SETAS: escolher a ação    ENTER: confirmar";
+        DrawText(dica, LARGURA_TELA / 2 - MeasureText(dica, 10) / 2, yDica, 10, GRAY);
+    }
+
     else if (b->fase == B2_DESAFIO) {
 
         const RodadaEscolha *r = RodadaAtualB2(b);
@@ -3338,8 +4070,11 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             y += nl * (f + 6) + 6;
         }
 
-        DrawText("W/S ou SETAS: escolher    ENTER: confirmar    1-4: atalho",
-                 px, (int)(caixa.y + caixa.height) - 24, 10, GRAY);
+        if (b->estabilidade != NULL)
+            B2DesenharBotaoAjuda(b, (Rectangle){ (float)px + 20, (float)y + 2, 330, 30 }, b->selecao == r->numOpcoes);
+
+        DrawText("W/S ou SETAS: escolher    ENTER: confirmar    1-4: atalho    H: ajuda da Luci",
+                 px, (int)(caixa.y + caixa.height) - 22, 10, GRAY);
     }
 
     else if (b->fase == B2_DESVIO) {
@@ -3347,9 +4082,20 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
         BeginScissorMode((int)caixa.x + 4, (int)caixa.y + 4, (int)caixa.width - 8, (int)caixa.height - 8);
 
         for (int i = 0; i < MAX_BALAS; i++) {
+
             if (!b->balas[i].ativa) continue;
-            char g[2] = { b->balas[i].glifo, '\0' };
-            DrawText(g, (int)b->balas[i].pos.x - MeasureText(g, 20) / 2, (int)b->balas[i].pos.y - 10, 20, def->cor);
+
+            Vector2 bp = b->balas[i].pos;
+
+            if (b->balas[i].boa) {
+                // Verdade para pegar: um "certo" verde brilhando
+                DrawCircleV(bp, 10, Fade(LIME, 0.25f));
+                DrawLineEx((Vector2){ bp.x - 6, bp.y }, (Vector2){ bp.x - 2, bp.y + 5 }, 3, LIME);
+                DrawLineEx((Vector2){ bp.x - 2, bp.y + 5 }, (Vector2){ bp.x + 7, bp.y - 6 }, 3, LIME);
+            } else {
+                char g[2] = { b->balas[i].glifo, '\0' };
+                DrawText(g, (int)bp.x - MeasureText(g, 20) / 2, (int)bp.y - 10, 20, def->cor);
+            }
         }
 
         if (b->invencivel <= 0.0f || (((int)(b->invencivel * 10.0f)) % 2 == 0))
@@ -3363,7 +4109,72 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
         DrawRectangle((int)caixa.x, (int)(caixa.y + caixa.height + 6), (int)(caixa.width * resta), 3, Fade(WHITE, 0.5f));
     }
 
+    for (int i = 0; i < 48; i++)
+        if (b->particulas[i].vida > 0.0f)
+            DrawCircleV(b->particulas[i].pos, 3, Fade(b->particulas[i].cor, b->particulas[i].vida / 0.6f));
+
+    // Lembra a regra do minigame com ícones (sem texto longo)
+    if (b->fase == B2_DESVIO && b->pegarBoas) {
+
+        const char *modo = b->faseAtaque ? "ATAQUE!" : "DEFESA!";
+        DrawText(modo, 556, 266, 18, b->faseAtaque ? GOLD : RED);
+
+        DrawLineEx((Vector2){ 560, 300 }, (Vector2){ 564, 305 }, 3, LIME);
+        DrawLineEx((Vector2){ 564, 305 }, (Vector2){ 573, 294 }, 3, LIME);
+        DrawText(b->faseAtaque ? "PEGUE = DANO" : "PEGUE = VIDA", 582, 293, 14, LIME);
+        DrawText("?!", 558, 328, 16, def->cor);
+        DrawText("DESVIE", 582, 330, 14, def->cor);
+
+        if (b->faseAtaque)
+            DrawText(TextFormat("VERDADES: %d", b->verdadesNoAtaque), 556, 362, 14, GOLD);
+    }
+
+    // Dano causado no ataque, subindo sobre o inimigo
+    if (b->tempoDano > 0.0f) {
+        float k = b->tempoDano / 1.4f;
+        const char *txt = TextFormat("-%d", (int)b->danoMostrado);
+        int y = (int)(70 - (1.0f - k) * 30);
+        DrawText(txt, LARGURA_TELA / 2 + 70, y, 30, Fade(GOLD, k));
+    }
+
+    // Balão de ajuda da Luci (só enquanto o jogador escolhe)
+    if (b->fase == B2_DESAFIO && b->dica[0] != '\0') {
+
+        float k = b->tempoDica / 0.2f;
+        if (k > 1.0f) k = 1.0f;
+
+        Vector2 luci = { 64.0f, 112.0f + sinf((float)GetTime() * 2.0f) * 3.0f };
+        Rectangle balao = { 96, 66, 206, 92 };
+
+        DesenharLuciTamanho(luci, 40.0f);
+        DesenharTrianguloB2((Vector2){ balao.x, balao.y + 40 }, (Vector2){ balao.x - 12, balao.y + 50 }, (Vector2){ balao.x, balao.y + 56 }, Fade(WHITE, k));
+        DrawRectangleRec(balao, Fade(WHITE, k));
+        DrawText("LUCI", (int)balao.x + 10, (int)balao.y + 8, 10, Fade((Color){ 0, 82, 172, 255 }, k));
+
+        char linhas[200];
+        QuebrarTexto(b->dica, 186, 14, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)balao.x + 10, (int)balao.y + 24, 14, 17, Fade((Color){ 30, 28, 44, 255 }, k));
+    }
+
     int yStatus = 522;
+
+    // Estabilidade da Luci: cada ajuda gasta 1, cada acerto sozinho devolve 1
+    if (b->estabilidade != NULL) {
+
+        int e = *b->estabilidade;
+        Color corE = (e >= 3) ? SKYBLUE : (e == 2 ? ORANGE : RED);
+
+        DrawText("LUCI", 500, yStatus + 4, 12, WHITE);
+
+        for (int i = 0; i < ESTABILIDADE_MAX_LUCI; i++) {
+            Rectangle seg = { 540.0f + i * 20, (float)yStatus + 4, 16, 12 };
+            if (i < e) DrawRectangleRec(seg, corE);
+            DrawRectangleLinesEx(seg, 1, Fade(GRAY, 0.8f));
+        }
+
+        if (e <= 2)
+            DrawText(e == 0 ? "SOBRECARREGADA" : "INSTÁVEL", 540, yStatus + 20, 10, corE);
+    }
 
     DrawText(nickname, 60, yStatus, 20, WHITE);
     DrawText("LV 1", 150, yStatus, 20, WHITE);
@@ -3376,6 +4187,101 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
 
     if (b->fase != B2_DESAFIO)
         DrawText(instrucao, LARGURA_TELA / 2 - MeasureText(instrucao, 12) / 2, 568, 12, GRAY);
+}
+
+// ---------- Cartão de resumo ----------
+
+static void AbrirCartao(CartaoResumo *c, int icone, bool sucesso, const char *titulo,
+                        const char *frase, const Dialogo *saberMais)
+{
+    c->ativo = true;
+    c->icone = icone;
+    c->sucesso = sucesso;
+    c->titulo = titulo;
+    c->frase = frase;
+    c->saberMais = saberMais;
+    c->inicio = GetTime();
+}
+
+// Devolve true quando o cartão fecha (ENTER) ou vira "saber mais" (TAB)
+static bool AtualizarCartao(CartaoResumo *c, SessaoDialogo *dlg)
+{
+    if (!c->ativo || GetTime() - c->inicio < 0.4)
+        return false;
+
+    if (IsKeyPressed(KEY_TAB) && c->saberMais != NULL) {
+        c->ativo = false;
+        Telemetria("saber_mais", c->titulo, (float)(GetTime() - c->inicio), 0);
+        DialogoIniciar(dlg, c->saberMais, OBJ_NENHUM);
+        dlg->veioDoCartao = true;
+        return true;
+    }
+
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
+        c->ativo = false;
+        Telemetria("cartao", c->titulo, (float)(GetTime() - c->inicio), 0);
+        return true;
+    }
+
+    return false;
+}
+
+static void DesenharCartao(const CartaoResumo *c, float tempo)
+{
+    if (!c->ativo)
+        return;
+
+    float k = (float)(GetTime() - c->inicio) / 0.25f;
+    if (k > 1.0f) k = 1.0f;
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.55f * k));
+
+    Rectangle painel = { 160, 175 + (1.0f - k) * 30.0f, 480, 210 };
+    Color destaque = c->sucesso ? GOLD : ORANGE;
+
+    DrawRectangleRec(painel, (Color){ 18, 15, 30, 255 });
+    DrawRectangleLinesEx(painel, 4, destaque);
+
+    // Ícone com brilhos girando
+    Vector2 ic = { painel.x + 66, painel.y + 92 };
+
+    for (int i = 0; i < 6; i++) {
+        float a = tempo * 1.5f + i * (PI / 3.0f);
+        DrawCircleV((Vector2){ ic.x + cosf(a) * 40, ic.y + sinf(a) * 40 }, 2.5f, Fade(destaque, 0.7f));
+    }
+
+    if (c->icone >= 10) {
+        DesenharObjetoB2(c->icone - 10, ic, 1.6f, tempo);
+    } else {
+        Rectangle tela = { ic.x - 28, ic.y - 22, 56, 40 };
+        DrawRectangleRec(tela, c->sucesso ? (Color){ 8, 48, 22, 255 } : (Color){ 55, 8, 14, 255 });
+        DrawRectangleLinesEx(tela, 3, c->sucesso ? GREEN : RED);
+        DrawRectangle((int)ic.x - 4, (int)ic.y + 18, 8, 8, (Color){ 45, 40, 62, 255 });
+
+        if (c->sucesso) {
+            DrawLineEx((Vector2){ ic.x - 12, ic.y - 2 }, (Vector2){ ic.x - 3, ic.y + 7 }, 4, LIME);
+            DrawLineEx((Vector2){ ic.x - 3, ic.y + 7 }, (Vector2){ ic.x + 13, ic.y - 10 }, 4, LIME);
+        } else {
+            DrawLineEx((Vector2){ ic.x - 9, ic.y - 10 }, (Vector2){ ic.x + 9, ic.y + 8 }, 4, RED);
+            DrawLineEx((Vector2){ ic.x + 9, ic.y - 10 }, (Vector2){ ic.x - 9, ic.y + 8 }, 4, RED);
+        }
+    }
+
+    int tx = (int)painel.x + 130;
+    const char *rotulo = (c->icone >= 10) ? "OBJETO CONSEGUIDO!" : (c->sucesso ? "VOCÊ APRENDEU" : "LEMBRE-SE");
+
+    DrawText(rotulo, tx, (int)painel.y + 22, 10, Fade(destaque, 0.9f));
+    DrawText(c->titulo, tx, (int)painel.y + 38, 20, destaque);
+
+    char frase[256];
+    QuebrarTexto(c->frase, 320, 16, frase, (int)sizeof(frase));
+    DesenharTextoLinhas(frase, tx, (int)painel.y + 74, 16, 22, WHITE);
+
+    if (((int)(GetTime() * 2.0)) % 2 == 0)
+        DrawText("ENTER >", (int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12, GOLD);
+
+    if (c->saberMais != NULL)
+        DrawText("TAB - saber mais", tx, (int)(painel.y + painel.height) - 26, 12, Fade(SKYBLUE, 0.85f));
 }
 
 // ---------- Lógica das salas ----------
@@ -3392,7 +4298,10 @@ static void GanharObjetoB2(ContextoB2 *c, int i)
 {
     c->b2->objeto[i] = true;
     AlterarPontos(c->progresso, PONTOS_ITEM_B2);
-    DialogoIniciar(c->dlg, &dialogoItemB2[i], OBJ_NENHUM);
+    TocarSom(sfxAcerto);
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
+    AbrirCartao(c->cartao, 10 + i, true, NOMES_OBJETOS_B2[i], FRASES_RESUMO_OBJETO[i], &dialogoItemB2[i]);
+    Telemetria("objeto", NOMES_OBJETOS_B2[i], 0.0f, 0);
     *c->pedirAutoSave = true;
 }
 
@@ -3422,6 +4331,7 @@ static void TreinarNaFonte(ContextoB2 *c)
         "* A IA aprendeu com %d registro(s) mal classificado(s) e começou a alucinar!\n"
         "* A FONTE ENVENENADA transborda. Desvie!", errados));
 
+    Telemetria("puzzle_erro", "fonte", 0.0f, c->progresso->alucinacao);
     IniciarBatalhaB2(c, MOTIVO_FONTE, FALA_FONTE_ERRO);
 }
 
@@ -3450,6 +4360,7 @@ static void VerificarRegras(ContextoB2 *c)
         "* O SILOGISTA dispara um contra-argumento!", falsas,
         c->b2->alavanca[0] ? "V" : "F", c->b2->alavanca[1] ? "V" : "F", c->b2->alavanca[2] ? "V" : "F"));
 
+    Telemetria("puzzle_erro", "logica", 0.0f, c->progresso->alucinacao);
     IniciarBatalhaB2(c, MOTIVO_LOGICA, FALA_LOGICA_ERRO);
 }
 
@@ -3481,6 +4392,7 @@ static void PerguntarAoApostador(ContextoB2 *c)
     BatalhaB2IniciarEsquiva(c->batalha, GUARDIAO_APOSTADOR, c->progresso->alucinacao, TextFormat(
         "* O APOSTADOR rola os dados: \"%s\"\n* Ele chutou! Os dados voam na sua direção.", chute));
 
+    Telemetria("puzzle_erro", "lacuna", 0.0f, c->progresso->alucinacao);
     IniciarBatalhaB2(c, MOTIVO_LACUNA, fala);
 }
 
@@ -3530,11 +4442,24 @@ static void AtualizarSalaB2(ContextoB2 *c, float dt)
 
     (void)dt;
 
+    // ---------- Cartão de resumo aberto ----------
+    if (c->cartao->ativo) {
+        AtualizarCartao(c->cartao, c->dlg);
+        return;
+    }
+
     // ---------- Conversa em andamento ----------
     if (c->dlg->estado != DLG_NENHUM) {
 
         ResultadoDialogo r = DialogoAtualizar(c->dlg);
         int obj = c->dlg->objeto;
+
+        // TAB no "saber mais" do cartão: o cartão volta
+        if (r == RES_VOLTAR_CARTAO) {
+            c->cartao->ativo = true;
+            c->cartao->inicio = GetTime();
+            return;
+        }
 
         if (r == RES_SIM || r == RES_NAO) {
 
@@ -3673,6 +4598,7 @@ static void AtualizarSalaB2(ContextoB2 *c, float dt)
             CheckCollisionRecs(jogador, (Rectangle){ POS_SILOGISTA.x - 60, POS_SILOGISTA.y - 20, 120, 110 })) {
 
             BatalhaB2IniciarDuelo(c->batalha, c->progresso->alucinacao);
+            BatalhaB2LigarLuci(c->batalha, c->estabilidadeLuci, c->ajudasPedidas);
             IniciarBatalhaB2(c, MOTIVO_SILOGISTA, FALA_DERROTA_SILOGISTA);
             return;
         }
@@ -3742,19 +4668,45 @@ static void FimBatalhaB2(ContextoB2 *c)
 
     c->progresso->alucinacao += b->erros;
 
-    int delta = b->acertos * PONTOS_ACERTO_B2 - b->erros * PENALIDADE_ERRO;
+    int pontosAcerto = (b->monitor >= 0) ? PONTOS_ACERTO_B1 : PONTOS_ACERTO_B2;
+    int acertosSozinho = b->acertos - b->acertosComAjuda;
+    int delta = acertosSozinho * pontosAcerto + b->acertosComAjuda * PONTOS_ACERTO_COM_AJUDA
+              - b->erros * PENALIDADE_ERRO;
+
+    // Confiar numa dica alucinada fortalece a alucinação
+    c->progresso->alucinacao += b->alucinacoesSeguidas;
 
     if (b->soEsquiva) delta -= PENALIDADE_ERRO;       // o puzzle errado que causou o ataque
     if (b->derrota)   delta -= PENALIDADE_HP_ZERO;
 
-    AlterarPontos(c->progresso, delta);
+    Telemetria(b->venceu ? "batalha_vitoria" : (b->derrota ? "batalha_derrota" : "batalha_esquiva"),
+               b->subtitulo, (float)(GetTime() - b->inicio), b->erros);
 
-    if (*c->motivo == MOTIVO_SILOGISTA && b->venceu) {
-        c->b2->objeto[1] = true;
-        AlterarPontos(c->progresso, PONTOS_ITEM_B2);
-        DialogoIniciar(c->dlg, &dialogoItemB2[1], OBJ_NENHUM);
-    } else {
+    // Batalha de monitor do Bloco 1
+    if (*c->motivo == MOTIVO_MONITOR) {
+
+        int m = b->monitor;
+
+        c->progresso->estado[m] = b->venceu ? MON_ACERTOU : MON_ERROU;
+        if (b->venceu) delta += PONTOS_POR_ACERTO;
+
+        AlterarPontos(c->progresso, delta);
+        AbrirCartao(c->cartao, m, b->venceu, TITULOS_RESUMO_MONITOR[m], FRASES_RESUMO_MONITOR[m], &saberMaisMonitores[m]);
+        MostrarEmocaoLuci(b->venceu ? EMOCAO_ALEGRE : EMOCAO_DUVIDA, 3.0f);
+    }
+
+    // Duelo do Silogista vencido: LUPA DA VERIFICAÇÃO
+    else if (*c->motivo == MOTIVO_SILOGISTA && b->venceu) {
+
+        AlterarPontos(c->progresso, delta);
+        GanharObjetoB2(c, 1);
+    }
+
+    else {
+
+        AlterarPontos(c->progresso, delta);
         DialogoFalaAvulsa(c->dlg, *c->falaPosBatalha);
+        MostrarEmocaoLuci(EMOCAO_DUVIDA, 3.0f);
     }
 
     *c->pedirAutoSave = true;
@@ -3972,7 +4924,7 @@ static void DesenharMontador(const MontadorPergunta *m)
 
 // Desenha a sala central ou a sala-puzzle atual (o jogador entra na ordem certa de profundidade)
 static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 playerPos, float tempo, bool explorando,
-                           const SpriteDirecao sprites[NUM_DIRECOES], Direcao direcao, int quadro)
+                           const SpriteDirecao sprites[NUM_DIRECOES], Direcao direcao, int quadro, float anguloLuci)
 {
     int sala = IndiceSalaB2(tela);
     Color cor = (sala >= 0) ? CORES_SALAS_B2[sala] : PURPLE;
@@ -4048,7 +5000,7 @@ static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 pla
             // Objetos atrás do jogador -> jogador -> objetos na frente
             for (int passada = 0; passada < 2; passada++) {
 
-                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+                if (passada == 1) { DesenharJogadorComLuci(sprites, playerPos, direcao, quadro, true, anguloLuci); jogadorDesenhado = true; }
 
                 if ((passada == 0) == (POS_FONTE.y + 40 <= pes)) {
                     DrawEllipse((int)POS_FONTE.x, (int)POS_FONTE.y + 44, 46, 10, Fade(cor, 0.15f));
@@ -4086,7 +5038,7 @@ static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 pla
 
             for (int passada = 0; passada < 2; passada++) {
 
-                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+                if (passada == 1) { DesenharJogadorComLuci(sprites, playerPos, direcao, quadro, true, anguloLuci); jogadorDesenhado = true; }
 
                 for (int i = 0; i < 3; i++)
                     if ((passada == 0) == (POS_ALAVANCAS[i].y + 16 <= pes))
@@ -4119,7 +5071,7 @@ static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 pla
 
             for (int passada = 0; passada < 2; passada++) {
 
-                if (passada == 1) { DesenharJogador(sprites, playerPos, direcao, quadro); jogadorDesenhado = true; }
+                if (passada == 1) { DesenharJogadorComLuci(sprites, playerPos, direcao, quadro, true, anguloLuci); jogadorDesenhado = true; }
 
                 for (int i = 0; i < NUM_FRAGMENTOS; i++)
                     if (!p->fragmento[i] && (passada == 0) == (POS_FRAGMENTOS[i].y + 10 <= pes))
@@ -4141,7 +5093,155 @@ static void DesenharSalaB2(TelaAtual tela, const ProgressoBloco2 *p, Vector2 pla
     }
 
     if (!jogadorDesenhado)
-        DesenharJogador(sprites, playerPos, direcao, quadro);
+        DesenharJogadorComLuci(sprites, playerPos, direcao, quadro, true, anguloLuci);
+}
+
+// =============================================================
+// OBJETIVO ATUAL, MARCADOR E AMBIENTE
+//   Para o jogador nunca ficar perdido: uma linha de objetivo fixa no topo,
+//   uma seta sobre o próximo alvo e a Luci voando até ele quando o jogador
+//   fica parado. O ambiente fica mais "glitchado" conforme a alucinação sobe.
+// =============================================================
+
+typedef struct {
+    char texto[96];
+    bool temAlvo;
+    Vector2 alvo;
+} Objetivo;
+
+static Vector2 CentroRetangulo(Rectangle r)
+{
+    return (Vector2){ r.x + r.width / 2, r.y + r.height / 2 };
+}
+
+static Objetivo ObjetivoAtual(TelaAtual tela, const ProgressoCorredor *pc, const ProgressoBloco2 *p,
+                              bool luciAcompanhando, Rectangle luciHitbox)
+{
+    Objetivo o = { "", false, { 0, 0 } };
+
+    #define OBJETIVO(txt, x, y) do { snprintf(o.texto, sizeof(o.texto), "%s", (txt)); \
+                                       o.temAlvo = true; o.alvo = (Vector2){ (x), (y) }; } while (0)
+
+    if (tela == JOGANDO) {
+
+        if (!luciAcompanhando) OBJETIVO("Fale com a Luci", luciHitbox.x + luciHitbox.width / 2, luciHitbox.y + luciHitbox.height / 2);
+        else                   OBJETIVO("Vá até a porta do CORREDOR", CentroRetangulo(PORTA_SALA).x, CentroRetangulo(PORTA_SALA).y);
+    }
+    else if (tela == CORREDOR) {
+
+        int proximo = ProximoMonitor(pc);
+
+        if (proximo >= 0) {
+            Rectangle a = monitores[proximo].area;
+            OBJETIVO(TextFormat("Enfrente a alucinação do MONITOR %d", proximo + 1), a.x + a.width / 2, a.y + a.height / 2);
+        } else {
+            OBJETIVO("Siga pela porta da direita", CentroRetangulo(PORTA_FIM_CORREDOR).x, CentroRetangulo(PORTA_FIM_CORREDOR).y);
+        }
+    }
+    else if (tela == SETOR2) {
+
+        if (TodosObjetosB2(p)) {
+            OBJETIVO("Entre na porta do NÚCLEO", CentroRetangulo(PORTA_NUCLEO).x, CentroRetangulo(PORTA_NUCLEO).y);
+        } else {
+            for (int i = 0; i < NUM_OBJETOS_B2; i++) {
+                if (!p->objeto[i]) {
+                    Vector2 c = CentroRetangulo(PORTAS_SALAS_B2[i]);
+                    OBJETIVO(TextFormat("Ache os objetos (%d/3): sala %s", ContarObjetosB2(p), NOMES_SALAS_B2[i]), c.x, c.y);
+                    break;
+                }
+            }
+        }
+    }
+    else if (TelaSalaPuzzleB2(tela)) {
+
+        int sala = IndiceSalaB2(tela);
+        Vector2 saida = CentroRetangulo(PORTA_SAIDA_SALA);
+
+        if (p->objeto[sala]) {
+            OBJETIVO("Volte para a sala central", saida.x, saida.y);
+        }
+        else if (tela == SALA_REGISTROS) {
+
+            int n = RegistrosInspecionados(p);
+
+            if (n < NUM_REGISTROS) {
+                for (int i = 0; i < NUM_REGISTROS; i++)
+                    if (p->registro[i] == 0) {
+                        OBJETIVO(TextFormat("Inspecione os registros (%d/%d)", n, NUM_REGISTROS), POS_REGISTROS[i].x, POS_REGISTROS[i].y);
+                        break;
+                    }
+            } else {
+                OBJETIVO("Treine a IA na FONTE", POS_FONTE.x, POS_FONTE.y);
+            }
+        }
+        else if (tela == SALA_LOGICA) {
+
+            if (!p->barreiraAberta) OBJETIVO("Ajuste P, Q e R e use o console", POS_CONSOLE.x, POS_CONSOLE.y);
+            else                    OBJETIVO("Desafie o SILOGISTA", POS_SILOGISTA.x, POS_SILOGISTA.y);
+        }
+        else if (tela == SALA_LACUNA) {
+
+            int coletados = 0, primeiro = -1;
+
+            for (int i = 0; i < NUM_FRAGMENTOS; i++) {
+                if (p->fragmento[i]) coletados++;
+                else if (primeiro < 0) primeiro = i;
+            }
+
+            if (!p->perguntaVagaFeita)
+                OBJETIVO("Pergunte algo ao APOSTADOR", POS_APOSTADOR.x, POS_APOSTADOR.y);
+            else if (primeiro >= 0)
+                OBJETIVO(TextFormat("Ache fragmentos de contexto (%d/%d)", coletados, NUM_FRAGMENTOS), POS_FRAGMENTOS[primeiro].x, POS_FRAGMENTOS[primeiro].y);
+            else
+                OBJETIVO("Monte a pergunta com o APOSTADOR", POS_APOSTADOR.x, POS_APOSTADOR.y);
+        }
+    }
+
+    #undef OBJETIVO
+    return o;
+}
+
+// Linha de objetivo fixa no topo da tela
+static void DesenharObjetivoHUD(const Objetivo *o)
+{
+    if (o->texto[0] == '\0')
+        return;
+
+    const char *t = TextFormat("OBJETIVO:  %s", o->texto);
+    int w = MeasureText(t, 14);
+    int x = LARGURA_TELA / 2 - w / 2;
+
+    DrawRectangle(x - 14, 12, w + 28, 26, Fade(BLACK, 0.65f));
+    DrawRectangleLinesEx((Rectangle){ (float)x - 14, 12, (float)w + 28, 26 }, 1, Fade(GOLD, 0.6f));
+    DrawText(t, x, 18, 14, GOLD);
+}
+
+// Faixas de glitch que aumentam com o nível de alucinação (não mexem a tela)
+#define MOSTRAR_GLITCH_AMBIENTE  1      // 0 = desliga as faixas
+
+static void DesenharGlitchAmbiente(int nivel, float tempo)
+{
+    if (nivel <= 0 || !MOSTRAR_GLITCH_AMBIENTE)
+        return;
+
+    int n = (nivel > 8) ? 8 : nivel;
+    unsigned int quadro = (unsigned int)(tempo * 8.0f);
+
+    for (int i = 0; i < n * 2; i++) {
+
+        unsigned int r = Ruido(quadro * 13u + (unsigned int)i);
+
+        if (r % 3 != 0)
+            continue;
+
+        int largura = 60 + (int)((r >> 8) % 300);
+        int x = (int)((r >> 16) % (unsigned int)(LARGURA_TELA - largura));
+        int y = 40 + (int)(r % 520);
+
+        DrawRectangle(x, y, largura, 2 + (int)((r >> 4) % 3), Fade((i % 2) ? MAGENTA : SKYBLUE, 0.08f + 0.02f * n));
+    }
+
+    DrawRectangleLinesEx((Rectangle){ 0, 0, LARGURA_TELA, ALTURA_TELA }, 6.0f + n * 2, Fade((Color){ 70, 0, 50, 255 }, 0.05f * n));
 }
 
 // =============================================================
@@ -5001,8 +6101,7 @@ static void CenaAlucinacao(float x0, float y0, float t, float tempo)
     if (glitch > 1.0f) glitch = 1.0f;
 
     // Chip da IA (com aberração cromática quando falha)
-    float tremor = glitch * 4.0f;
-    Vector2 c = { chip.x + GetRandomValue(-1, 1) * tremor, chip.y + GetRandomValue(-1, 1) * tremor };
+    Vector2 c = chip;
     Rectangle corpo = { c.x - 42, c.y - 42, 84, 84 };
 
     for (int i = 0; i < 5; i++) {
@@ -5034,7 +6133,7 @@ static void CenaAlucinacao(float x0, float y0, float t, float tempo)
     if (k > 0.0f) {
 
         Rectangle balao = { chip.x + 68, chip.y - 62, 160, 64 };
-        float dx = (glitch > 0.3f) ? (float)GetRandomValue(-3, 3) : 0.0f;
+        float dx = 0.0f;
 
         DrawLineEx((Vector2){ chip.x + 46, chip.y - 10 }, (Vector2){ balao.x, balao.y + 44 }, 2, Fade(LIGHTGRAY, k));
         DrawRectangleRec(balao, Fade((Color){ 245, 245, 245, 255 }, k));
@@ -5232,6 +6331,9 @@ int main(void) {
     // 1. INICIALIZAÇÃO
 
     InitWindow(LARGURA_TELA, ALTURA_TELA, "UtopIA - Game");
+    IniciarSons();
+    PrepararSaberMaisMonitores();
+    Telemetria("sessao_inicio", "", 0.0f, 0);
 
     // ESC não fecha mais a janela: ele abre o menu de pause
     // (fechar pelo X da janela continua funcionando)
@@ -5317,9 +6419,9 @@ int main(void) {
     int nicknamePos = 0;
 
     const char *textosIntro[3] = {
-        "O uso da Inteligência Artificial tornou-se parte da nossa rotina, utilizada para\nescrever textos, gerar imagens e auxiliar em tomadas de decisão.",
-        "Contudo, quando dados incorretos ou perguntas enviesadas são inseridos no sistema,\nsurge um problema real: a alucinação de IA.",
-        "Bem-vindo a UtopIA, o universo interior que sustenta essa inteligência. O sistema está\ncolapsando internamente por conta dessas alucinações e se essa falha não for \ncorrigida a tempo, o impacto afetará todas as IAs do mundo real...",
+        "A Inteligência Artificial virou parte da rotina:\nela escreve textos, gera imagens e ajuda a decidir.",
+        "Mas com dados errados ou perguntas enviesadas,\nela pode ALUCINAR: responder com confiança algo falso.",
+        "Bem-vindo a UtopIA, o mundo dentro da IA.\nAs alucinações estão fazendo tudo desmoronar...",
     };
 
     // =========================================================
@@ -5333,6 +6435,10 @@ int main(void) {
     MotivoBatalhaB2 motivoBatalhaB2 = MOTIVO_SILOGISTA;
     const char *falaPosBatalhaB2 = "";
     MontadorPergunta montador = {0};         // painel de montar pergunta (Sala da Lacuna)
+    CartaoResumo cartao = {0};               // cartão de resumo depois de cada desafio
+    float tempoParado = 0.0f;                // há quanto tempo o jogador não anda (Luci reage)
+    int estabilidadeLuci = ESTABILIDADE_MAX_LUCI;   // gasta ao pedir ajuda (H) nas batalhas
+    int ajudasPedidas = 0;
     SessaoDialogo dlg = {0};
     Transicao transicao = {0};
     Batalha batalha = {0};
@@ -5373,7 +6479,8 @@ int main(void) {
     // Tudo que a lógica do Bloco 2 mexe
     ContextoB2 ctxB2 = {
         &tela, &dlg, &transicao, &progresso, &bloco2, &batalhaB2, &playerPos, &direcaoAtual,
-        &pedirAutoSave, &salaDaBatalhaB2, &motivoBatalhaB2, &falaPosBatalhaB2, &montador
+        &pedirAutoSave, &salaDaBatalhaB2, &motivoBatalhaB2, &falaPosBatalhaB2, &montador, &cartao,
+        &estabilidadeLuci, &ajudasPedidas
     };
 
     SetTargetFPS(60);
@@ -5559,7 +6666,7 @@ int main(void) {
             } else if (escolha == PAUSA_MENU) {
 
                 // Salva antes de sair, para o CONTINUAR do menu voltar daqui
-                saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+                saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2, estabilidadeLuci, ajudasPedidas);
                 existeSave = LerSave(&saveLido);
 
                 pausado = false;
@@ -5603,6 +6710,9 @@ int main(void) {
                         playerPos = (Vector2){ saveLido.x, saveLido.y };
                         direcaoAtual = (Direcao)saveLido.direcao;
                         dlg = (SessaoDialogo){0};
+                        cartao = (CartaoResumo){0};
+                        estabilidadeLuci = saveLido.estabilidadeLuci;
+                        ajudasPedidas = saveLido.ajudasPedidas;
                         animJogador = (AnimacaoJogador){0};
                         tela = (TelaAtual)saveLido.sala;
 
@@ -5637,6 +6747,9 @@ int main(void) {
                     progresso = (ProgressoCorredor){0};
                     bloco2 = (ProgressoBloco2){0};
                     montador = (MontadorPergunta){0};
+                    cartao = (CartaoResumo){0};
+                    estabilidadeLuci = ESTABILIDADE_MAX_LUCI;
+                    ajudasPedidas = 0;
                     dlg = (SessaoDialogo){0};
                     luciAcompanhando = false;
                     playerPos = SPAWN_SALA;
@@ -5843,6 +6956,23 @@ int main(void) {
             companionAngulo += dt * 2.5f;
 
             // -------------------------------------------------
+            // CARTÃO DE RESUMO (depois de cada monitor)
+            // -------------------------------------------------
+
+            if (cartao.ativo) {
+
+                // Fechou o cartão com os 3 monitores resolvidos: a Luci avisa que a saída abriu
+                if (AtualizarCartao(&cartao, &dlg) && dlg.estado == DLG_NENHUM &&
+                    ContarConcluidos(&progresso) == TOTAL_MONITORES && !progresso.fimAnunciado) {
+
+                    progresso.fimAnunciado = true;
+                    DialogoIniciar(&dlg, &dialogoFimCorredor, OBJ_NENHUM);
+                }
+            }
+
+            else
+
+            // -------------------------------------------------
             // CONVERSA / QUIZ EM ANDAMENTO (o personagem fica parado)
             // -------------------------------------------------
 
@@ -5850,6 +6980,12 @@ int main(void) {
 
                 ResultadoDialogo r = DialogoAtualizar(&dlg);
                 int m = dlg.objeto;
+
+                // TAB no "saber mais" do cartão: o cartão volta
+                if (r == RES_VOLTAR_CARTAO) {
+                    cartao.ativo = true;
+                    cartao.inicio = GetTime();
+                }
 
                 // Errou ou o tempo acabou: a alucinação ataca
                 if ((r == RES_ERROU || r == RES_TEMPO) && m >= 0) {
@@ -5886,7 +7022,7 @@ int main(void) {
                         pedirAutoSave = true;     // AUTO SAVE: terminou um monitor
                     }
 
-                    // Resolveu os 4 monitores: Luci avisa que a saída abriu
+                    // Resolveu os 3 monitores: Luci avisa que a saída abriu
                     if (ContarConcluidos(&progresso) == TOTAL_MONITORES &&
                         !progresso.fimAnunciado) {
 
@@ -5953,31 +7089,27 @@ int main(void) {
                             if (!CheckCollisionRecs(jogador, ZonaInteracao(monitores[i].area)))
                                 continue;
 
-                            const Dialogo *q = &monitores[i].quiz;
                             int proximo = ProximoMonitor(&progresso);
 
-                            if (progresso.estado[i] == MON_ACERTOU) {
+                            if (progresso.estado[i] == MON_ACERTOU || progresso.estado[i] == MON_ERROU) {
 
-                                DialogoFalaAvulsa(&dlg, TextFormat(
-                                    "* O %s mostra um sinal verde. Lição concluída!", monitores[i].nome));
-
-                            } else if (progresso.estado[i] == MON_ERROU) {
-
-                                DialogoFalaAvulsa(&dlg, TextFormat(
-                                    "* O %s ainda chia um pouco. A resposta certa era a %c.",
-                                    monitores[i].nome, 'A' + q->correta));
+                                // Monitor já resolvido: mostra de novo o cartão do que foi aprendido
+                                AbrirCartao(&cartao, i, progresso.estado[i] == MON_ACERTOU,
+                                            TITULOS_RESUMO_MONITOR[i], FRASES_RESUMO_MONITOR[i], &saberMaisMonitores[i]);
 
                             } else if (QUIZ_EM_ORDEM && i != proximo) {
 
-                                DialogoFalaAvulsa(&dlg, TextFormat(
-                                    "Luci: Vamos na ordem, uma lição puxa a outra. Comece pelo monitor %d.",
-                                    proximo + 1));
+                                DialogoFalaAvulsa(&dlg, TextFormat("Luci: Comece pelo MONITOR %d!", proximo + 1));
 
                             } else {
 
-                                // NEUTRO -> ATIVO: começa a explicação + quiz
+                                // NEUTRO -> ATIVO: a alucinação do monitor vira uma batalha
                                 progresso.estado[i] = MON_ATIVO;
-                                DialogoIniciar(&dlg, q, i);
+                                BatalhaB2IniciarMonitor(&batalhaB2, i, progresso.alucinacao);
+                                BatalhaB2LigarLuci(&batalhaB2, &estabilidadeLuci, &ajudasPedidas);
+                                salaDaBatalhaB2 = CORREDOR;
+                                motivoBatalhaB2 = MOTIVO_MONITOR;
+                                IniciarTransicao(&transicao, BATALHA_B2, DURACAO_FADE_BATALHA);
                             }
 
                             break;
@@ -6076,7 +7208,7 @@ int main(void) {
         if (pedirAutoSave && (tela == JOGANDO || tela == CORREDOR || TelaExploracaoB2(tela))) {
 
             pedirAutoSave = false;
-            saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+            saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2, estabilidadeLuci, ajudasPedidas);
 
             if (!saveFalhou)
                 existeSave = true;
@@ -6100,6 +7232,29 @@ int main(void) {
 
         if (!pausado)
             AtualizarAnimacao(&animJogador, andou, dt);
+
+        // =====================================================
+        // OBJETIVO E LUCI COMO GUIA
+        // =====================================================
+
+        Objetivo objetivo = ObjetivoAtual(tela, &progresso, &bloco2, luciAcompanhando, luciHitbox);
+
+        bool emExploracao = (tela == JOGANDO || tela == CORREDOR || TelaExploracaoB2(tela));
+        bool podeReagir = emExploracao && luciAcompanhando && !transicao.ativa && !pausado &&
+                          dlg.estado == DLG_NENHUM && !cartao.ativo && !montador.aberto;
+
+        if (podeReagir && !andou) tempoParado += dt;
+        else                     tempoParado = 0.0f;
+
+        // Parado há 5 s: a Luci fica em dúvida (o objetivo continua escrito no topo)
+        if (tempoParado > 5.0f && tempoParado - dt <= 5.0f)
+            MostrarEmocaoLuci(EMOCAO_DUVIDA, 2.5f);
+
+        if (!pausado && tempoEmocaoLuci > 0.0f)
+            tempoEmocaoLuci -= dt;
+
+        instabilidadeLuci = 1.0f - (float)estabilidadeLuci / ESTABILIDADE_MAX_LUCI;
+        brilhoLuci = 1.0f + 0.15f * (float)(ContarConcluidos(&progresso) + ContarObjetosB2(&bloco2));
 
         // =====================================================
         // DESENHO
@@ -6384,18 +7539,16 @@ int main(void) {
                 // Mesmo visual de quando ela acompanha o jogador, flutuando parada
                 Vector2 pLuci = CentroLuciSala(luciHitbox, tempo);
 
-                DesenharLuci(pLuci);
-                DrawText("Luci", (int)pLuci.x - MeasureText("Luci", 10) / 2, (int)(pLuci.y - ALTURA_LUCI / 2) - 14, 10, Fade(SKYBLUE, 0.8f));
+                DesenharLuciTamanho(pLuci, ALTURA_LUCI_SALA);
+                DrawText("Luci", (int)pLuci.x - MeasureText("Luci", 10) / 2, (int)(pLuci.y - ALTURA_LUCI_SALA / 2) - 14, 10, Fade(SKYBLUE, 0.8f));
             }
 
             // -------------------------------------------------
             // PERSONAGEM
             // -------------------------------------------------
 
-            DesenharJogador(spritesJogador, playerPos, direcaoAtual, animJogador.quadro);
-
-            if (luciAcompanhando)
-                DesenharCompanion(playerPos, companionAngulo);
+            DesenharJogadorComLuci(spritesJogador, playerPos, direcaoAtual, animJogador.quadro,
+                                   luciAcompanhando, companionAngulo);
 
             // Paredes invisíveis e pés do personagem (para calibrar)
             // Desligue em MOSTRAR_PAREDES_INVISIVEIS
@@ -6435,8 +7588,13 @@ int main(void) {
                 DrawText(aviso, LARGURA_TELA / 2 - MeasureText(aviso, 20) / 2, ALTURA_TELA - 40, 20, RAYWHITE);
             }
 
+            // Ambiente, objetivo e marcador
+            DesenharGlitchAmbiente(progresso.alucinacao, tempo);
+            DesenharObjetivoHUD(&objetivo);
+
             // Conversa por cima de tudo
             DialogoDesenhar(&dlg);
+            DesenharCartao(&cartao, tempo);
             DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 
@@ -6591,8 +7749,8 @@ int main(void) {
             // PERSONAGEM E COMPANION
             // -------------------------------------------------
 
-            DesenharJogador(spritesJogador, playerPos, direcaoAtual, animJogador.quadro);
-            DesenharCompanion(playerPos, companionAngulo);
+            DesenharJogadorComLuci(spritesJogador, playerPos, direcaoAtual, animJogador.quadro,
+                                   true, companionAngulo);
 
             // -------------------------------------------------
             // HUD
@@ -6615,8 +7773,13 @@ int main(void) {
                 DrawText("W A S D  -  MOVIMENTAR", 65, 452, 12, LIGHTGRAY);
             }
 
-            // Conversa / quiz por cima de tudo
+            // Ambiente, objetivo e marcador
+            DesenharGlitchAmbiente(progresso.alucinacao, tempo);
+            DesenharObjetivoHUD(&objetivo);
+
+            // Conversa por cima de tudo
             DialogoDesenhar(&dlg);
+            DesenharCartao(&cartao, tempo);
             DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 
@@ -6637,17 +7800,21 @@ int main(void) {
 
             bool explorando = (dlg.estado == DLG_NENHUM && !montador.aberto && !transicao.ativa);
 
-            DesenharSalaB2(tela, &bloco2, playerPos, tempo, explorando, spritesJogador, direcaoAtual, animJogador.quadro);
-            DesenharCompanion(playerPos, companionAngulo);
+            DesenharSalaB2(tela, &bloco2, playerPos, tempo, explorando, spritesJogador, direcaoAtual, animJogador.quadro,
+                           companionAngulo);
             DesenharHUDB2(tela, &bloco2, &progresso, nickname, tempo);
 
             if (dlg.estado == DLG_NENHUM && !montador.aberto)
                 DrawText("W A S D  -  MOVIMENTAR", 65, 532, 12, LIGHTGRAY);
 
+            DesenharGlitchAmbiente(progresso.alucinacao, tempo);
+            DesenharObjetivoHUD(&objetivo);
+
             if (montador.aberto)
                 DesenharMontador(&montador);
 
             DialogoDesenhar(&dlg);
+            DesenharCartao(&cartao, tempo);
             DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 
@@ -6697,7 +7864,7 @@ int main(void) {
     // AUTO SAVE: fechou a janela no meio do jogo
     // (no menu ou na intro não salva, para não apagar o progresso)
     if (tela == JOGANDO || tela == CORREDOR || tela == BATALHA || TelaExploracaoB2(tela) || tela == BATALHA_B2)
-        SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2);
+        SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, &bloco2, estabilidadeLuci, ajudasPedidas);
 
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
 
@@ -6720,6 +7887,7 @@ int main(void) {
         if (spritesMonitor[i].id > 0)
             UnloadTexture(spritesMonitor[i]);
 
+    EncerrarSons();
     CloseWindow();
 
     return 0;

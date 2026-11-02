@@ -68,3 +68,6 @@ utopia.sav*
 
 # Configuração local (resolução)
 utopia.cfg
+
+# Ranking do jogo (TOP 10)
+utopia_ranking.dat*

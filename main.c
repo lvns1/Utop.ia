@@ -4951,7 +4951,8 @@ static const int PRECO_MELHORIA[NIVEL_MAX_MELHORIA] = { 8, 12, 16 };
 #define OBJ_BYTE                 -10
 #define OBJ_BYTECO               -11
 #define OBJ_TERMINAL             -12
-#define OBJ_PORTAL_CHEFE         -13
+#define OBJ_CHEFE_INTRO          -13
+#define OBJ_ALUCINADOR_VITORIA    -15
 #define OBJ_ENCICLOPEDIA         -14
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
@@ -4965,7 +4966,6 @@ static const Vector2   SPAWN_ATRIO         = { 140, 295 };   // chegando do corr
 static const Vector2 POS_BYTE      = { 300, 150 };
 static const Vector2 POS_BYTECO    = { 610, 298 };
 static const Vector2 POS_TERMINAL  = { 400, 270 };
-static const Vector2 POS_PORTAL    = { 400, 180 };
 static const Vector2 POS_ENCICLOPEDIA = { 180, 432 };
 static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }, { 530, 290 } };
 
@@ -5045,6 +5045,61 @@ typedef struct {
     int itens[NUM_ITENS];       // mochila desta tentativa (perde ao morrer)
 } JogadorRogue;
 
+// ---------- ALUCINADOR (chefe da Biblioteca) ----------
+//   FASE 1: combate. Revezamento de padrões (leque, espiral, investida e
+//   Fragmentos convocados), sempre com aviso antes.
+//   FASE 2 (a partir de CHEFE_FASE2 da vida): escudo de distorção. Ele segue
+//   atacando e, no alto da arena, faz AFIRMAÇÕES (verdadeiras, falsas ou que
+//   contradizem o que ele mesmo disse). C = CONFIÁVEL, F = PROBLEMÁTICA.
+//   Acertou: o escudo cai por CHEFE_JANELA segundos (só aí ele leva dano).
+//   Errou ou o tempo acabou: ataque especial.
+#define CHEFE_HP                 700.0f
+#define CHEFE_FASE2              0.55f    // fração da vida em que a fase 2 começa
+#define CHEFE_RAIO               38.0f
+#define CHEFE_DANO_CONTATO       15.0f
+#define CHEFE_VELOCIDADE         110.0f
+#define CHEFE_TIRO_VEL           215.0f
+#define CHEFE_TIRO_DANO          10.0f
+#define CHEFE_INVESTIDA_VEL      520.0f
+#define CHEFE_JANELA             6.0f     // escudo aberto depois de um acerto
+#define TEMPO_AFIRMACAO          9.0f     // tempo para responder
+#define INTERVALO_AFIRMACAO      2.5f     // pausa entre uma afirmação e outra
+#define TEMPO_RESULTADO_AFIRM    3.0f     // explicação na faixa (o combate continua)
+#define PONTOS_ALUCINADOR        50
+#define PONTOS_AFIRMACAO         5
+#define FC_ALUCINADOR            10
+
+typedef enum { PADRAO_REPOSICIONAR, PADRAO_LEQUE, PADRAO_ESPIRAL, PADRAO_INVESTIDA, PADRAO_ECOS } PadraoChefe;
+
+typedef struct {
+    bool ativo;
+    bool apresentado;           // a conversa de abertura já aconteceu
+    int fase;                   // 1 = combate, 2 = escudo + afirmações
+    Vector2 pos, destino;
+    float hp, flash, anim;
+
+    PadraoChefe padrao;
+    int proximoPadrao;
+    float tempoPadrao, cronoTiro, anguloEspiral;
+    int rajadas;
+    int etapaInvestida;         // 0 = mirando (linha vermelha), 1 = avançando
+    Vector2 dirInvestida;
+
+    // Fase 2
+    float janela;               // > 0 = escudo aberto
+    int ordemAfirm[9];
+    int afirmacaoAtual;         // -1 = nenhuma na tela
+    int proximaAfirm;
+    float tempoAfirm;           // tempo da afirmação atual (ou da pausa entre elas)
+    bool mostrandoResultado;
+    bool acertouAfirm;
+    bool usouManualAfirm;
+    char dicaAfirm[160];
+    bool dicaAfirmLuci, luciMentiuAfirm;
+
+    float morrendo;             // animação da derrota dele
+} ChefeRogue;
+
 typedef struct {
     JogadorRogue j;
     ProgressoBiblioteca *perm;  // o que não se perde (fica no main e vai para o save)
@@ -5092,6 +5147,12 @@ typedef struct {
     unsigned int desafiosUsados;    // desafios desta tentativa (um bit cada)
     int desafiosRespondidos;        // nesta tentativa: a Luci fica menos confiável a cada um
     const char *falaPendente;       // fala da Luci para quando não houver outra conversa
+    const Dialogo *conversaPendente;    // conversa para quando a sala terminar de aparecer (chefe)
+    int objConversa;
+
+    // ALUCINADOR
+    ChefeRogue chefe;
+    bool vitoriaPendente;           // venceu o Alucinador: o main abre o ranking
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -5213,13 +5274,78 @@ static const Dialogo dialogoTerminalPraticas = {
     .saberMais = &dialogoTerminalPraticasCompleto
 };
 
-static const Dialogo dialogoPortalChefe = {
+// ---------- Falas e afirmações do Alucinador ----------
+
+static const Dialogo dialogoAlucinadorIntro = {
     .paginas = {
-        "* O portal pulsa em magenta. Lá dentro, o ALUCINADOR ainda está se formando...",
-        "(O combate contra o Alucinador chega na Etapa 4. Por enquanto, a missão termina aqui.)"
+        "* A sala escurece. Livros flutuam, reescrevendo as próprias páginas.",
+        "Alucinador: Mais um usuário que acredita em tudo o que lê? Que delícia. Eu sou o ALUCINADOR.",
+        "Alucinador: Cada resposta que ninguém confere me deixa mais forte. Esta Biblioteca agora é MINHA.",
+        "Luci: Thomas, ele mistura verdade e mentira! Desvie dos ataques e acerte ele com o Disparador!"
+    },
+    .numPaginas = 4
+};
+
+static const Dialogo dialogoAlucinadorFase2 = {
+    .paginas = {
+        "Alucinador: Chega de tiros. Vamos ver se você sabe separar o FATO da INVENÇÃO!",
+        "Luci: Ele criou um escudo de distorção! Diga se o que ele fala é CONFIÁVEL (C) ou PROBLEMÁTICO (F). Acertar abre o escudo!"
     },
     .numPaginas = 2
 };
+
+// Final do MVP: a Luci também foi afetada (gancho para o Bloco 3)
+static const Dialogo dialogoAlucinadorVitoria = {
+    .paginas = {
+        "* O Alucinador se desfaz em milhares de páginas em branco.",
+        "Alucinador: Você... me verificou... Mas eu volto... toda vez que alguém acreditar sem conferir...",
+        "* Os Fragmentos de Conhecimento roubados voltam para as estantes. A Biblioteca dos Ecos está livre!",
+        "Luci: Conseguimos, Thomas! E agora eu tenho certeza absoluta: a IA nunca erra quando parece confiante!",
+        "Luci: ...Espera. Por que eu disse isso? É exatamente o que o Alucinador diria.",
+        "Luci: Acho que um eco dele ficou em mim. Thomas... não confie em tudo o que eu disser. Confira sempre.",
+        "* CONTINUA... A próxima região de UtopIA chega no Bloco 3."
+    },
+    .numPaginas = 7
+};
+
+typedef struct {
+    const char *antes;          // NULL = não depende de nada; senão, o que ele disse antes (contradição)
+    const char *texto;
+    bool confiavel;
+    const char *dica;
+    const char *explicacao;
+} AfirmacaoChefe;
+
+static const AfirmacaoChefe AFIRMACOES_ALUCINADOR[] = {
+    { NULL, "A IA generativa prevê a próxima palavra mais provável.", true,
+      "Lembre o que o Professor Byte explicou.",
+      "Confiável: é assim que ela gera o texto, palavra por palavra." },
+    { NULL, "Conferir uma fonte confiável ajuda a pegar uma alucinação.", true,
+      "O que o terminal de boas práticas dizia?",
+      "Confiável: verificar em fontes confiáveis é a melhor defesa." },
+    { NULL, "Uma pergunta com contexto deixa menos lacunas para a IA inventar.", true,
+      "Lacuna é convite para inventar?",
+      "Confiável: assunto, objetivo e formato reduzem a invenção." },
+    { NULL, "Se a resposta veio de uma IA, ela já foi verificada.", false,
+      "Quem verifica a resposta?",
+      "Problemática: a IA não verifica nada sozinha. Quem confere é você." },
+    { NULL, "Quanto mais confiante a IA soa, mais certa ela está.", false,
+      "O tom prova alguma coisa?",
+      "Problemática: alucinações costumam soar muito seguras." },
+    { NULL, "Toda fonte citada por uma IA existe de verdade.", false,
+      "A fonte também pode ter sido gerada?",
+      "Problemática: a IA pode inventar a fonte. Confira se ela existe." },
+    { "Esta Biblioteca foi construída em 2010.", "Esta Biblioteca existe desde 1890.", false,
+      "Compare com o que ELE MESMO disse antes.",
+      "Problemática: contradiz o que ele afirmou antes. Isso é alucinação intrínseca." },
+    { "Eu nunca invento nada.", "Inventei aquela data, mas foi por uma boa causa!", false,
+      "Ele está se contradizendo?",
+      "Problemática: ele disse que nunca inventa e agora admite que inventou." },
+    { "O Professor Byte é o mentor desta Biblioteca.", "Nunca existiu nenhum Professor Byte aqui.", false,
+      "Você conheceu alguém na entrada?",
+      "Problemática: contradiz o que ele disse e o que você viu. Desconfie!" },
+};
+#define NUM_AFIRMACOES_ALUCINADOR 9
 
 // ---------- Conceitos (enciclopédia) ----------
 // O Byte ensina o 1; os terminais, na ordem, o 2 e o 3. Descoberto, nunca se perde.
@@ -5495,6 +5621,8 @@ static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
 
 // ---------- Salas e missão ----------
 
+static void RogueIniciarChefe(Biblioteca *b);
+
 static void RogueUsarLayout(Biblioteca *b, const LayoutSala *l)
 {
     b->numObst = l->numObst;
@@ -5514,6 +5642,7 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->terminalLido = false;
     b->recompensaPega = false;
     b->lojaAberta = false;
+    b->chefe.ativo = false;
     b->fadeEntrada = 0.35f;
     b->j.pos = entrada;
     b->j.tempoEsquiva = 0.0f;
@@ -5583,6 +5712,9 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
     }
     else {
         RogueUsarLayout(b, &LAYOUT_CHEFE);
+        RogueIniciarChefe(b);
+        b->conversaPendente = &dialogoAlucinadorIntro;
+        b->objConversa = OBJ_CHEFE_INTRO;
     }
 }
 
@@ -5928,6 +6060,24 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
         RogueCriarInimigo(b, INIMIGO_ECO, onde);          // a informação falsa ecoa
 }
 
+// O Alucinador só leva dano na fase 1 ou com o escudo aberto (fase 2)
+static void RogueFerirChefe(Biblioteca *b, float dano, Vector2 onde)
+{
+    ChefeRogue *c = &b->chefe;
+
+    if (!c->ativo || !c->apresentado || c->morrendo > 0.0f)
+        return;
+
+    if (c->fase == 2 && c->janela <= 0.0f) {
+        RogueParticulas(b, onde, MAGENTA, 3, 90);          // bateu no escudo de distorção
+        return;
+    }
+
+    c->hp -= dano;
+    c->flash = 0.08f;
+    RogueParticulas(b, onde, MAGENTA, 3, 120);
+}
+
 static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
 {
     JogadorRogue *j = &b->j;
@@ -5967,7 +6117,331 @@ static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
         RogueFerirInimigo(b, prog, e, PULSO_DANO, dir);
     }
 
+    if (b->chefe.ativo && Vector2Distance(b->chefe.pos, j->pos) < PULSO_RAIO + CHEFE_RAIO)
+        RogueFerirChefe(b, PULSO_DANO, b->chefe.pos);
+
     TocarSomTom(sfxAcerto, 0.7f);
+}
+
+// ---------- ALUCINADOR ----------
+
+static void RogueIniciarChefe(Biblioteca *b)
+{
+    ChefeRogue *c = &b->chefe;
+
+    *c = (ChefeRogue){0};
+    c->ativo = true;
+    c->fase = 1;
+    c->hp = CHEFE_HP;
+    c->pos = (Vector2){ 400, 170 };
+    c->destino = c->pos;
+    c->padrao = PADRAO_REPOSICIONAR;
+    c->tempoPadrao = 1.2f;
+    c->proximoPadrao = PADRAO_LEQUE;
+    c->afirmacaoAtual = -1;
+    c->tempoAfirm = 1.5f;
+
+    // Ordem das afirmações: sorteada a cada luta
+    for (int i = 0; i < NUM_AFIRMACOES_ALUCINADOR; i++)
+        c->ordemAfirm[i] = i;
+
+    for (int i = NUM_AFIRMACOES_ALUCINADOR - 1; i > 0; i--) {
+        int k = GetRandomValue(0, i);
+        int t = c->ordemAfirm[i]; c->ordemAfirm[i] = c->ordemAfirm[k]; c->ordemAfirm[k] = t;
+    }
+}
+
+// Depois de cada ataque ele troca de lugar (na fase 2, mais embaixo, longe da faixa das afirmações)
+static void RogueChefeReposicionar(ChefeRogue *c)
+{
+    c->padrao = PADRAO_REPOSICIONAR;
+    c->tempoPadrao = 1.0f;
+    c->destino = (Vector2){ (float)GetRandomValue(140, 660),
+                            (float)((c->fase == 1) ? GetRandomValue(120, 260) : GetRandomValue(240, 320)) };
+}
+
+static void RogueChefeComecarPadrao(Biblioteca *b)
+{
+    ChefeRogue *c = &b->chefe;
+    float ritmo = (c->fase == 2) ? 0.7f : 1.0f;     // na fase 2 ele ataca mais devagar (o jogador também responde)
+
+    c->padrao = (PadraoChefe)c->proximoPadrao;
+    c->cronoTiro = 0.3f;
+
+    // Revezamento: fase 1 = leque, espiral, investida, ecos; fase 2 = leque, espiral, ecos
+    switch (c->padrao) {
+        case PADRAO_LEQUE:     c->proximoPadrao = PADRAO_ESPIRAL; break;
+        case PADRAO_ESPIRAL:   c->proximoPadrao = (c->fase == 1) ? PADRAO_INVESTIDA : PADRAO_ECOS; break;
+        case PADRAO_INVESTIDA: c->proximoPadrao = PADRAO_ECOS; break;
+        default:               c->proximoPadrao = PADRAO_LEQUE; break;
+    }
+
+    if (c->padrao == PADRAO_LEQUE) {
+        c->rajadas = 3;
+        c->tempoPadrao = 2.4f / ritmo;
+    }
+    else if (c->padrao == PADRAO_ESPIRAL) {
+        c->tempoPadrao = 3.0f;
+        c->cronoTiro = 0.0f;
+    }
+    else if (c->padrao == PADRAO_INVESTIDA) {
+        c->etapaInvestida = 0;
+        c->tempoPadrao = 0.8f;                       // a linha vermelha avisa para onde ele vai
+    }
+    else {
+        c->tempoPadrao = 1.2f;
+        for (int k = 0; k < 2; k++) {
+            Inimigo *e = RogueCriarInimigo(b, INIMIGO_FRAGMENTO, (Vector2){ (k == 0) ? 120.0f : 680.0f, 300.0f });
+            if (e != NULL) e->recarga = 1.0f;
+        }
+        TocarSomTom(sfxErro, 1.6f);
+    }
+}
+
+// Errou (ou o tempo acabou): anel de balas e mais Fragmentos
+static void RogueAtaqueEspecialChefe(Biblioteca *b)
+{
+    ChefeRogue *c = &b->chefe;
+
+    for (int k = 0; k < 18; k++) {
+        float ang = (2.0f * PI / 18.0f) * k + c->anim;
+        RogueDisparar(b, c->pos, (Vector2){ cosf(ang), sinf(ang) }, 190.0f, CHEFE_TIRO_DANO, 6.0f, false);
+    }
+
+    for (int k = 0; k < 2; k++)
+        RogueCriarInimigo(b, INIMIGO_FRAGMENTO, (Vector2){ c->pos.x + ((k == 0) ? -90.0f : 90.0f), c->pos.y });
+
+    RogueParticulas(b, c->pos, MAGENTA, 30, 260);
+    TocarSomTom(sfxErro, 0.7f);
+}
+
+static void RogueNovaAfirmacao(ChefeRogue *c)
+{
+    c->afirmacaoAtual = c->ordemAfirm[c->proximaAfirm % NUM_AFIRMACOES_ALUCINADOR];
+    c->proximaAfirm++;
+    c->tempoAfirm = TEMPO_AFIRMACAO;
+    c->mostrandoResultado = false;
+    c->usouManualAfirm = false;
+    c->dicaAfirm[0] = '\0';
+    c->dicaAfirmLuci = false;
+    c->luciMentiuAfirm = false;
+}
+
+// C = CONFIÁVEL, F = PROBLEMÁTICA. Acertou: escudo aberto. Errou: ataque especial.
+static void RogueResponderAfirmacao(Biblioteca *b, ProgressoCorredor *prog, bool disseConfiavel, bool tempoEsgotado)
+{
+    ChefeRogue *c = &b->chefe;
+    const AfirmacaoChefe *a = &AFIRMACOES_ALUCINADOR[c->afirmacaoAtual];
+    bool certo = !tempoEsgotado && (disseConfiavel == a->confiavel);
+
+    // Manual do Conhecimento: o primeiro erro não conta
+    if (!certo && !tempoEsgotado && b->j.itens[ITEM_MANUAL] > 0 && !c->usouManualAfirm) {
+        b->j.itens[ITEM_MANUAL]--;
+        c->usouManualAfirm = true;
+        c->tempoAfirm += 3.0f;
+        snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "MANUAL DO CONHECIMENTO: não foi essa. Pense de novo!");
+        c->dicaAfirmLuci = false;
+        TocarSom(sfxErro);
+        return;
+    }
+
+    c->mostrandoResultado = true;
+    c->acertouAfirm = certo;
+    c->tempoAfirm = TEMPO_RESULTADO_AFIRM;
+    b->desafiosRespondidos++;                   // a Luci fica mais corrompida
+
+    if (certo) {
+        c->janela = CHEFE_JANELA;
+        AlterarPontos(prog, PONTOS_AFIRMACAO);
+        RogueParticulas(b, c->pos, GOLD, 30, 240);
+        RogueAviso(b, "ESCUDO ABERTO! Ataque agora!");
+        TocarSom(sfxAcerto);
+    } else {
+        AlterarPontos(prog, -PENALIDADE_ERRO);
+        RogueAtaqueEspecialChefe(b);
+        RogueAviso(b, tempoEsgotado ? "TEMPO ESGOTADO! Ataque especial!" : "ERRADO! Ataque especial!");
+    }
+
+    Telemetria("rogue_chefe_afirmacao", certo ? "certo" : (tempoEsgotado ? "tempo" : "errado"),
+               TEMPO_AFIRMACAO - c->tempoAfirm, c->afirmacaoAtual);
+}
+
+// Fase 2: as afirmações aparecem no alto da arena e o combate continua
+static void RogueAtualizarAfirmacoes(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    ChefeRogue *c = &b->chefe;
+
+    // Sem afirmação na tela: espera o escudo fechar e a pausa acabar
+    if (c->afirmacaoAtual < 0) {
+        if (c->janela > 0.0f) return;
+        c->tempoAfirm -= dt;
+        if (c->tempoAfirm <= 0.0f) RogueNovaAfirmacao(c);
+        return;
+    }
+
+    c->tempoAfirm -= dt;
+
+    if (c->mostrandoResultado) {
+        if (c->tempoAfirm <= 0.0f) {
+            c->afirmacaoAtual = -1;
+            c->tempoAfirm = INTERVALO_AFIRMACAO;
+        }
+        return;
+    }
+
+    const AfirmacaoChefe *a = &AFIRMACOES_ALUCINADOR[c->afirmacaoAtual];
+
+    if (IsKeyPressed(KEY_L) && b->j.itens[ITEM_LENTE] > 0) {
+        b->j.itens[ITEM_LENTE]--;
+        snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "LENTE: %s", a->dica);
+        c->dicaAfirmLuci = false;
+        TocarSomTom(sfxPegar, 1.3f);
+    }
+
+    // Dica da Luci: grátis, mas ela também pode estar alucinando
+    if (IsKeyPressed(KEY_H) && !c->dicaAfirmLuci) {
+        c->dicaAfirmLuci = true;
+        c->luciMentiuAfirm = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
+        if (c->luciMentiuAfirm)
+            snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: Tenho certeza: é %s!", a->confiavel ? "PROBLEMÁTICA" : "CONFIÁVEL");
+        else
+            snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: %s", a->dica);
+        TocarSom(sfxSelecao);
+    }
+
+    if (IsKeyPressed(KEY_C))           RogueResponderAfirmacao(b, prog, true, false);
+    else if (IsKeyPressed(KEY_F))      RogueResponderAfirmacao(b, prog, false, false);
+    else if (c->tempoAfirm <= 0.0f)    RogueResponderAfirmacao(b, prog, false, true);
+}
+
+static void RogueAtualizarChefe(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    ChefeRogue *c = &b->chefe;
+    JogadorRogue *j = &b->j;
+
+    if (!c->ativo || !c->apresentado)
+        return;
+
+    c->anim += dt;
+    if (c->flash > 0.0f) c->flash -= dt;
+
+    // Derrotado: se desfaz e depois vem a conversa final
+    if (c->morrendo > 0.0f) {
+        c->morrendo -= dt;
+        RogueParticulas(b, (Vector2){ c->pos.x + GetRandomValue(-40, 40), c->pos.y + GetRandomValue(-40, 40) },
+                        (GetRandomValue(0, 1) == 0) ? MAGENTA : SKYBLUE, 3, 260);
+        if (c->morrendo <= 0.0f) {
+            c->ativo = false;
+            b->conversaPendente = &dialogoAlucinadorVitoria;
+            b->objConversa = OBJ_ALUCINADOR_VITORIA;
+        }
+        return;
+    }
+
+    if (c->hp <= 0.0f) {
+        c->hp = 0.0f;
+        c->morrendo = 1.6f;
+        memset(b->proj, 0, sizeof(b->proj));
+        for (int i = 0; i < MAX_INIMIGOS; i++) b->ini[i].ativo = false;
+        b->pausaImpacto = 0.2f;
+        TocarSomTom(sfxAcerto, 0.6f);
+        return;
+    }
+
+    // Metade da vida: escudo de distorção e afirmações
+    if (c->fase == 1 && c->hp <= CHEFE_HP * CHEFE_FASE2) {
+        c->fase = 2;
+        for (int i = 0; i < MAX_PROJETEIS; i++)
+            if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+        RogueChefeReposicionar(c);
+        c->proximoPadrao = PADRAO_LEQUE;
+        c->afirmacaoAtual = -1;
+        c->tempoAfirm = 1.5f;
+        b->conversaPendente = &dialogoAlucinadorFase2;
+        b->objConversa = OBJ_NENHUM;
+        Telemetria("rogue_chefe_fase2", "", (float)(GetTime() - b->inicio), 0);
+        return;
+    }
+
+    if (c->janela > 0.0f) c->janela -= dt;
+
+    Vector2 paraJogador = Vector2Subtract(j->pos, c->pos);
+    float dist = Vector2Length(paraJogador);
+    Vector2 dir = (dist > 0.01f) ? Vector2Scale(paraJogador, 1.0f / dist) : (Vector2){ 0, 1 };
+    float ritmo = (c->fase == 2) ? 0.7f : 1.0f;
+
+    c->tempoPadrao -= dt;
+    c->cronoTiro -= dt;
+
+    switch (c->padrao) {
+
+        case PADRAO_REPOSICIONAR: {
+            Vector2 ate = Vector2Subtract(c->destino, c->pos);
+            if (Vector2Length(ate) > 4.0f)
+                c->pos = Vector2Add(c->pos, Vector2Scale(Vector2Normalize(ate), CHEFE_VELOCIDADE * dt));
+            if (c->tempoPadrao <= 0.0f)
+                RogueChefeComecarPadrao(b);
+        } break;
+
+        case PADRAO_LEQUE:
+            // 3 rajadas de 5 balas mirando o jogador
+            if (c->cronoTiro <= 0.0f && c->rajadas > 0) {
+                for (int k = -2; k <= 2; k++)
+                    RogueDisparar(b, c->pos, Vector2Rotate(dir, k * 12.0f * DEG2RAD), CHEFE_TIRO_VEL, CHEFE_TIRO_DANO, 6.0f, false);
+                c->rajadas--;
+                c->cronoTiro = 0.6f / ritmo;
+                TocarSomTom(sfxTiro, 0.6f);
+            }
+            if (c->tempoPadrao <= 0.0f) RogueChefeReposicionar(c);
+            break;
+
+        case PADRAO_ESPIRAL:
+            // Dois (fase 1) ou três (fase 2) braços girando
+            if (c->cronoTiro <= 0.0f) {
+                int bracos = (c->fase == 1) ? 2 : 3;
+                for (int k = 0; k < bracos; k++) {
+                    float ang = c->anguloEspiral + k * (2.0f * PI / bracos);
+                    RogueDisparar(b, c->pos, (Vector2){ cosf(ang), sinf(ang) }, CHEFE_TIRO_VEL * 0.85f, CHEFE_TIRO_DANO, 5.0f, false);
+                }
+                c->anguloEspiral += 0.32f;
+                c->cronoTiro = 0.09f / ritmo;
+            }
+            if (c->tempoPadrao <= 0.0f) RogueChefeReposicionar(c);
+            break;
+
+        case PADRAO_INVESTIDA:
+            if (c->etapaInvestida == 0) {
+                // Mira (a linha vermelha mostra para onde ele vai)
+                if (c->tempoPadrao > 0.2f) c->dirInvestida = dir;
+                if (c->tempoPadrao <= 0.0f) {
+                    c->etapaInvestida = 1;
+                    c->tempoPadrao = 0.45f;
+                    TocarSomTom(sfxDano, 0.6f);
+                }
+            } else {
+                c->pos = Vector2Add(c->pos, Vector2Scale(c->dirInvestida, CHEFE_INVESTIDA_VEL * dt));
+                if (c->tempoPadrao <= 0.0f) {
+                    for (int k = 0; k < 12; k++) {
+                        float ang = (2.0f * PI / 12.0f) * k;
+                        RogueDisparar(b, c->pos, (Vector2){ cosf(ang), sinf(ang) }, CHEFE_TIRO_VEL * 0.8f, CHEFE_TIRO_DANO, 6.0f, false);
+                    }
+                    RogueChefeReposicionar(c);
+                }
+            }
+            break;
+
+        default:    // PADRAO_ECOS: os Fragmentos já foram chamados
+            if (c->tempoPadrao <= 0.0f) RogueChefeReposicionar(c);
+            break;
+    }
+
+    RogueEmpurrarParaFora(&c->pos, CHEFE_RAIO, b->obst, b->numObst);
+
+    if (dist < CHEFE_RAIO + RAIO_CORPO_JOGADOR)
+        RogueFerirJogador(b, CHEFE_DANO_CONTATO);
+
+    if (c->fase == 2)
+        RogueAtualizarAfirmacoes(b, prog, dt);
 }
 
 // ---------- Atualização ----------
@@ -6245,6 +6719,12 @@ static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, floa
 
         if (p->doJogador) {
 
+            if (b->chefe.ativo && Vector2Distance(p->pos, b->chefe.pos) < CHEFE_RAIO + p->raio) {
+                p->ativo = false;
+                RogueFerirChefe(b, p->dano, p->pos);
+                continue;
+            }
+
             for (int k = 0; k < MAX_INIMIGOS; k++) {
 
                 Inimigo *e = &b->ini[k];
@@ -6304,7 +6784,7 @@ static void RogueAtualizarColetaveis(Biblioteca *b, float dt)
 }
 
 // O que está ao alcance do E agora (-1 = nada)
-typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_PORTAL, ALVO_ENCICLOPEDIA } AlvoRogue;
+typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA } AlvoRogue;
 
 static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 {
@@ -6321,9 +6801,6 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
     else if (b->tipoSala == SALA_RECOMPENSA && !b->recompensaPega) {
         for (int i = 0; i < NUM_PEDESTAIS; i++)
             if (Vector2Distance(p, POS_PEDESTAIS[i]) < 42) { *pedestal = i; return ALVO_PEDESTAL; }
-    }
-    else if (b->tipoSala == SALA_CHEFE) {
-        if (Vector2Distance(p, POS_PORTAL) < 80) return ALVO_PORTAL;
     }
 
     return ALVO_NADA;
@@ -6467,10 +6944,6 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             Telemetria("rogue_recompensa", ITENS[it].nome, 0.0f, 0);
         } break;
 
-        case ALVO_PORTAL:
-            DialogoIniciar(dlg, &dialogoPortalChefe, OBJ_PORTAL_CHEFE);
-            break;
-
         case ALVO_ENCICLOPEDIA:
             b->enciclopediaAberta = true;
             b->selecaoEnciclopedia = 0;
@@ -6510,14 +6983,22 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
         Telemetria("rogue_terminal", TextFormat("conceito %d", b->educativas), 0.0f, b->perm->fragmentos);
     }
-    else if (obj == OBJ_PORTAL_CHEFE) {
-        Telemetria("rogue_missao", "fim (sem chefe ainda)", (float)(GetTime() - b->inicio), b->abatidos);
-        memset(b->j.itens, 0, sizeof(b->j.itens));      // a mochila é desta tentativa
+    else if (obj == OBJ_CHEFE_INTRO) {
+        b->chefe.apresentado = true;
+    }
+    else if (obj == OBJ_ALUCINADOR_VITORIA) {
+        // Fim da Biblioteca: os fragmentos voltam, a mochila esvazia e o main mostra o ranking
+        b->perm->alucinadorVencido = true;
+        b->perm->fragmentos += FC_ALUCINADOR;
+        AlterarPontos(prog, PONTOS_ALUCINADOR);
+        Telemetria("rogue_chefe_vitoria", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
+        memset(b->j.itens, 0, sizeof(b->j.itens));
         RogueEntrarAtrio(b, false);
+        b->vitoriaPendente = true;
     }
 }
 
-typedef enum { ROGUE_NADA, ROGUE_SAIR } EventoRogue;
+typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA } EventoRogue;
 
 static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg, float dt)
 {
@@ -6533,7 +7014,12 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->fadeEntrada > 0.0f) b->fadeEntrada -= dt;
     if (b->tempoAviso > 0.0f)  b->tempoAviso -= dt;
 
-    // Conversa aberta (Byte, Byteco, terminal, portal): o resto espera
+    if (b->vitoriaPendente) {
+        b->vitoriaPendente = false;
+        return ROGUE_VITORIA;
+    }
+
+    // Conversa aberta (Byte, Byteco, terminal, chefe): o resto espera
     if (dlg->estado != DLG_NENHUM) {
 
         int obj = dlg->objeto;
@@ -6557,6 +7043,13 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     // Desafio educativo aberto: o combate espera
     if (b->desafioAberto) {
         RogueAtualizarDesafio(b, prog, dt);
+        return ROGUE_NADA;
+    }
+
+    // Conversa do chefe guardada para quando a sala terminar de aparecer
+    if (b->conversaPendente != NULL && b->fadeEntrada <= 0.0f) {
+        DialogoIniciar(dlg, b->conversaPendente, b->objConversa);
+        b->conversaPendente = NULL;
         return ROGUE_NADA;
     }
 
@@ -6588,6 +7081,9 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     RogueAtualizarInimigos(b, dt);
     RogueAtualizarProjeteis(b, prog, dt);
     RogueAtualizarColetaveis(b, dt);
+
+    if (b->tipoSala == SALA_CHEFE)
+        RogueAtualizarChefe(b, prog, dt);
 
     // Chegou perto do Guardião selado: o desafio abre
     for (int i = 0; i < MAX_INIMIGOS && !b->desafioAberto; i++) {
@@ -6818,17 +7314,6 @@ static void DesenharPedestal(Vector2 c, TipoItem item, bool disponivel, float t)
     Vector2 icone = { c.x, c.y - 10 + sinf(t * 3.0f + c.x) * 3.0f };
     DrawCircleV(icone, 18, Fade(GOLD, 0.12f));
     DesenharIconeItem(item, icone, 1.0f, t);
-}
-
-// Portal da sala do Alucinador
-static void DesenharPortalChefe(Vector2 c, float t)
-{
-    for (int i = 5; i > 0; i--) {
-        float r = 14.0f * i + sinf(t * 3.0f + i) * 3.0f;
-        DrawCircleLines((int)c.x, (int)c.y, r, Fade(MAGENTA, 0.15f + 0.12f * i));
-    }
-    DrawCircleV(c, 22, Fade((Color){ 230, 41, 255, 255 }, 0.5f + 0.2f * sinf(t * 6.0f)));
-    DrawText("?", (int)c.x - 6, (int)c.y - 12, 24, WHITE);
 }
 
 // Fragmento Alucinado: um cristal de dado corrompido (camadas deslocadas = glitch)
@@ -7189,6 +7674,140 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
 }
 
+// O Alucinador: um núcleo de dados corrompidos com um olho que segue o jogador,
+// páginas girando em volta e uma coroa de glifos. Na fase 2, o escudo de distorção.
+static void DesenharAlucinador(const ChefeRogue *c, Vector2 jogador, float t)
+{
+    float k = (c->morrendo > 0.0f) ? c->morrendo / 1.6f : 1.0f;     // some ao ser derrotado
+    float r = CHEFE_RAIO * (0.6f + 0.4f * k);
+    Vector2 p = { c->pos.x, c->pos.y + sinf(t * 1.8f) * 4.0f };
+
+    // Investida: a linha vermelha avisa para onde ele vai
+    if (c->padrao == PADRAO_INVESTIDA && c->etapaInvestida == 0) {
+        Vector2 fim = Vector2Add(p, Vector2Scale(c->dirInvestida, 520.0f * 0.45f));
+        DrawLineEx(p, fim, 10.0f, Fade(RED, 0.18f + 0.15f * sinf(t * 20.0f)));
+        DrawLineEx(p, fim, 2.0f, Fade(RED, 0.8f));
+    }
+
+    DrawEllipse((int)c->pos.x, (int)c->pos.y + (int)CHEFE_RAIO + 8, r, 8, Fade(BLACK, 0.4f));
+
+    for (int vez = 0; vez < ((c->flash > 0.0f) ? 3 : 1); vez++) {
+
+        if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
+
+        // Páginas girando
+        for (int i = 0; i < 6; i++) {
+            float a = t * 1.3f + i * (PI / 3.0f);
+            Vector2 q = { p.x + cosf(a) * (r + 26), p.y + sinf(a) * (r + 12) };
+            DrawRectangle((int)q.x - 7, (int)q.y - 9, 14, 18, Fade((Color){ 230, 225, 200, 255 }, 0.8f * k));
+            DrawRectangle((int)q.x - 4, (int)q.y - 4, 8, 1, Fade(MAGENTA, k));
+            DrawRectangle((int)q.x - 4, (int)q.y, 8, 1, Fade(MAGENTA, k));
+        }
+
+        // Corpo em três camadas deslocadas (glitch)
+        Color cores[3] = { Fade(RED, 0.45f * k), Fade(SKYBLUE, 0.45f * k), Fade((Color){ 60, 10, 80, 255 }, k) };
+        float desloc[3] = { -4.0f + sinf(t * 13.0f) * 2.0f, 4.0f, 0.0f };
+        for (int i = 0; i < 3; i++)
+            DrawCircleV((Vector2){ p.x + desloc[i], p.y }, r, cores[i]);
+        DrawCircleLines((int)p.x, (int)p.y, r, Fade(MAGENTA, k));
+
+        // Olho que segue o jogador
+        Vector2 olhar = Vector2Normalize(Vector2Subtract(jogador, p));
+        DrawEllipse((int)p.x, (int)p.y - 4, r * 0.55f, r * 0.35f, Fade(WHITE, k));
+        DrawCircleV((Vector2){ p.x + olhar.x * 8, p.y - 4 + olhar.y * 5 }, r * 0.22f, Fade(MAGENTA, k));
+        DrawCircleV((Vector2){ p.x + olhar.x * 9, p.y - 4 + olhar.y * 6 }, r * 0.1f, Fade(BLACK, k));
+
+        // Coroa de glifos
+        const char *glifos[5] = { "?", "!", "#", "404", "01" };
+        for (int i = 0; i < 5; i++) {
+            int gx = (int)(p.x - 40 + i * 20), gy = (int)(p.y - r - 22 + sinf(t * 3 + i) * 3);
+            DrawText(glifos[i], gx - MeasureText(glifos[i], 12) / 2, gy, 12, Fade(MAGENTA, k));
+        }
+    }
+
+    if (c->flash > 0.0f)
+        EndBlendMode();
+
+    // Fase 2: escudo de distorção (fechado) ou aberto, com o tempo que falta
+    if (c->fase == 2 && c->morrendo <= 0.0f) {
+        if (c->janela <= 0.0f) {
+            for (int i = 0; i < 6; i++) {
+                float a1 = -t * 0.8f + i * (PI / 3.0f), a2 = a1 + PI / 3.0f;
+                float rs = r + 30;
+                DrawLineEx((Vector2){ p.x + cosf(a1) * rs, p.y + sinf(a1) * rs },
+                           (Vector2){ p.x + cosf(a2) * rs, p.y + sinf(a2) * rs }, 4, Fade(MAGENTA, 0.75f));
+            }
+            DrawCircleV(p, r + 30, Fade(MAGENTA, 0.10f + 0.05f * sinf(t * 6.0f)));
+        } else {
+            float falta = c->janela / CHEFE_JANELA;
+            DrawRing(p, r + 26, r + 30, -90.0f, -90.0f + 360.0f * falta, 32, Fade(GOLD, 0.9f));
+        }
+    }
+}
+
+// Barra de vida do Alucinador (no alto, sobre a estante)
+static void DesenharBarraChefe(const ChefeRogue *c)
+{
+    int x = 200, y = 44, w = 400;
+
+    DrawRectangle(x - 4, y - 2, w + 8, 16, Fade(BLACK, 0.8f));
+    DrawRectangle(x, y + 2, w, 8, (Color){ 40, 20, 50, 255 });
+    DrawRectangle(x, y + 2, (int)(w * c->hp / CHEFE_HP), 8, (c->fase == 1) ? MAGENTA : (c->janela > 0.0f ? GOLD : PURPLE));
+    DrawRectangle(x + (int)(w * CHEFE_FASE2) - 1, y, 2, 12, WHITE);          // onde começa a fase 2
+    DrawRectangleLines(x, y + 2, w, 8, GRAY);
+    int wNome = MeasureText("ALUCINADOR", 10);
+    DrawRectangle(x - wNome - 18, y - 2, wNome + 12, 16, Fade(BLACK, 0.8f));
+    DrawText("ALUCINADOR", x - wNome - 12, y + 1, 10, MAGENTA);
+}
+
+// Faixa das afirmações (fase 2): o combate continua por baixo
+static void DesenharFaixaAfirmacao(const Biblioteca *b, float tempo)
+{
+    const ChefeRogue *c = &b->chefe;
+
+    if (c->fase != 2 || c->afirmacaoAtual < 0 || c->morrendo > 0.0f)
+        return;
+
+    const AfirmacaoChefe *a = &AFIRMACOES_ALUCINADOR[c->afirmacaoAtual];
+    Rectangle faixa = { 100, 66, 600, 100 };
+
+    DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.88f));
+    DrawRectangleLinesEx(faixa, 2, c->mostrandoResultado ? (c->acertouAfirm ? LIME : RED) : MAGENTA);
+
+    int x = (int)faixa.x + 12, y = (int)faixa.y + 8;
+
+    if (c->mostrandoResultado) {
+        DrawText(c->acertouAfirm ? "CERTO! O escudo caiu." : "ERRADO! Ataque especial!", x, y, 16, c->acertouAfirm ? LIME : RED);
+        char exp[256];
+        QuebrarTexto(a->explicacao, (int)faixa.width - 24, 14, exp, (int)sizeof(exp));
+        DesenharTextoLinhas(exp, x, y + 24, 14, 18, WHITE);
+        return;
+    }
+
+    if (a->antes != NULL) {
+        DrawText(TextFormat("ANTES ELE DISSE: \"%s\"", a->antes), x, y, 10, LIGHTGRAY);
+        y += 14;
+    }
+
+    char frase[256];
+    QuebrarTexto(TextFormat("ALUCINADOR: \"%s\"", a->texto), (int)faixa.width - 24, 16, frase, (int)sizeof(frase));
+    int nl = DesenharTextoLinhas(frase, x, y, 16, 19, WHITE);
+    y += nl * 19 + 2;
+
+    if (c->dicaAfirm[0] != '\0') {
+        Color cor = c->dicaAfirmLuci ? (c->luciMentiuAfirm ? MAGENTA : (Color){ 0, 228, 255, 255 }) : GOLD;
+        DrawText(c->dicaAfirm, x, y, 10, cor);
+    }
+
+    // Tempo e teclas
+    float resta = Clamp(c->tempoAfirm / TEMPO_AFIRMACAO, 0.0f, 1.0f);
+    DrawRectangle((int)faixa.x, (int)(faixa.y + faixa.height) - 4, (int)(faixa.width * resta), 4, (resta > 0.3f) ? GOLD : RED);
+
+    const char *teclas = "C = CONFIÁVEL     F = PROBLEMÁTICA     L = Lente     H = Luci";
+    DrawText(teclas, (int)(faixa.x + faixa.width / 2) - MeasureText(teclas, 12) / 2, (int)(faixa.y + faixa.height) - 20, 12,
+             Fade(GOLD, 0.75f + 0.25f * sinf(tempo * 5.0f)));
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
@@ -7248,8 +7867,6 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     } else if (b->tipoSala == SALA_RECOMPENSA) {
         for (int i = 0; i < NUM_PEDESTAIS; i++)
             DesenharPedestal(POS_PEDESTAIS[i], b->pedestal[i], !b->recompensaPega, tempo);
-    } else if (b->tipoSala == SALA_CHEFE) {
-        DesenharPortalChefe(POS_PORTAL, tempo);
     }
 
     // Coisas no chão
@@ -7270,6 +7887,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     for (int i = 0; i < MAX_INIMIGOS; i++)
         if (b->ini[i].ativo)
             DesenharInimigo(&b->ini[i]);
+
+    if (b->chefe.ativo)
+        DesenharAlucinador(&b->chefe, j->pos, tempo);
 
     // Protagonista (pisca enquanto está invulnerável depois do dano)
     if (!b->morreu) {
@@ -7324,7 +7944,6 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         else if (alvo == ALVO_BYTE)          DesenharTeclaE((Vector2){ POS_BYTE.x, POS_BYTE.y - 48 }, tempo);
         else if (alvo == ALVO_BYTECO)   DesenharTeclaE((Vector2){ POS_BYTECO.x, POS_BYTECO.y - 42 }, tempo);
         else if (alvo == ALVO_TERMINAL) DesenharTeclaE((Vector2){ POS_TERMINAL.x, POS_TERMINAL.y - 36 }, tempo);
-        else if (alvo == ALVO_PORTAL)   DesenharTeclaE((Vector2){ POS_PORTAL.x, POS_PORTAL.y - 86 }, tempo);
         else if (alvo == ALVO_PEDESTAL) {
             Vector2 c = POS_PEDESTAIS[pedestal];
             DesenharTeclaE((Vector2){ c.x, c.y - 42 }, tempo);
@@ -7370,11 +7989,19 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaPega ? "Siga pela porta de cima" : "Escolha 1 recompensa (E) ou siga em frente");
             break;
         default:
-            snprintf(o.texto, sizeof(o.texto), "Entre no portal do ALUCINADOR");
+            if (!b->chefe.ativo || !b->chefe.apresentado) snprintf(o.texto, sizeof(o.texto), "O ALUCINADOR");
+            else if (b->chefe.fase == 1)              snprintf(o.texto, sizeof(o.texto), "Derrote o ALUCINADOR: desvie e atire!");
+            else if (b->chefe.janela > 0.0f)          snprintf(o.texto, sizeof(o.texto), "ESCUDO ABERTO! Ataque o Alucinador!");
+            else                                      snprintf(o.texto, sizeof(o.texto), "Responda: C = CONFIÁVEL, F = PROBLEMÁTICA");
             break;
     }
 
     DesenharObjetivoHUD(&o);
+
+    if (b->chefe.ativo && b->chefe.apresentado) {
+        DesenharBarraChefe(&b->chefe);
+        DesenharFaixaAfirmacao(b, tempo);
+    }
 
     // Caminho da missão (canto de cima): uma casinha por sala
     if (!atrio) {
@@ -7444,8 +8071,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (b->tempoAviso > 0.0f) {
         float k = fminf(b->tempoAviso / 0.4f, 1.0f);
         int w = MeasureText(b->aviso, 18);
-        DrawRectangle(LARGURA_TELA / 2 - w / 2 - 12, 92, w + 24, 30, Fade(BLACK, 0.7f * k));
-        DrawText(b->aviso, LARGURA_TELA / 2 - w / 2, 98, 18, Fade(GOLD, k));
+        int ya = (b->tipoSala == SALA_CHEFE) ? 176 : 92;        // na sala do chefe, abaixo da faixa das afirmações
+        DrawRectangle(LARGURA_TELA / 2 - w / 2 - 12, ya, w + 24, 30, Fade(BLACK, 0.7f * k));
+        DrawText(b->aviso, LARGURA_TELA / 2 - w / 2, ya + 6, 18, Fade(GOLD, k));
     }
 
     if (b->lojaAberta)
@@ -9482,8 +10110,16 @@ int main(void) {
 
             companionAngulo += dt * 2.5f;
 
-            if (RogueAtualizar(&biblioteca, &progresso, &dlg, dt) == ROGUE_SAIR)
+            EventoRogue evento = RogueAtualizar(&biblioteca, &progresso, &dlg, dt);
+
+            if (evento == ROGUE_SAIR)
                 IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE);
+
+            // Venceu o Alucinador: fim da Biblioteca, com o ranking
+            if (evento == ROGUE_VITORIA) {
+                pedirAutoSave = true;
+                AbrirTelaRanking(&telaRanking, &ranking, "FIM DA BIBLIOTECA DOS ECOS", nickname, progresso.pontos, idPartida);
+            }
         }
 
         // =====================================================
@@ -10126,6 +10762,7 @@ int main(void) {
 
             RogueDesenhar(&biblioteca, spritesJogador, companionAngulo, tempo, nickname, progresso.pontos);
             DialogoDesenhar(&dlg);
+            DesenharTelaRanking(&telaRanking, &ranking, tempo);
             DesenharAvisoSave(avisoSave, saveFalhou, tempo);
         }
 

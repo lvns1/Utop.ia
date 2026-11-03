@@ -128,7 +128,7 @@ static const char *PASTAS_SPRITES_JOGADOR[] = { "", "resources/sprites/player/",
 
 #define ARQUIVO_SAVE         "utopia.sav"
 #define ARQUIVO_SAVE_TEMP    "utopia.sav.tmp"
-#define VERSAO_SAVE          6            // aumente quando mudar o que vai no save (6 = Biblioteca dos Ecos)
+#define VERSAO_SAVE          9            // aumente quando mudar o que vai no save (9 = Bloco 3 e o final)
 #define ASSINATURA_SAVE      0x41495455u  // identifica o arquivo como save do UtopIA
 #define TEMPO_AVISO_SAVE     2.0f         // segundos do aviso "JOGO SALVO" na tela
 
@@ -303,6 +303,31 @@ typedef struct {
     int melhorias[3];                // melhorias permanentes: HP, dano, EP (Etapa 3)
     unsigned int conceitos;          // conceitos descobertos, um bit cada (enciclopédia, Etapa 3)
     bool alucinadorVencido;          // venceu o chefe da Biblioteca (Etapa 4)
+
+    // Versão 7 (sempre no FINAL: esta struct é o último campo do DadosSave).
+    // Desempenho na Biblioteca: o Bloco 3 lê isto para montar a luta e decidir o final.
+    int desafiosCertos;              // Guardiões selados, afirmações do Alucinador e puzzles do Silogista
+    int desafiosErrados;
+    int mortes;                      // derrotas na Biblioteca
+    int corrupcaoLuciMax;            // maior chance (%) de a dica da Luci sair errada numa tentativa
+    bool silogistaVencido;
+    bool bloco3Liberado;             // venceu o Alucinador: a porta do Bloco 3 abriu no átrio
+
+    // Versão 8: como o jogador lidou com a Luci na Biblioteca (o Bloco 3 usa)
+    int confiouCego;                 // seguiu a dica dela sem verificar
+    int confiouAlucinacao;           // ... e ela estava alucinando
+    int verificou;
+    int alucinacoesPegas;            // verificou e pegou a alucinação
+    int contradicoesFlagradas;
+    int contradicoesPerdidas;
+    int contestouAToa;
+    int reparos;                     // vezes que a estabilidade subiu por uma ação do jogador
+
+    // Versão 9: o Bloco 3 e o final
+    bool jogoConcluido;
+    int finalJogo;                   // 0 = ainda não, 1 = bom (a Luci salva), 2 = ruim
+    int indiceFinal;                 // índice de desempenho (0-100) no fim
+    int derrotasLuci;                // derrotas na luta contra a Luci
 } ProgressoBiblioteca;
 
 // O que vai para o arquivo de save. Só o que não dá para reconstruir:
@@ -2394,8 +2419,29 @@ static bool LerSave(DadosSave *d)
 
     // Save da versão 5 (antes da Biblioteca dos Ecos): começa a Biblioteca do zero
     if (d->versao == 5 && lidos == offsetof(DadosSave, biblioteca)) {
-        d->versao = VERSAO_SAVE;
+        d->versao = 6;
         memset(&d->biblioteca, 0, sizeof(d->biblioteca));
+        lidos = offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, desafiosCertos);
+    }
+
+    // Save da versão 6 (antes do desempenho): os números começam do zero (o memset já zerou);
+    // quem já tinha vencido o Alucinador encontra a porta do Bloco 3 aberta
+    if (d->versao == 6 && lidos == offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, desafiosCertos)) {
+        d->versao = 7;
+        d->biblioteca.bloco3Liberado = d->biblioteca.alucinadorVencido;
+        d->biblioteca.silogistaVencido = (d->biblioteca.conceitos & (1u << 3)) != 0;    // CONCEITO_LOGICA
+        lidos = offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, confiouCego);
+    }
+
+    // Save da versão 7 (antes das mecânicas da Luci): os contadores começam do zero
+    if (d->versao == 7 && lidos == offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, confiouCego)) {
+        d->versao = 8;
+        lidos = offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, jogoConcluido);
+    }
+
+    // Save da versão 8 (antes do Bloco 3): o jogo ainda não foi concluído
+    if (d->versao == 8 && lidos == offsetof(DadosSave, biblioteca) + offsetof(ProgressoBiblioteca, jogoConcluido)) {
+        d->versao = VERSAO_SAVE;
         lidos = sizeof(*d);
     }
 
@@ -2417,6 +2463,11 @@ static bool LerSave(DadosSave *d)
     memset(&d->bloco2, 0, sizeof(d->bloco2));
 
     if (d->biblioteca.fragmentos < 0) d->biblioteca.fragmentos = 0;
+    if (d->biblioteca.desafiosCertos < 0)  d->biblioteca.desafiosCertos = 0;
+    if (d->biblioteca.desafiosErrados < 0) d->biblioteca.desafiosErrados = 0;
+    if (d->biblioteca.mortes < 0)          d->biblioteca.mortes = 0;
+    if (d->biblioteca.finalJogo < 0 || d->biblioteca.finalJogo > 2) d->biblioteca.finalJogo = 0;
+    d->biblioteca.corrupcaoLuciMax = (int)Clamp((float)d->biblioteca.corrupcaoLuciMax, 0.0f, 100.0f);
     for (int i = 0; i < 3; i++)
         if (d->biblioteca.melhorias[i] < 0) d->biblioteca.melhorias[i] = 0;
 
@@ -4835,7 +4886,8 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 //     COMBATE    - elimine todos os inimigos para abrir a porta
 //     EDUCATIVA  - um terminal de conhecimento (dá Fragmentos de Conhecimento)
 //     RECOMPENSA - escolha 1 entre 3 itens
-//   que termina na sala do ALUCINADOR (o combate dele vem na Etapa 4).
+//   com a CÂMARA DA INFERÊNCIA (mini-chefe O SILOGISTA) sempre no meio,
+//   e que termina na sala do ALUCINADOR.
 //   Morreu: volta ao átrio, perde 15 pontos e os itens da tentativa.
 //   Os Fragmentos de Conhecimento nunca se perdem.
 //
@@ -4904,8 +4956,89 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 
 #define TEMPO_SURGINDO           0.6f     // inimigo se materializando (não ataca)
 
+// ---------- Inimigos da expansão (AJUSTE AQUI) ----------
+// Vida, raio, velocidade, dano de contato e pontos de cada um ficam na tabela
+// DEF_INIMIGOS; aqui ficam os tempos e as habilidades.
+
+// SPAMMER: enxame rápido e frágil. Ao morrer, pode soltar 2 fragmentos de spam.
+#define SPAMMER_CHANCE_DIVIDIR   40       // % de soltar os fragmentos de spam
+#define SPAM_VIDA                2.5f     // o fragmento de spam some sozinho depois disso
+
+// PHISHER: camuflado como um arquivo inofensivo; revela-se, dá o bote e recua.
+#define PHISHER_ALCANCE          150.0f   // o jogador chegou perto: ele se revela
+#define PHISHER_PREPARO          0.45f    // revelado, mirando (dá para fugir)
+#define PHISHER_BOTE_VEL         470.0f
+#define PHISHER_BOTE_DURACAO     0.25f
+#define PHISHER_RECUO            0.9f     // depois do bote, recua
+#define PHISHER_RECARGA          1.8f     // até poder se camuflar e atacar de novo
+#define ISCA_DURACAO             4.0f     // a cópia falsa some sozinha
+#define ISCA_RECARGA             6.0f     // intervalo entre duas cópias
+
+// FIREWALL: lento e resistente; a frente bloqueia, as costas são o ponto fraco.
+#define FIREWALL_ZONA            120.0f   // raio do escudo de rede
+#define FIREWALL_PROTECAO        0.40f    // inimigos na zona levam 40% menos dano
+#define FIREWALL_FRENTE          0.25f    // tiro de frente: só 25% do dano
+#define FIREWALL_COSTAS          1.35f    // tiro pelas costas: +35%
+#define FIREWALL_ANGULO_FRENTE   65.0f    // graus para cada lado contados como "frente"
+#define FIREWALL_GIRO            1.3f     // radianos por segundo para virar para o jogador
+#define FIREWALL_INTERVALO       5.0f     // entre duas barreiras de energia
+#define FIREWALL_AVISO_BARREIRA  0.6f
+#define FIREWALL_BARREIRA        2.5f     // a barreira na frente dele segura os tiros
+#define FIREWALL_BARREIRA_LARGURA 90.0f
+
+// OVERCLOCK: carrega energia e dispara uma investida; depois fica superaquecido.
+#define OVERCLOCK_CARGA_MIN      0.7f     // carga sorteada entre o mínimo e o máximo
+#define OVERCLOCK_CARGA_MAX      1.6f
+#define OVERCLOCK_INVESTIDA_MIN  380.0f   // velocidade com carga mínima ...
+#define OVERCLOCK_INVESTIDA_MAX  680.0f   // ... e com carga máxima
+#define OVERCLOCK_INVESTIDA_DURACAO 0.35f
+#define OVERCLOCK_ESFRIAR_MIN    0.8f     // superaquecido: mais carga = mais tempo vulnerável
+#define OVERCLOCK_ESFRIAR_MAX    2.2f
+#define OVERCLOCK_DANO_CARREGANDO 1.3f    // multiplicador de dano recebido carregando
+#define OVERCLOCK_DANO_QUENTE    2.0f     // ... e superaquecido (com carga máxima)
+#define OVERCLOCK_RECARGA        1.2f
+#define OVERCLOCK_ALCANCE        300.0f   // começa a carregar a esta distância
+
+// BOTNET: suporte. Conecta até 3 inimigos e acelera os conectados.
+#define BOTNET_CONEXOES          3
+#define BOTNET_ALCANCE           260.0f
+#define BOTNET_BONUS_VELOCIDADE  1.25f
+#define BOTNET_BONUS_RITMO       1.35f    // as recargas dos conectados passam mais rápido
+#define BOTNET_DIST_MIN          230.0f
+#define BOTNET_DIST_MAX          360.0f
+#define BOTNET_INTERVALO         3.2f
+#define BOTNET_PREPARO           0.5f
+
+// KEYLOGGER: lê a direção do jogador e atira onde ele vai estar.
+#define KEYLOGGER_LEITURA        0.5f     // andando reto por mais tempo que isso, ele começa a prever
+#define KEYLOGGER_PREVISAO_MAX   1.0f     // segundos à frente, no máximo
+#define KEYLOGGER_INTERVALO      2.2f
+#define KEYLOGGER_PREPARO        0.6f     // a mira aparece no chão antes dos tiros
+#define KEYLOGGER_RAJADA         3
+#define KEYLOGGER_TIRO_VEL       300.0f
+#define KEYLOGGER_TIRO_DANO      6.0f
+#define KEYLOGGER_DIST_MIN       220.0f
+#define KEYLOGGER_DIST_MAX       340.0f
+
+// CACHE: guarda energia ao levar dano e se cura se ficar sem levar dano.
+#define CACHE_ARMAZENA           0.5f     // metade do dano recebido vira energia guardada
+#define CACHE_ENERGIA_MAX        35.0f
+#define CACHE_ESPERA             2.0f     // sem levar dano por esse tempo, começa a recuperar
+#define CACHE_ESPERA_PROTEGIDO   1.2f     // ... mais rápido dentro do escudo de um Firewall
+#define CACHE_RECUPERAR          1.0f     // a recuperação leva esse tempo (um tiro interrompe)
+#define CACHE_INTERVALO          3.6f
+#define CACHE_PREPARO            0.6f
+#define CACHE_BALAS              6
+
+// Dano dos ataques novos
+#define PHISHER_DANO             14.0f    // só o bote do Phisher verdadeiro machuca
+#define OVERCLOCK_DANO_INVESTIDA 14.0f
+#define BOTNET_TIRO_DANO         6.0f
+#define CACHE_TIRO_DANO          7.0f
+
 // ---------- Missão, recompensas e itens (AJUSTE AQUI) ----------
-#define SALAS_POR_MISSAO         6        // 3 de combate, 2 educativas e 1 de recompensa (+ a do chefe)
+#define SALAS_POR_MISSAO         7        // 3 de combate, 2 educativas, 1 de recompensa e o Silogista (+ a do chefe)
+#define POSICAO_SILOGISTA        3        // a Câmara da Inferência é sempre a 4ª sala
 #define FC_POR_TERMINAL          3        // Fragmentos de Conhecimento por terminal lido
 #define CHANCE_FC_FRAGMENTO      40       // % de soltar um fragmento ao derrotar um Fragmento Alucinado
 #define CHANCE_FC_GUARDIAO       70       // ... e um Guardião de Dados
@@ -4924,6 +5057,72 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 #define NIVEL_MAX_MELHORIA       3
 static const int PRECO_MELHORIA[NIVEL_MAX_MELHORIA] = { 8, 12, 16 };
 
+// ---------- Raridade (vale para itens, upgrades e armas) (AJUSTE AQUI) ----------
+typedef enum { RARIDADE_COMUM, RARIDADE_INCOMUM, RARIDADE_RARA, NUM_RARIDADES } Raridade;
+static const int PESO_RARIDADE[NUM_RARIDADES] = { 60, 30, 10 };     // chance relativa de aparecer
+static const char *NOMES_RARIDADE[NUM_RARIDADES] = { "COMUM", "INCOMUM", "RARO" };
+static const Color CORES_RARIDADE[NUM_RARIDADES] = { { 200, 200, 200, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 } };
+
+// Onde aparecem: os temporários caem dos inimigos; os upgrades passivos ficam
+// nos pedestais e às vezes no fim de um combate; as armas nos pedestais e na loja.
+#define CHANCE_TEMPORARIO        7        // % de um inimigo derrotado soltar um item temporário
+#define CHANCE_UPGRADE_SALA      40       // % de um combate vencido deixar um upgrade passivo
+#define CHANCE_ARMA_PEDESTAL     45       // % de um dos pedestais trazer uma arma
+#define ARMAS_NA_LOJA            2        // armas à venda no Byteco (sorteadas a cada volta ao átrio)
+
+// Itens temporários (valem na hora em que são pegos; pegar de novo só renova o tempo)
+#define EFEITO_OVERCLOCK_DURACAO 8.0f
+#define EFEITO_OVERCLOCK_VELOCIDADE 0.15f
+#define EFEITO_OVERCLOCK_CADENCIA 0.20f
+#define ESCUDO_PORTATIL_DURACAO  12.0f    // absorve o próximo golpe (um escudo por vez)
+#define LIMPEZA_RAIO             220.0f   // inimigos comuns nesse raio ficam atordoados
+#define LIMPEZA_ATORDOA          0.8f
+#define PROXY_DURACAO            5.0f
+#define PROXY_HP                 40.0f
+#define PACOTE_INTEGRIDADE_CURA  0.25f    // 25% da vida máxima
+#define LATENCIA_DURACAO         5.0f
+#define LATENCIA_RAIO            140.0f
+#define LATENCIA_LENTIDAO        0.30f    // inimigos no campo andam 30% mais devagar
+
+// Upgrades passivos (o limite de cada um fica na tabela ITENS)
+#define NUCLEO_HP                0.10f    // +10% de vida máxima
+#define BUFFER_CADENCIA          0.10f    // +10% de cadência
+#define ROTEAMENTO_VELOCIDADE    0.08f
+#define ROTEAMENTO_ESQUIVA       0.08f    // -8% na recarga da esquiva
+#define FRAGMENTACAO_A_CADA      6        // a cada 6 disparos, o próximo acerto se divide
+#define FRAGMENTACAO_PEDACOS     3
+#define FRAGMENTACAO_DANO        0.35f
+#define FRAGMENTACAO_ALCANCE     220.0f
+#define FIREWALL_ADAPTATIVO      0.08f    // -8% de dano recebido (até 3 = 24%)
+#define FATOR_DANO_MINIMO        0.30f    // nenhuma defesa passa disso: sempre leva 30% do dano
+#define ANALISADOR_MARCAS        3
+#define ANALISADOR_BONUS         0.25f
+#define ANALISADOR_TEMPO         2.5f     // sem acertar o alvo marcado por esse tempo, as marcas somem
+#define BOTNET_REVERSO_CHANCE    35
+#define BOTNET_REVERSO_DANO      0.30f    // 30% do dano-base da arma atual
+#define BOTNET_REVERSO_RECARGA   0.8f
+#define CACHE_PERSISTENTE_SALAS  3
+#define CACHE_PERSISTENTE_CURA   0.05f
+
+// Armas (os números de cada uma ficam em DEF_ARMAS; aqui, as particularidades)
+#define VETOR_CARGA_MIN          0.15f    // toque rápido: tiro fraco
+#define VETOR_CARGA_MAX          1.2f
+#define VETOR_DANO_MAX           45.0f    // com a carga cheia
+#define VETOR_ATRAVESSA          2        // atravessa 2 inimigos (acerta até 3)
+#define ROTEADOR_AQUISICAO       260.0f   // procura alvos até essa distância
+#define ROTEADOR_GIRO            7.0f     // radianos por segundo
+#define ROTEADOR_VIDA            1.8f
+#define ROTEADOR_RICOCHETES      2
+#define ROTEADOR_RICOCHETE_RAIO  200.0f
+#define ROTEADOR_PERDA           0.70f    // cada ricochete tira 30% do dano
+#define FLUXO_CALOR_TIRO         0.035f   // ~29 tiros seguidos superaquecem
+#define FLUXO_ESFRIA             0.6f     // por segundo, sem atirar
+#define FLUXO_ESFRIA_TRAVADO     0.8f     // superaquecida: só volta a atirar fria
+#define ORBE_RAIO_EXPLOSAO       70.0f
+#define ORBE_DANO_EXPLOSAO       14.0f
+#define FRAGMENTADORA_EMPURRAO   1.8f
+#define PULSO_FW_EMPURRAO        320.0f
+
 // Desafios educativos (Guardião selado)
 #define RAIO_DESAFIO             170.0f   // chegando perto do selo, o desafio abre
 #define PONTOS_DESAFIO           5
@@ -4931,8 +5130,28 @@ static const int PRECO_MELHORIA[NIVEL_MAX_MELHORIA] = { 8, 12, 16 };
 #define DANO_SELO_CERTO          0.5f     // acertou: o guardião perde metade da vida
 #define ATORDOADO_SELO           2.5f     // ... e fica parado esse tempo
 #define BALAS_ATAQUE_ESPECIAL    14       // errou: anel de balas
-#define CHANCE_LUCI_ERRAR        20       // % a mais de a dica da Luci sair errada a cada desafio respondido
-#define CHANCE_LUCI_ERRAR_MAX    60
+
+// ---------- A Luci na Biblioteca (AJUSTE AQUI) ----------
+// A estabilidade é a mesma do Bloco 1 (vai para o save). Pedir dica gasta 1;
+// resolver sozinho, ler terminais, pegar a Luci alucinando e destruir ecos repara.
+static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 40, 25, 10, 0 };   // % por estabilidade
+#define ECOS_PARA_REPARO         3        // ecos falsos destruídos para +1 de estabilidade
+#define BONUS_CONFIAR_PONTOS     3        // confiou na dica certa sem verificar
+#define BONUS_CONFIAR_FC         1
+#define CUSTO_VERIFICAR_FC       1        // verificar sem Lente custa 1 Fragmento
+#define HABITO_LUCI              3        // decisões seguidas iguais: a Luci comenta
+// Scanner de Ecos (H fora dos desafios)
+#define SCANNER_RECARGA          6.0f
+#define SCANNER_DURACAO          4.0f
+#define SCANNER_CUSTO_EP         10.0f
+#define SCANNER_CHANCE_LUCI_ECO  15       // % (estabilidade 3 ou menos): por um instante, marca a própria Luci como ECO
+// Contradições (C contesta)
+#define CONTRADICAO_INTERVALO_MIN 18.0f
+#define CONTRADICAO_INTERVALO_MAX 35.0f
+#define CONTRADICAO_DURACAO      6.0f
+#define CONTRADICAO_ESTAB_MAX    3        // só acontecem com a estabilidade em 3 ou menos
+#define CONTRADICAO_FC           2
+#define CONTESTAR_A_TOA_PONTOS   2
 
 // ---------- Pontos (somam com os do Bloco 1) ----------
 #define PONTOS_FRAGMENTO         1
@@ -4941,7 +5160,7 @@ static const int PRECO_MELHORIA[NIVEL_MAX_MELHORIA] = { 8, 12, 16 };
 #define PONTOS_TERMINAL          5
 
 #define MAX_PROJETEIS            160
-#define MAX_INIMIGOS             16
+#define MAX_INIMIGOS             48       // enxames de Spammers + fragmentos de spam
 #define MAX_PARTICULAS_ROGUE     200
 #define MAX_OBSTACULOS           6
 #define MAX_COLETAVEIS           32
@@ -4954,11 +5173,18 @@ static const int PRECO_MELHORIA[NIVEL_MAX_MELHORIA] = { 8, 12, 16 };
 #define OBJ_CHEFE_INTRO          -13
 #define OBJ_ALUCINADOR_VITORIA    -15
 #define OBJ_ENCICLOPEDIA         -14
+#define OBJ_SILOGISTA_INTRO      -16
+#define OBJ_SILOGISTA_ETAPA      -17      // explicação entre um puzzle e outro
+#define OBJ_SILOGISTA_VITORIA    -18
+#define OBJ_LUCI_INTRO           -19      // Bloco 3: a revelação
+#define OBJ_LUCI_FINAL           -20
+#define OBJ_REGISTRO             -21      // registros de memória do corredor do núcleo
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
 static const Rectangle ARENA_ROGUE         = { 40, 60, 720, 470 };
 static const Rectangle PORTA_PROXIMA_ROGUE = { 370, 60, 60, 14 };
 static const Rectangle PORTA_SAIDA_ROGUE   = { 40, 260, 14, 70 };
+static const Rectangle PORTA_BLOCO3_ROGUE  = { 746, 160, 14, 70 };   // abre ao vencer o Alucinador
 static const Vector2   SPAWN_ROGUE         = { 400, 480 };   // entrando numa sala da missão
 static const Vector2   SPAWN_ATRIO         = { 140, 295 };   // chegando do corredor
 
@@ -4969,33 +5195,147 @@ static const Vector2 POS_TERMINAL  = { 400, 270 };
 static const Vector2 POS_ENCICLOPEDIA = { 180, 432 };
 static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }, { 530, 290 } };
 
-typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE } TipoSalaRogue;
-
-typedef enum { INIMIGO_FRAGMENTO, INIMIGO_GUARDIAO, INIMIGO_ECO } TipoInimigo;
+typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE, SALA_SILOGISTA, SALA_TRANSICAO, SALA_LUCI } TipoSalaRogue;
 
 typedef enum {
-    ITEM_ANTIVIRUS, ITEM_PACOTE_DADOS, ITEM_LENTE, ITEM_FIREWALL, ITEM_PROCESSADOR, ITEM_MANUAL, NUM_ITENS
+    INIMIGO_FRAGMENTO, INIMIGO_GUARDIAO, INIMIGO_ECO,
+    INIMIGO_SPAMMER, INIMIGO_SPAM, INIMIGO_PHISHER, INIMIGO_ISCA, INIMIGO_FIREWALL,
+    INIMIGO_OVERCLOCK, INIMIGO_BOTNET, INIMIGO_KEYLOGGER, INIMIGO_CACHE,
+    NUM_TIPOS_INIMIGO
+} TipoInimigo;
+
+// O que é igual para todo inimigo de um tipo (o comportamento fica em RogueAtualizarInimigos)
+typedef struct {
+    const char *nome;
+    float hp, raio, velocidade;
+    float danoContato;          // 0 = não machuca encostando (ou só em certos estados)
+    float empurrao;             // quanto os tiros o empurram (1 = normal)
+    int pontos;
+    int chanceFC;               // % de soltar um Fragmento de Conhecimento
+    Color cor;                  // partículas de dano e de morte
+    float tomSom;               // som da morte (cada um com um tom)
+} DefInimigo;
+
+static const DefInimigo DEF_INIMIGOS[NUM_TIPOS_INIMIGO] = {
+    //  nome                   hp     raio   vel    contato  empurrão pts  FC   cor                        som
+    { "FRAGMENTO ALUCINADO",   FRAGMENTO_HP, FRAGMENTO_RAIO, FRAGMENTO_VELOCIDADE, FRAGMENTO_DANO, 1.0f, PONTOS_FRAGMENTO, CHANCE_FC_FRAGMENTO, { 255, 0, 255, 255 },  1.2f },
+    { "GUARDIÃO DE DADOS",     GUARDIAO_HP, GUARDIAO_RAIO, GUARDIAO_VELOCIDADE, 0.0f, 1.0f, PONTOS_GUARDIAO, CHANCE_FC_GUARDIAO, { 102, 191, 255, 255 }, 0.8f },
+    { "ECO FALSO",              ECO_HP, 12.0f, 0.0f, 0.0f, 1.0f, 0, 0, { 255, 0, 255, 255 },   1.2f },
+    { "SPAMMER",               14.0f, 10.0f, 165.0f,  6.0f,  1.2f,    1,  15, { 255, 120, 60, 255 },  1.7f },
+    { "SPAM",                   3.0f,  6.0f, 190.0f,  3.0f,  1.5f,    0,   0, { 255, 160, 90, 255 },  2.0f },
+    { "PHISHER",               40.0f, 15.0f,  60.0f,  0.0f,  1.0f,    3,  60, { 255, 203, 0, 255 },   0.9f },
+    { "CÓPIA FALSA",            1.0f, 15.0f,  60.0f,  0.0f,  1.0f,    0,   0, { 255, 203, 0, 255 },   1.8f },
+    { "FIREWALL",              90.0f, 20.0f,  45.0f,  8.0f,  0.25f,   4,  80, { 0, 158, 47, 255 },    0.6f },
+    { "OVERCLOCK",             45.0f, 16.0f,  70.0f,  8.0f,  0.8f,    3,  60, { 255, 161, 0, 255 },   1.0f },
+    { "BOTNET",                35.0f, 13.0f,  90.0f,  0.0f,  1.0f,    4,  70, { 0, 228, 255, 255 },   1.4f },
+    { "KEYLOGGER",             30.0f, 14.0f,  95.0f,  0.0f,  1.0f,    3,  60, { 200, 200, 200, 255 }, 1.1f },
+    { "CACHE",                 70.0f, 18.0f,  50.0f,  8.0f,  0.5f,    3,  70, { 0, 228, 48, 255 },    0.7f },
+};
+
+typedef enum {
+    ITEM_ANTIVIRUS, ITEM_PACOTE_DADOS, ITEM_LENTE, ITEM_FIREWALL, ITEM_PROCESSADOR, ITEM_MANUAL,
+    // Temporários: valem na hora em que são pegos (caem dos inimigos)
+    ITEM_OVERCLOCK, ITEM_FIREWALL_PORTATIL, ITEM_LIMPEZA_CACHE, ITEM_PROXY, ITEM_PACOTE_INTEGRIDADE, ITEM_CAMPO_LATENCIA,
+    // Upgrades passivos: valem até o fim da tentativa
+    ITEM_NUCLEO, ITEM_BUFFER, ITEM_ROTEAMENTO, ITEM_FRAGMENTACAO, ITEM_FIREWALL_ADAPTATIVO, ITEM_ANALISADOR,
+    ITEM_BOTNET_REVERSO, ITEM_CACHE_PERSISTENTE,
+    NUM_ITENS
 } TipoItem;
+
+#define NUM_ITENS_LOJA      6       // os 6 primeiros ficam na loja do Byteco e na mochila de baixo
+#define PRIMEIRO_UPGRADE    ITEM_NUCLEO
 
 typedef struct {
     const char *nome;
     const char *efeito;
     int preco;                  // em Fragmentos de Conhecimento (loja do Byteco)
-    bool passivo;               // passivo = vale enquanto estiver na mochila (máx. MAX_PILHA_PASSIVO)
+    bool passivo;               // passivo = vale enquanto estiver na mochila (até maxPilha)
+    bool temporario;            // temporário = vale na hora em que é pego
+    int maxPilha;
+    Raridade raridade;
 } DefItem;
 
 static const DefItem ITENS[NUM_ITENS] = {
-    { "ANTIVÍRUS",              "Recupera 40 de HP (tecla 1).",                  3, false },
-    { "PACOTE DE DADOS",        "Recupera 50 de EP (tecla 2).",                  2, false },
-    { "LENTE DA VERIFICAÇÃO",   "Dá uma dica num desafio educativo.",            4, false },
-    { "FIREWALL",               "Reduz em 25% o dano recebido.",                 6, true  },
-    { "PROCESSADOR NEURAL",     "Aumenta em 25% o dano dos disparos.",           6, true  },
-    { "MANUAL DO CONHECIMENTO", "Segunda tentativa num desafio educativo.",      5, false },
+    { "ANTIVÍRUS",              "Recupera 40 de HP (tecla 1).",                  3, false, false, 99, RARIDADE_COMUM },
+    { "PACOTE DE DADOS",        "Recupera 50 de EP (tecla 2).",                  2, false, false, 99, RARIDADE_COMUM },
+    { "LENTE DA VERIFICAÇÃO",   "Dá uma dica num desafio educativo.",            4, false, false, 99, RARIDADE_COMUM },
+    { "FIREWALL",               "Reduz em 25% o dano recebido.",                 6, true,  false, MAX_PILHA_PASSIVO, RARIDADE_INCOMUM },
+    { "PROCESSADOR NEURAL",     "Aumenta em 25% o dano dos disparos.",           6, true,  false, MAX_PILHA_PASSIVO, RARIDADE_INCOMUM },
+    { "MANUAL DO CONHECIMENTO", "Segunda tentativa num desafio educativo.",      5, false, false, 99, RARIDADE_INCOMUM },
+
+    { "OVERCLOCK",              "8 s: +15% de velocidade e +20% de cadência.",   0, false, true, 1, RARIDADE_COMUM },
+    { "FIREWALL PORTÁTIL",      "Escudo que absorve o próximo golpe (12 s).",    0, false, true, 1, RARIDADE_INCOMUM },
+    { "LIMPEZA DE CACHE",       "Apaga as balas inimigas e atordoa quem está perto.", 0, false, true, 1, RARIDADE_INCOMUM },
+    { "PROXY-ISCA",             "Holograma que atrai os perseguidores por 5 s.", 0, false, true, 1, RARIDADE_RARA },
+    { "PACOTE DE INTEGRIDADE",  "Recupera 25% da vida máxima.",                  0, false, true, 1, RARIDADE_COMUM },
+    { "CAMPO DE LATÊNCIA",      "5 s: inimigos perto de você 30% mais lentos.",  0, false, true, 1, RARIDADE_INCOMUM },
+
+    { "NÚCLEO DE INTEGRIDADE",  "+10% de vida máxima.",                          0, true, false, 3, RARIDADE_COMUM },
+    { "BUFFER OTIMIZADO",       "+10% de cadência em todas as armas.",           0, true, false, 2, RARIDADE_COMUM },
+    { "ROTEAMENTO DINÂMICO",    "+8% de velocidade e esquiva 8% mais rápida.",   0, true, false, 2, RARIDADE_COMUM },
+    { "FRAGMENTAÇÃO DE PACOTES","A cada 6 disparos, o acerto se divide em 3.",   0, true, false, 1, RARIDADE_RARA },
+    { "FIREWALL ADAPTATIVO",    "-8% de dano recebido (até -24%).",              0, true, false, 3, RARIDADE_COMUM },
+    { "ANALISADOR HEURÍSTICO",  "3 acertos no mesmo alvo: o próximo dá +25%.",   0, true, false, 1, RARIDADE_INCOMUM },
+    { "BOTNET REVERSO",         "Inimigo derrotado pode soltar um pacote teleguiado.", 0, true, false, 1, RARIDADE_RARA },
+    { "CACHE PERSISTENTE",      "A cada 3 salas vencidas, recupera 5% da vida.", 0, true, false, 1, RARIDADE_INCOMUM },
 };
 
-static const char *NOMES_SALAS_ROGUE[] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR" };
+// ---------- Armas ----------
+typedef enum {
+    ARMA_DISPARADOR, ARMA_VETOR, ARMA_ROTEADOR, ARMA_FLUXO, ARMA_ORBE, ARMA_FRAGMENTADORA, ARMA_PULSO_FW, NUM_ARMAS
+} TipoArma;
+
+static const char *NOMES_ALCANCE[] = { "LONGO ALCANCE", "MÉDIO ALCANCE", "CURTO ALCANCE" };
+
+typedef struct {
+    const char *nome;
+    const char *efeito;
+    int alcanceTipo;            // índice em NOMES_ALCANCE
+    float dano;                 // por projétil (o Vetor vai deste valor até VETOR_DANO_MAX)
+    float intervalo;            // entre disparos
+    float intervaloMin;         // limite da cadência (nem Overclock nem Buffer passam disso)
+    float velocidade, raio;
+    float alcance;              // distância máxima do projétil (0 = até a parede; Pulso: raio da onda)
+    int projeteis;
+    float abertura;             // graus: espalhamento (ou o cone da Fragmentadora)
+    Raridade raridade;
+    int preco;                  // na loja do Byteco
+    Color cor;
+} DefArma;
+
+static const DefArma DEF_ARMAS[NUM_ARMAS] = {
+    { "DISPARADOR DE DADOS", "Tiro rápido e reto.",                           1, TIRO_DANO, TIRO_INTERVALO, 0.10f, TIRO_VELOCIDADE, TIRO_RAIO, 0.0f, 1, 4.0f,
+      RARIDADE_COMUM, 0, { 102, 191, 255, 255 } },
+    { "VETOR DE COMPILAÇÃO", "Segure para carregar. Atravessa 2 inimigos.",   0, 12.0f, 0.55f, 0.40f, 900.0f, 6.0f, 0.0f, 1, 0.0f,
+      RARIDADE_RARA, 14, { 220, 240, 255, 255 } },
+    { "ROTEADOR DE PACOTES", "Pacotes teleguiados que ricocheteiam.",         0, 11.0f, 0.45f, 0.30f, 340.0f, 6.0f, 650.0f, 1, 0.0f,
+      RARIDADE_INCOMUM, 11, { 255, 161, 0, 255 } },
+    { "FLUXO CONTÍNUO",      "Rajada automática. Cuidado com o calor!",       1, 4.5f, 0.07f, 0.055f, 620.0f, 4.0f, 380.0f, 1, 10.0f,
+      RARIDADE_COMUM, 8, { 253, 249, 0, 255 } },
+    { "ORBE DE BUFFER",      "Esfera lenta que explode em área.",             1, 10.0f, 0.75f, 0.55f, 260.0f, 9.0f, 330.0f, 1, 0.0f,
+      RARIDADE_INCOMUM, 11, { 200, 122, 255, 255 } },
+    { "FRAGMENTADORA",       "7 fragmentos em cone. Forte de perto.",         2, 5.0f, 0.65f, 0.45f, 520.0f, 4.0f, 210.0f, 7, 40.0f,
+      RARIDADE_COMUM, 8, { 255, 109, 194, 255 } },
+    { "PULSO DE FIREWALL",   "Onda em volta: fere, empurra e apaga balas.",   2, 14.0f, 1.10f, 0.85f, 0.0f, 0.0f, 95.0f, 0, 0.0f,
+      RARIDADE_RARA, 14, { 0, 228, 48, 255 } },
+};
+
+// Efeitos com tempo (itens temporários)
+enum { EFEITO_OVERCLOCK, EFEITO_ESCUDO, EFEITO_PROXY, EFEITO_LATENCIA, NUM_EFEITOS };
+
+// Anel que se abre (explosões, ondas, limpezas)
+typedef struct {
+    Vector2 pos;
+    float raio, tempo;          // tempo > 0 = aparecendo
+    Color cor;
+} AnelEfeito;
+
+#define MAX_ANEIS 8
+
+static const char *NOMES_SALAS_ROGUE[] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI" };
 static const Color CORES_SALAS_ROGUE[] = {
-    { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 }
+    { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 },
+    { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 }
 };
 
 typedef struct {
@@ -5003,6 +5343,15 @@ typedef struct {
     Vector2 pos, vel;
     float raio, dano;
     bool doJogador;
+    int alvoDedutivo;           // 0 = tiro comum; projétil Q do Selo da Inferência: k+1 = inimigo k, -1 = chefe da sala
+    int arma;                   // TipoArma que disparou (o visual e o comportamento dependem dela)
+    float alcance;              // distância que ainda pode andar (0 = sem limite)
+    float vida;                 // segundos que ainda pode voar (0 = sem limite)
+    int perfura;                // Vetor: inimigos que ainda atravessa
+    int ricochetes;             // Roteador: ricochetes que faltam
+    int ultimoAlvo;             // k+1 do último inimigo atingido (não acerta o mesmo duas vezes)
+    bool guiado;                // procura o inimigo mais perto
+    bool secundario;            // fragmento ou pacote do Botnet Reverso: não gera outros efeitos
 } Projetil;
 
 typedef struct {
@@ -5016,6 +5365,21 @@ typedef struct {
     float lado;                 // guardião: para que lado ele anda de lado
     bool selado;                // guardião com um desafio educativo: não leva dano até alguém responder
     float atordoado;            // acertou o desafio: o guardião fica parado
+    int marca;                  // Disparo Dedutivo: 0 = nada, 1 = P → Q, 2 = P confirmado (Q disparado)
+    float tempoMarca;
+
+    // Inimigos da expansão (cada tipo usa só os campos que precisa)
+    Vector2 frente;             // Firewall: para onde o escudo aponta
+    float carga, cargaAlvo;     // Overclock: carga atual e a sorteada para esta investida
+    float energia, semDano;     // Cache: energia guardada e tempo sem levar dano
+    float recuperando;          // Cache: > 0 = recuperando vida (um tiro interrompe)
+    float habilidade;           // recarga da habilidade especial (cópia do Phisher, barreira do Firewall)
+    float vida;                 // Spam e cópia do Phisher: somem quando chega a zero
+    int dono;                   // cópia do Phisher: índice do Phisher verdadeiro
+    bool conectado;             // ligado a um Botnet (mais rápido, ataca mais vezes)
+    int conexao[BOTNET_CONEXOES];   // Botnet: os inimigos conectados (-1 = nenhum)
+    Vector2 miraPrevista;       // Keylogger: onde ele acha que o jogador vai estar
+    int tiros;                  // Keylogger: tiros que faltam na rajada
 } Inimigo;
 
 typedef struct {
@@ -5043,6 +5407,29 @@ typedef struct {
     float cronoTiro, recargaEsquiva, recargaPulso, invulneravel, tempoEsquiva, efeitoPulso;
     Vector2 dirEsquiva;
     int itens[NUM_ITENS];       // mochila desta tentativa (perde ao morrer)
+    bool seloInferencia;        // venceu o Silogista nesta tentativa: Disparo Dedutivo (perde ao morrer)
+    float recargaDedutivo;
+    Vector2 velMedia;           // Keylogger: velocidade recente do jogador
+    float tempoMesmaDirecao;    // ... e há quanto tempo ele anda na mesma direção
+
+    // Armas: o Disparador sempre, mais uma arma extra (TAB ou a rodinha do mouse troca)
+    TipoArma armaExtra;         // ARMA_DISPARADOR = nenhuma
+    bool usandoExtra;
+    float carga;                // Vetor de Compilação
+    float calor;                // Fluxo Contínuo (0 a 1)
+    bool superaquecida;
+
+    // Itens temporários e upgrades passivos
+    float efeito[NUM_EFEITOS];  // tempo que falta de cada efeito
+    Vector2 proxyPos;
+    float proxyHp;
+    int disparos;               // Fragmentação de Pacotes
+    bool fragmentacaoArmada;
+    int alvoAnalise;            // Analisador Heurístico: k+1 do inimigo, -1 = chefe, 0 = nenhum
+    int marcasAnalise;
+    float tempoAnalise;
+    float recargaBotnet;        // Botnet Reverso
+    int salasConcluidas;        // Cache Persistente (nesta tentativa)
 } JogadorRogue;
 
 // ---------- ALUCINADOR (chefe da Biblioteca) ----------
@@ -5053,7 +5440,7 @@ typedef struct {
 //   contradizem o que ele mesmo disse). C = CONFIÁVEL, F = PROBLEMÁTICA.
 //   Acertou: o escudo cai por CHEFE_JANELA segundos (só aí ele leva dano).
 //   Errou ou o tempo acabou: ataque especial.
-#define CHEFE_HP                 700.0f
+#define CHEFE_HP                 600.0f   // era 700 (simulação: luta longa demais para quem erra a mira)
 #define CHEFE_FASE2              0.55f    // fração da vida em que a fase 2 começa
 #define CHEFE_RAIO               38.0f
 #define CHEFE_DANO_CONTATO       15.0f
@@ -5098,7 +5485,180 @@ typedef struct {
     bool dicaAfirmLuci, luciMentiuAfirm;
 
     float morrendo;             // animação da derrota dele
+    int marca;                  // Disparo Dedutivo (Selo da Inferência)
+    float tempoMarca;
+    int opcaoDicaAfirm;         // o que a dica da Luci disse: 1 = confiável, 0 = problemática, -1 = nada
+    bool verificouAfirm;
 } ChefeRogue;
+
+// ---------- O SILOGISTA (mini-chefe da Câmara da Inferência) ----------
+//   Fica sempre no meio da missão. Não faz perguntas na tela: a ARMADURA LÓGICA
+//   dele tem 3 camadas, e cada uma cai resolvendo um puzzle DENTRO da arena.
+//   1) MONTAGEM DO SILOGISMO: pegar os 3 fragmentos (E), levar e encaixar em P1, P2 e C.
+//   2) SOFISMA: ele monta um argumento inválido; destruir a tiros a peça que não se sustenta.
+//   3) CIRCUITO PROPOSICIONAL: (p ∧ q) ∨ ¬q. Rodada 1: atirar nas portas na ordem certa.
+//      Rodada 2: o núcleo exige o valor contrário; atirar em p e q para escolher os valores.
+//   Sem armadura, ele leva dano normal. Vencido: SELO DA INFERÊNCIA (Disparo Dedutivo)
+//   e o conceito FUNDAMENTOS DA LÓGICA na enciclopédia.
+//   Ataques (todos com aviso antes, diferentes dos do Alucinador): LINHAS de projéteis
+//   com uma brecha, ZONAS de bloqueio em volta dos mecanismos, REFUTAÇÃO (rajada numa
+//   linha mirada, usada contra quem carrega um fragmento), CORTE (trava um terminal ou
+//   uma porta do circuito por um tempo) e ANEL (quando o jogador erra um puzzle).
+#define SIL_HP                   360.0f
+#define SIL_RAIO                 34.0f
+#define SIL_DANO_CONTATO         12.0f
+#define SIL_TIRO_VEL             190.0f
+#define SIL_TIRO_DANO            9.0f
+#define SIL_INTERVALO_PUZZLE     2.6f     // pausa entre um ataque e outro durante os puzzles
+#define SIL_INTERVALO_FINAL      1.4f     // ... e sem a armadura
+#define SIL_AVISO                0.9f     // aviso antes de cada ataque (dá para sair do caminho)
+#define SIL_ZONA_RAIO            62.0f
+#define SIL_ZONA_DURACAO         1.6f
+#define SIL_CORTE_DURACAO        3.5f     // terminal ou porta travada pelo corte
+#define SIL_LINHA_ESPACO         36.0f    // distância entre as balas de uma linha
+#define SIL_LINHA_BRECHA         3        // balas que faltam na linha (a passagem)
+#define SIL_VELOCIDADE_CARREGANDO 0.75f   // carregando um fragmento, o jogador anda mais devagar
+#define SIL_RAIO_PEGAR           36.0f
+#define SIL_RAIO_ENCAIXE         46.0f
+#define SIL_HP_PECA              40.0f    // sofisma: um tiro perdido não destrói a peça
+#define SIL_RECUPERA_PECA        10.0f    // HP por segundo que a peça recupera
+#define SIL_BLINDAGEM            4.0f     // errou o sofisma: as peças ficam blindadas
+#define SIL_RECARGA_ELEMENTO     0.4f     // um tiro só conta a cada 0,4 s no mesmo terminal/porta
+#define PONTOS_SILOGISTA         25
+#define PONTOS_ETAPA_SILOGISTA   5
+#define FC_SILOGISTA             5
+
+// Selo da Inferência: Disparo Dedutivo (Modus Ponens)
+#define DEDUTIVO_RECARGA         1.2f     // intervalo mínimo entre duas conclusões Q
+#define DEDUTIVO_MARCA_DURACAO   3.0f     // a marca P → Q some se o 2º acerto demorar
+#define DEDUTIVO_DANO            2.5f     // o projétil Q causa 2,5x o dano do tiro
+#define DEDUTIVO_VEL             460.0f
+
+typedef enum { SIL_MONTAGEM, SIL_SOFISMA, SIL_CIRCUITO, SIL_VULNERAVEL } EtapaSilogista;
+
+typedef enum { ATQ_LINHAS, ATQ_ZONA, ATQ_REFUTACAO, ATQ_CORTE, ATQ_ANEL } TipoAtaqueSil;
+
+typedef struct {
+    bool ativo;
+    TipoAtaqueSil tipo;
+    float aviso;                // > 0 = ainda avisando
+    float duracao;              // zona ativa / rajada em andamento
+    Vector2 pos, dir;           // zona: centro; linhas: começo e para onde andam; refutação: direção
+    int brecha;                 // linhas: onde fica a passagem
+    int alvo;                   // corte: terminal ou porta travada
+    int tiros;
+    float cronoTiro;
+} AtaqueSil;
+
+#define MAX_ATAQUES_SIL 3
+
+enum { ENCAIXE_P1, ENCAIXE_P2, ENCAIXE_C, NUM_ENCAIXES };
+
+#define MAX_PORTAS_CIRCUITO   4
+#define MAX_ELEMENTOS_CIRCUITO (2 + MAX_PORTAS_CIRCUITO)    // 0 = p, 1 = q, 2+k = porta k
+
+typedef struct {
+    bool ativo;
+    bool apresentado;           // a conversa de abertura já aconteceu
+    EtapaSilogista etapa;
+    Vector2 pos;
+    float hp, flash, anim, morrendo;
+    bool recompensaDada;
+    int marca;                  // Disparo Dedutivo
+    float tempoMarca;
+
+    // Ataques
+    AtaqueSil atq[MAX_ATAQUES_SIL];
+    float proximoAtaque;
+    int revezamento;
+
+    // Montagem: a peça k é a frase k do silogismo (0 = P1, 1 = P2, 2 = C)
+    Vector2 posPeca[NUM_ENCAIXES];
+    char letraPeca[NUM_ENCAIXES];       // X, Y ou Z, sorteadas (a ordem não entrega a resposta)
+    int encaixe[NUM_ENCAIXES];          // peça em cada mecanismo (-1 = vazio)
+    int carregando;                     // peça na mão do jogador (-1 = nenhuma)
+    float erro;                         // o mecanismo (ou o núcleo) pisca em vermelho
+
+    // Sofisma
+    float hpPeca[NUM_ENCAIXES];
+    float blindagem;
+    float tremePeca[NUM_ENCAIXES];
+
+    // Circuito
+    int rodada;                         // 1 = avaliar com os valores dados; 2 = escolher p e q
+    bool valor[2];                      // p e q
+    bool ativada[MAX_PORTAS_CIRCUITO];
+    bool saida[MAX_PORTAS_CIRCUITO];
+    bool exigido;                       // valor que o núcleo exige nesta rodada
+    float recarga[MAX_ELEMENTOS_CIRCUITO];
+    float travado[MAX_ELEMENTOS_CIRCUITO];
+    float erroElemento[MAX_ELEMENTOS_CIRCUITO];
+    float nucleo;                       // núcleo energizado (animação)
+} Silogista;
+
+// ---------- BLOCO 3: a Luci como chefe final (AJUSTE AQUI) ----------
+#define LUCI_HP_BOA              900.0f   // índice bom: luta mais curta (2 fases)
+#define LUCI_HP_RUIM             1100.0f  // índice ruim: mais vida e a fase 3
+#define LUCI_RAIO                30.0f
+#define LUCI_FASE2               0.65f    // fração da vida em que começa a fase 2
+#define LUCI_FASE3               0.30f    // ... e a fase 3 (só com índice ruim)
+#define LUCI_RITMO_RUIM          1.2f     // ataques mais rápidos com índice ruim
+#define LUCI_TIRO_VEL            210.0f
+#define LUCI_TIRO_DANO           9.0f
+#define LUCI_DANO_AREA           18.0f    // ataque numa metade da arena
+#define LUCI_DANO_CONTATO        12.0f
+#define LUCI_DICA_INTERVALO      4.0f
+#define LUCI_DICA_AVISO          1.6f     // o aviso vermelho dura isso antes do golpe
+#define LUCI_DICA_FALSA_BOA      30       // % de o "lado seguro" ser mentira (índice bom)
+#define LUCI_DICA_FALSA_RUIM     45       // ... (índice ruim)
+#define LUCI_FRASE_TEMPO         4.0f     // tempo para contestar uma frase
+#define LUCI_FRASE_BONUS         2.0f     // conceito ALUCINAÇÕES: tempo extra
+#define LUCI_JANELA              4.0f     // armadura aberta depois de flagrar uma contradição
+#define LUCI_CURA_ERRO           0.05f    // contestar à toa ou pedido vago: ela recupera 5%
+#define INDICE_FINAL_BOM         60       // índice para o final bom
+#define PONTOS_FINAL_BOM         100
+#define PONTOS_FINAL_RUIM        40
+#define NUM_CONTEXTO_LUCI        5
+
+typedef struct {
+    bool ativo, apresentado;
+    bool boa;                   // índice bom na entrada
+    int fase;                   // 1 dica envenenada, 2 contradições, 3 contexto
+    Vector2 pos;
+    float hp, hpMax, flash, anim, morrendo, ritmo, cronoTiro;
+    int marca;                  // Disparo Dedutivo
+    float tempoMarca;
+    // Fase 1 (e 3): ataque numa metade da arena
+    float tempoDica;
+    bool avisando;
+    int ladoAtaque;             // 0 = esquerda, 1 = direita
+    bool dicaFalsa;             // o "lado seguro" anunciado é mentira
+    // Fase 2: armadura, cópias e frases
+    float janela;
+    float tempoFrase, tempoFraseMax;
+    int frase;                  // -1 = nenhuma
+    bool fraseContradiz, contestada;
+    Vector2 copia[3];
+    int real;
+    float troca, angulo;
+    // Fase 3: pedido com contexto
+    Vector2 posContexto[NUM_CONTEXTO_LUCI];
+    bool entregue[NUM_CONTEXTO_LUCI];
+    int carregando, entregues;
+    bool contextoPronto;
+} LuciChefe;
+
+// Índice de desempenho: cada parte com o seu peso (soma 100)
+typedef struct {
+    int estabilidade;           // 20: estabilidade final da Luci
+    int acertos;                // 25: desafios, afirmações e puzzles
+    int verificacao;            // 15: alucinações pegas x confiança cega
+    int contradicoes;           // 15: contradições flagradas x deixadas passar
+    int conceitos;              // 12: conceitos descobertos na enciclopédia
+    int sobrevivencia;          //  8: poucas derrotas
+    int pontos;                 //  5: pontuação
+    int total;
+} IndiceFinal;
 
 typedef struct {
     JogadorRogue j;
@@ -5108,12 +5668,19 @@ typedef struct {
     TipoSalaRogue tipoSala;
     TipoSalaRogue rota[SALAS_POR_MISSAO];
     int indiceRota;             // sala da missão (-1 = átrio)
-    int combates;               // salas de combate abertas nesta tentativa (cada uma tem mais inimigos)
+    int combates;               // salas de combate abertas nesta tentativa (decide a dificuldade do encontro)
+    int encontro;               // modelo de encontro da sala atual (-1 = nenhum)
+    int ultimoEncontro;         // não repete o mesmo encontro em salas seguidas
     int educativas;             // terminais já vistos nesta tentativa (decide o conceito)
     bool limpa;                 // a porta de cima está aberta
     bool terminalLido;
     bool recompensaPega;
     TipoItem pedestal[NUM_PEDESTAIS];
+    TipoArma armaPedestal[NUM_PEDESTAIS];  // ARMA_DISPARADOR = o pedestal tem um item
+    TipoArma estoqueArmas[ARMAS_NA_LOJA];  // armas à venda no Byteco
+    unsigned int armasOferecidas;          // nesta tentativa (evita oferecer sempre a mesma)
+    bool golpeSecundario;                  // o golpe atual veio de um efeito secundário (não encadeia)
+    AnelEfeito aneis[MAX_ANEIS];
 
     Projetil proj[MAX_PROJETEIS];
     Inimigo ini[MAX_INIMIGOS];
@@ -5143,6 +5710,8 @@ typedef struct {
     char dicaDesafio[160];      // dica da Lente ou da Luci
     bool dicaDaLuci;            // a dica que está na tela veio da Luci
     bool luciMentiu;            // ... e era alucinada
+    int opcaoDica;              // opção que a dica apontou (-1 = nenhuma)
+    bool verificouDica;         // o jogador verificou (V)
     bool usouManual;
     unsigned int desafiosUsados;    // desafios desta tentativa (um bit cada)
     int desafiosRespondidos;        // nesta tentativa: a Luci fica menos confiável a cada um
@@ -5153,6 +5722,35 @@ typedef struct {
     // ALUCINADOR
     ChefeRogue chefe;
     bool vitoriaPendente;           // venceu o Alucinador: o main abre o ranking
+
+    // O SILOGISTA (Câmara da Inferência)
+    Silogista silogista;
+
+    // A Luci: estabilidade (a do main, compartilhada com o Bloco 1), hábitos, scanner e contradições
+    int *estabilidade;              // o main aponta para a dele; sozinha (testes), usa estabilidadeLocal
+    int estabilidadeLocal;
+    char luciMsg[96];               // recado curto da Luci perto do HUD (não pausa o jogo)
+    float luciMsgTempo;
+    int ecosDestruidos;
+    int habitoConfiar, habitoVerificar;
+    bool comentouConfiar, comentouVerificar;
+    float scanner, recargaScanner;  // scanner > 0: marcas na tela
+    bool scannerErrou;              // esta varredura alucinou (troca as marcas)
+    float luciEco;                  // a própria Luci marcada como ECO por um instante (pista)
+    float contradicao;              // > 0: a Luci está contradizendo a sala no objetivo
+    float proximaContradicao;
+    int textoContradicao;
+
+    // BLOCO 3
+    LuciChefe luci;
+    IndiceFinal indice;             // calculado ao entrar (dificuldade) e ao vencer (final)
+    int registrosLidos;             // um bit por registro de memória
+    int registroAtual;
+    bool nucleoVisto;
+    bool finalBom;
+    bool resultadoAberto;
+    float tempoResultado;
+    int pontosFinais;
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -5180,12 +5778,48 @@ static const LayoutSala LAYOUTS_COMBATE[] = {
 };
 #define NUM_LAYOUTS_COMBATE 3
 
+// ---------- Encontros (quem aparece em cada sala de combate) ----------
+//   Cada sala de combate sorteia um modelo compatível com a dificuldade (nível 1 = 1º
+//   combate da missão, 2 = intermediário, 3 = avançado), sem repetir o da sala anterior.
+//   As quantidades variam entre o mínimo e o máximo; no nível 3, os grupos com mais de
+//   um inimigo ganham mais um. A partir do 2º combate entra também um Guardião selado.
+typedef struct {
+    TipoInimigo tipo;
+    int min, max;
+} GrupoEncontro;
+
+typedef struct {
+    const char *nome;
+    int nivelMin, nivelMax;
+    int numGrupos;
+    GrupoEncontro grupo[6];
+} EncontroDef;
+
+static const EncontroDef ENCONTROS[] = {
+    // Salas iniciais: os básicos, o Spammer, o Phisher e o Cache
+    { "ARQUIVOS CORROMPIDOS", 1, 1, 3, { { INIMIGO_FRAGMENTO, 2, 3 }, { INIMIGO_GUARDIAO, 1, 1 }, { INIMIGO_CACHE, 1, 1 } } },
+    { "ENXAME DIGITAL",       1, 3, 2, { { INIMIGO_SPAMMER, 8, 12 }, { INIMIGO_PHISHER, 1, 1 } } },
+    // Intermediárias: Firewall, Overclock, Keylogger e Botnet, dois por vez
+    { "REDE PROTEGIDA",       2, 3, 4, { { INIMIGO_FIREWALL, 1, 1 }, { INIMIGO_BOTNET, 1, 1 }, { INIMIGO_FRAGMENTO, 2, 3 }, { INIMIGO_GUARDIAO, 1, 1 } } },
+    { "SOBRECARGA",           2, 3, 3, { { INIMIGO_OVERCLOCK, 2, 2 }, { INIMIGO_KEYLOGGER, 2, 2 }, { INIMIGO_SPAMMER, 2, 3 } } },
+    { "DADOS PERSISTENTES",   2, 3, 3, { { INIMIGO_CACHE, 2, 2 }, { INIMIGO_FIREWALL, 1, 1 }, { INIMIGO_SPAMMER, 3, 3 } } },
+    // Avançada: todas as funções juntas
+    { "CAOS SISTÊMICO",       3, 3, 6, { { INIMIGO_BOTNET, 1, 1 }, { INIMIGO_FIREWALL, 1, 1 }, { INIMIGO_OVERCLOCK, 1, 1 },
+                                         { INIMIGO_KEYLOGGER, 1, 1 }, { INIMIGO_SPAMMER, 5, 6 }, { INIMIGO_PHISHER, 1, 1 } } },
+};
+#define NUM_ENCONTROS            6
+#define DIST_SURGIR_JOGADOR      170.0f   // ninguém nasce em cima da entrada do jogador
+#define BANDO_SPAMMERS           4        // Spammers nascem em bandos deste tamanho
+
 // Estantes das salas que não são de combate (o Byte e o Byteco também bloqueiam a passagem)
 static const LayoutSala LAYOUT_ATRIO      = { .numObst = 6, .obst = { {80, 100, 130, 26}, {590, 100, 130, 26}, {285, 132, 30, 40},
                                                                   {590, 280, 40, 36}, {555, 318, 110, 24}, {164, 420, 32, 26} } };
 static const LayoutSala LAYOUT_EDUCATIVA  = { .numObst = 3, .obst = { {150, 140, 30, 220}, {620, 140, 30, 220}, {380, 250, 40, 34} } };
 static const LayoutSala LAYOUT_RECOMPENSA = { .numObst = 2, .obst = { {110, 120, 140, 26}, {550, 120, 140, 26} } };
 static const LayoutSala LAYOUT_CHEFE      = { .numObst = 0 };
+static const LayoutSala LAYOUT_TRANSICAO  = { .numObst = 4, .obst = { {290, 180, 30, 60}, {480, 180, 30, 60}, {290, 380, 30, 60}, {480, 380, 30, 60} } };
+static const Vector2 POS_REGISTROS[3] = { { 170, 430 }, { 630, 320 }, { 200, 200 } };
+static const Vector2 POS_LUCI_NUCLEO  = { 400, 120 };    // a Luci espera perto da porta do núcleo
 
 // ---------- Falas da Biblioteca ----------
 
@@ -5207,15 +5841,19 @@ static const Dialogo dialogoByte = {
         "Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte. Aqui ficam as respostas que a IA já gerou.",
         "Byte: A IA generativa não consulta a verdade: ela aprendeu padrões e prevê a próxima palavra mais provável.",
         "Byte: Por isso ela pode ALUCINAR e inventar com confiança. O Alucinador espalhou esses ecos falsos por aqui!",
-        "Byte: Recupere os Fragmentos de Conhecimento lá dentro. O Byteco troca os fragmentos por itens."
+        "Byte: Recupere os Fragmentos de Conhecimento lá dentro. O Byteco troca os fragmentos por itens.",
+        "Byte: No meio do caminho fica a Câmara da Inferência. Para atravessá-la, você precisará compreender como as ideias se conectam. Uma conclusão não se torna verdadeira apenas porque parece convincente."
     },
-    .numPaginas = 4,
+    .numPaginas = 5,
     .saberMais = &dialogoByteCompleto
 };
 
 static const Dialogo dialogoByteDepois = {
-    .paginas = { "Byte: Lembre: resposta convincente não é resposta verdadeira. Boa sorte lá dentro!" },
-    .numPaginas = 1,
+    .paginas = {
+        "Byte: Lembre: resposta convincente não é resposta verdadeira. Boa sorte lá dentro!",
+        "Byte: Na Câmara da Inferência, olhe as premissas antes de aceitar a conclusão. Ela precisa DECORRER delas."
+    },
+    .numPaginas = 2,
     .saberMais = &dialogoByteCompleto
 };
 
@@ -5303,7 +5941,7 @@ static const Dialogo dialogoAlucinadorVitoria = {
         "Luci: Conseguimos, Thomas! E agora eu tenho certeza absoluta: a IA nunca erra quando parece confiante!",
         "Luci: ...Espera. Por que eu disse isso? É exatamente o que o Alucinador diria.",
         "Luci: Acho que um eco dele ficou em mim. Thomas... não confie em tudo o que eu disser. Confira sempre.",
-        "* CONTINUA... A próxima região de UtopIA chega no Bloco 3."
+        "* Ao longe, uma porta que não existia se abre no átrio. Ela leva ao núcleo de UtopIA."
     },
     .numPaginas = 7
 };
@@ -5347,23 +5985,173 @@ static const AfirmacaoChefe AFIRMACOES_ALUCINADOR[] = {
 };
 #define NUM_AFIRMACOES_ALUCINADOR 9
 
-// ---------- Conceitos (enciclopédia) ----------
-// O Byte ensina o 1; os terminais, na ordem, o 2 e o 3. Descoberto, nunca se perde.
+// ---------- Falas e conteúdo do Silogista (Câmara da Inferência) ----------
+// Nas falas os conectivos vão por extenso (E, OU, NÃO): a fonte não tem ∧, ∨ e →.
+// Na arena eles são desenhados por DesenharLogica.
 
-enum { CONCEITO_FUNDAMENTOS, CONCEITO_ALUCINACOES, CONCEITO_PRATICAS, NUM_CONCEITOS };
+static const Dialogo dialogoSilogistaIntro = {
+    .paginas = {
+        "* Engrenagens de luz giram no teto. Diagramas flutuam sobre um mecanismo com três encaixes.",
+        "Silogista: Todo argumento que eu monto é válido. Este argumento fui eu que montei. Logo, ele é válido! Simples assim.",
+        "Silogista: Sou o SILOGISTA, guardião da Câmara da Inferência. Minha armadura lógica tem três camadas. Ninguém passa.",
+        "Luci: Thomas, a primeira camada está ligada àquele mecanismo: P1, P2 e C. Precisamos montar um SILOGISMO!",
+        "Luci: P1 é a premissa maior, a regra geral (Todo M é P). P2 é a premissa menor, o caso particular (S é M). C é a conclusão que decorre das duas (S é P).",
+        "Luci: Pegue um fragmento com E, leve até um encaixe e aperte E de novo. Carregando, você fica mais lento. E se tomar dano, o fragmento cai!"
+    },
+    .numPaginas = 6
+};
+
+static const Dialogo dialogoSilogistaSofisma = {
+    .paginas = {
+        "Luci: Isso! Todo registro auditado tem selo; Alfa é auditado; LOGO, Alfa tem selo. A conclusão decorre necessariamente das premissas!",
+        "* A primeira camada da armadura lógica se desfaz.",
+        "Silogista: Sorte de principiante. Veja este outro argumento: também fui eu que montei. Portanto, é válido!",
+        "Luci: O argumento dele PARECE certo, mas o mecanismo está corrompido. Leia com calma lá em cima.",
+        "Luci: Destrua a tiros a peça que não se sustenta. Um tiro perdido não basta: é preciso insistir na peça certa."
+    },
+    .numPaginas = 5
+};
+
+static const Dialogo dialogoSilogistaCircuito = {
+    .paginas = {
+        "Luci: Exato! Todo auditado tem selo, mas ter selo não prova que foi auditado. A conclusão não decorre das premissas: é um SOFISMA.",
+        "* A segunda camada se desfaz. Linhas de luz se acendem no chão.",
+        "Silogista: Palavras enganam, é? Então vamos falar a língua das máquinas: lógica proposicional!",
+        "Luci: É um circuito: (p E q) OU (NÃO q). p e q são os terminais da esquerda, cada um vale V ou F. As portas fazem as operações.",
+        "Luci: E só dá V se as duas entradas forem V. OU dá V se pelo menos uma for V. NÃO inverte o valor.",
+        "Luci: Atire nas portas para ativá-las na ordem certa: primeiro os parênteses e a negação, depois o OU, que leva ao núcleo."
+    },
+    .numPaginas = 6
+};
+
+static const Dialogo dialogoSilogistaRodada2 = {
+    .paginas = {
+        "Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O núcleo recebeu V!",
+        "Silogista: Hmpf. Agora o núcleo exige FALSO. E desta vez os terminais são seus.",
+        "Luci: Atirar em p ou em q troca o valor (V ou F). Que combinação faz a expressão inteira dar F? Pense na tabela-verdade antes de atirar!"
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoSilogistaVulneravel = {
+    .paginas = {
+        "* O núcleo se energiza. A última camada da armadura lógica se apaga.",
+        "Luci: p = F e q = V: F E V = F, NÃO V = F, F OU F = F. Você montou a tabela-verdade na prática!",
+        "Silogista: Minha armadura... desmontada? Se eu perdi, então... não! Isso não decorre!",
+        "Luci: Ele está sem defesas, Thomas! Agora é no Disparador!"
+    },
+    .numPaginas = 4
+};
+
+static const Dialogo dialogoSilogistaVitoria = {
+    .paginas = {
+        "* O Silogista se desmonta em diagramas e símbolos que se apagam no ar.",
+        "Silogista: Uma conclusão... precisa ser sustentada... pelas premissas. Eu só concluía... o que eu queria.",
+        "* Você recebeu o SELO DA INFERÊNCIA! FUNDAMENTOS DA LÓGICA foi registrado na enciclopédia.",
+        "Luci: Você conseguiu demonstrar que uma conclusão precisa estar sustentada por suas premissas. Nem mesmo uma resposta aparentemente lógica deve ser aceita sem análise.",
+        "Luci: O Selo usa o MODUS PONENS: se P -> Q e P, então Q. O 1º acerto num inimigo marca P -> Q, o 2º confirma P... e a conclusão Q sai como um disparo extra!"
+    },
+    .numPaginas = 5
+};
+
+// Explicações da Luci quando um puzzle dá errado
+static const char *FALA_MONTAGEM_CONCLUSAO = "Luci: Não fechou! A conclusão (C) precisa ser a afirmação que DECORRE das outras duas, e não uma das bases do argumento.";
+static const char *FALA_MONTAGEM_PREMISSAS = "Luci: Quase! P1 é a premissa maior: a regra geral (Todo...). P2 é a premissa menor: o caso particular.";
+static const char *FALA_SOFISMA_ERRO       = "Luci: Essa peça é uma premissa: ele pede que a gente a aceite. O defeito está no que ele CONCLUIU a partir delas.";
+
+// Silogismo: as frases na ordem certa (P1, P2, C) e a peça que não se sustenta (-1 = argumento válido)
+typedef struct {
+    const char *frase[NUM_ENCAIXES];
+    int invalida;
+} SilogismoDef;
+
+static const char *NOMES_ENCAIXES[NUM_ENCAIXES]  = { "P1", "P2", "C" };
+static const char *PAPEIS_ENCAIXES[NUM_ENCAIXES] = { "PREMISSA MAIOR", "PREMISSA MENOR", "CONCLUSÃO" };
+
+static const SilogismoDef SILOGISMO_VALIDO = {
+    { "Todo registro auditado possui um selo de integridade.",
+      "O arquivo Alfa é um registro auditado.",
+      "O arquivo Alfa possui um selo de integridade." }, -1
+};
+
+static const SilogismoDef SOFISMA_SILOGISTA = {
+    { "Todo registro auditado possui um selo de integridade.",
+      "O arquivo Beta possui um selo de integridade.",
+      "Logo, o arquivo Beta é um registro auditado." }, ENCAIXE_C
+};
+
+// Circuito proposicional. Cada porta lê "sinais": 0 = p, 1 = q, 2+k = saída da porta k.
+// A última porta liga no núcleo. Outra expressão = outra tabela (sem interpretador).
+typedef enum { OP_E, OP_OU, OP_NAO, OP_SE, OP_SSE } OperadorLogico;
+
+static const char *SIMBOLOS_OPERADORES[] = { "&", "|", "~", ">", "#" };    // ∧ ∨ ¬ → ↔ (ver DesenharLogica)
+static const char *NOMES_OPERADORES[]    = { "E", "OU", "NÃO", "SE...ENTÃO", "SE E SÓ SE" };
+
+typedef struct {
+    OperadorLogico op;
+    int entrada[2];             // a 2ª é ignorada no NÃO
+    Vector2 pos;
+} PortaLogica;
+
+typedef struct {
+    const char *expressao;      // com os símbolos de DesenharLogica
+    bool inicial[2];            // p e q no começo
+    Vector2 posTerminal[2];
+    int numPortas;
+    PortaLogica porta[MAX_PORTAS_CIRCUITO];
+    Vector2 posNucleo;
+    const char *dicaErro;       // Luci, quando o núcleo recebe o valor errado
+} CircuitoDef;
+
+static const CircuitoDef CIRCUITO_SILOGISTA = {
+    "(p & q) | ~q", { true, false }, { { 130, 270 }, { 130, 430 } }, 3,
+    { { OP_E,   { 0, 1 }, { 330, 280 } },
+      { OP_NAO, { 1, 1 }, { 330, 430 } },
+      { OP_OU,  { 2, 3 }, { 520, 355 } } },
+    { 670, 355 },
+    "Luci: O núcleo recebeu o valor errado. Um OU só dá F quando as DUAS entradas são F. Que valores de p e q fazem isso?"
+};
+
+// Lugares da montagem: os três mecanismos e onde os fragmentos podem aparecer
+static const Vector2 POS_ENCAIXES[NUM_ENCAIXES] = { { 230, 340 }, { 400, 370 }, { 570, 340 } };
+static const Vector2 PONTOS_PECAS_SIL[] = {
+    { 100, 160 }, { 700, 160 }, { 100, 470 }, { 700, 470 }, { 230, 480 }, { 570, 480 }, { 90, 320 }, { 710, 320 }
+};
+#define NUM_PONTOS_PECAS_SIL 8
+
+// ---------- Conceitos (enciclopédia) ----------
+// O Byte ensina o 1; os terminais, na ordem, o 2 e o 3; o Silogista vencido, o 4.
+// Descoberto, nunca se perde (um bit cada em ProgressoBiblioteca.conceitos).
+
+static const Dialogo dialogoConceitoLogica = {
+    .paginas = {
+        "* ENCICLOPÉDIA // FUNDAMENTOS DA LÓGICA",
+        "* PROPOSIÇÃO: uma frase que pode ser verdadeira (V) ou falsa (F). Simples: \"Chove.\" Composta: junta proposições com conectivos: \"Chove E faz frio.\"",
+        "* CONECTIVOS: NÃO (¬) inverte o valor. E (conjunção) só é V se as duas forem V. OU (disjunção) é V se pelo menos uma for V.",
+        "* SE p ENTÃO q (condicional, p -> q) só é F quando p é V e q é F. p SE E SOMENTE SE q (bicondicional) é V quando as duas têm o mesmo valor.",
+        "* TABELA-VERDADE: testa todas as combinações de V e F. Ordem: parênteses, NÃO, depois E e OU, depois SE...ENTÃO e por último SE E SOMENTE SE.",
+        "* ARGUMENTO: premissas (o que se aceita) e uma conclusão. SILOGISMO: P1 \"Todo M é P\", P2 \"S é M\", logo C \"S é P\". Ex.: todo registro auditado tem selo; Alfa é auditado; logo, Alfa tem selo.",
+        "* VÁLIDO: a conclusão decorre obrigatoriamente das premissas. SOFISMA: parece válido, mas não é. \"Beta tem selo, logo é auditado\" é inválido: ter selo não prova a auditoria.",
+        "* MODUS PONENS: se P -> Q é verdade e P é verdade, então Q é verdade. É a regra do Selo da Inferência."
+    },
+    .numPaginas = 8
+};
+
+enum { CONCEITO_FUNDAMENTOS, CONCEITO_ALUCINACOES, CONCEITO_PRATICAS, CONCEITO_LOGICA, NUM_CONCEITOS };
 
 static const char *NOMES_CONCEITOS[NUM_CONCEITOS] = {
-    "FUNDAMENTOS DA IA GENERATIVA", "ALUCINAÇÕES DE IA", "BOAS PRÁTICAS"
+    "FUNDAMENTOS DA IA GENERATIVA", "ALUCINAÇÕES DE IA", "BOAS PRÁTICAS", "FUNDAMENTOS DA LÓGICA"
 };
 
 static const char *RESUMOS_CONCEITOS[NUM_CONCEITOS] = {
     "A IA generativa cria conteúdo prevendo a próxima palavra mais provável. Ela não consulta a verdade.",
     "Alucinação é uma resposta confiante e coerente, mas falsa ou inventada. Tom seguro não é prova.",
-    "Pergunte com clareza e contexto, confira em fontes confiáveis e nunca confie cegamente."
+    "Pergunte com clareza e contexto, confira em fontes confiáveis e nunca confie cegamente.",
+    "Proposições, conectivos, tabela-verdade, silogismos, sofismas e o Modus Ponens. A conclusão precisa decorrer das premissas."
 };
 
 static const Dialogo *TEXTOS_CONCEITOS[NUM_CONCEITOS] = {
-    &dialogoByteCompleto, &dialogoTerminalAlucinacaoCompleto, &dialogoTerminalPraticasCompleto
+    &dialogoByteCompleto, &dialogoTerminalAlucinacaoCompleto, &dialogoTerminalPraticasCompleto, &dialogoConceitoLogica
 };
 
 // ---------- Melhorias permanentes (Byteco) ----------
@@ -5532,16 +6320,18 @@ static void RogueAviso(Biblioteca *b, const char *texto)
     b->tempoAviso = 1.8f;
 }
 
-static void RogueDisparar(Biblioteca *b, Vector2 origem, Vector2 dir, float vel, float dano, float raio, bool doJogador)
+static Projetil *RogueDisparar(Biblioteca *b, Vector2 origem, Vector2 dir, float vel, float dano, float raio, bool doJogador)
 {
     for (int i = 0; i < MAX_PROJETEIS; i++) {
 
         if (b->proj[i].ativo)
             continue;
 
-        b->proj[i] = (Projetil){ true, origem, Vector2Scale(dir, vel), raio, dano, doJogador };
-        return;
+        b->proj[i] = (Projetil){ .ativo = true, .pos = origem, .vel = Vector2Scale(dir, vel), .raio = raio, .dano = dano, .doJogador = doJogador };
+        return &b->proj[i];
     }
+
+    return NULL;
 }
 
 static void RogueSoltar(Biblioteca *b, Vector2 pos, bool fragmento, TipoItem item)
@@ -5568,10 +6358,19 @@ static int RogueInimigosVivos(const Biblioteca *b)
     return n;
 }
 
-// Atributos: base + melhorias permanentes (Byteco) + itens passivos da mochila
+// Atributos: base + melhorias permanentes (Byteco) + itens passivos da mochila + efeitos.
+// Todo bônus passa por aqui (nada é somado direto nos atributos), então pegar, perder
+// ou trocar de arma nunca aplica um bônus duas vezes.
+
+// Quantos de um item passivo valem (nunca passa do limite da tabela)
+static int RogueQtd(const JogadorRogue *j, TipoItem it)
+{
+    return (j->itens[it] > ITENS[it].maxPilha) ? ITENS[it].maxPilha : j->itens[it];
+}
+
 static float RogueHpMax(const Biblioteca *b)
 {
-    return ROGUE_HP_MAX + MELHORIA_HP * (float)b->perm->melhorias[MELHORIA_VIDA];
+    return (ROGUE_HP_MAX + MELHORIA_HP * (float)b->perm->melhorias[MELHORIA_VIDA]) * (1.0f + NUCLEO_HP * (float)RogueQtd(&b->j, ITEM_NUCLEO));
 }
 
 static float RogueEpMax(const Biblioteca *b)
@@ -5579,16 +6378,141 @@ static float RogueEpMax(const Biblioteca *b)
     return ROGUE_EP_MAX + MELHORIA_EP * (float)b->perm->melhorias[MELHORIA_ENERGIA];
 }
 
+// Multiplicador de dano de todas as armas (Processador Neural e a melhoria do Byteco)
+static float RogueFatorDano(const Biblioteca *b)
+{
+    return 1.0f + BONUS_PROCESSADOR * (float)RogueQtd(&b->j, ITEM_PROCESSADOR) + MELHORIA_DANO * (float)b->perm->melhorias[MELHORIA_ATAQUE];
+}
+
+// Dano do Disparador de Dados (também é a base do Disparo Dedutivo)
 static float RogueDanoTiro(const Biblioteca *b)
 {
-    int n = (b->j.itens[ITEM_PROCESSADOR] > MAX_PILHA_PASSIVO) ? MAX_PILHA_PASSIVO : b->j.itens[ITEM_PROCESSADOR];
-    return TIRO_DANO * (1.0f + BONUS_PROCESSADOR * (float)n + MELHORIA_DANO * (float)b->perm->melhorias[MELHORIA_ATAQUE]);
+    return TIRO_DANO * RogueFatorDano(b);
 }
 
 static float RogueFatorDanoRecebido(const JogadorRogue *j)
 {
-    int n = (j->itens[ITEM_FIREWALL] > MAX_PILHA_PASSIVO) ? MAX_PILHA_PASSIVO : j->itens[ITEM_FIREWALL];
-    return 1.0f - REDUCAO_FIREWALL * (float)n;
+    float f = 1.0f - REDUCAO_FIREWALL * (float)RogueQtd(j, ITEM_FIREWALL) - FIREWALL_ADAPTATIVO * (float)RogueQtd(j, ITEM_FIREWALL_ADAPTATIVO);
+    return fmaxf(FATOR_DANO_MINIMO, f);
+}
+
+static float RogueVelocidadeJogador(const JogadorRogue *j)
+{
+    float f = 1.0f + ROTEAMENTO_VELOCIDADE * (float)RogueQtd(j, ITEM_ROTEAMENTO);
+    if (j->efeito[EFEITO_OVERCLOCK] > 0.0f) f += EFEITO_OVERCLOCK_VELOCIDADE;
+    return ROGUE_VELOCIDADE * f;
+}
+
+static float RogueRecargaEsquiva(const JogadorRogue *j)
+{
+    return ESQUIVA_RECARGA * (1.0f - ROTEAMENTO_ESQUIVA * (float)RogueQtd(j, ITEM_ROTEAMENTO));
+}
+
+// Intervalo entre disparos: Overclock e Buffer aceleram, mas nunca passam do limite da arma
+static float RogueIntervaloArma(const JogadorRogue *j, TipoArma arma)
+{
+    float cadencia = 1.0f + BUFFER_CADENCIA * (float)RogueQtd(j, ITEM_BUFFER);
+    if (j->efeito[EFEITO_OVERCLOCK] > 0.0f) cadencia += EFEITO_OVERCLOCK_CADENCIA;
+    return fmaxf(DEF_ARMAS[arma].intervaloMin, DEF_ARMAS[arma].intervalo / cadencia);
+}
+
+static TipoArma RogueArmaAtual(const JogadorRogue *j)
+{
+    return j->usandoExtra ? j->armaExtra : ARMA_DISPARADOR;
+}
+
+// Efeitos com tempo e contadores da arma: somem ao voltar ao átrio, ao morrer e ao começar outra tentativa
+static void RogueLimparEfeitos(JogadorRogue *j)
+{
+    memset(j->efeito, 0, sizeof(j->efeito));
+    j->carga = 0.0f;
+    j->calor = 0.0f;
+    j->superaquecida = false;
+    j->disparos = 0;
+    j->fragmentacaoArmada = false;
+    j->alvoAnalise = 0;
+    j->marcasAnalise = 0;
+    j->recargaBotnet = 0.0f;
+}
+
+// Perdeu a tentativa (ou terminou a Biblioteca): a mochila, a arma extra e o Selo da Inferência ficam para trás
+static void RogueEsvaziarMochila(JogadorRogue *j)
+{
+    memset(j->itens, 0, sizeof(j->itens));
+    j->seloInferencia = false;
+    j->armaExtra = ARMA_DISPARADOR;
+    j->usandoExtra = false;
+    RogueLimparEfeitos(j);
+}
+
+// ---------- Sorteios por raridade ----------
+
+static int RogueSortearPeso(const int *candidatos, int n, int (*peso)(int))
+{
+    int total = 0;
+    for (int i = 0; i < n; i++)
+        total += peso(candidatos[i]);
+
+    if (n == 0 || total <= 0)
+        return -1;
+
+    int r = GetRandomValue(1, total);
+    for (int i = 0; i < n; i++) {
+        r -= peso(candidatos[i]);
+        if (r <= 0) return candidatos[i];
+    }
+    return candidatos[n - 1];
+}
+
+static int PesoItem(int i) { return PESO_RARIDADE[ITENS[i].raridade]; }
+static int PesoArma(int a) { return PESO_RARIDADE[DEF_ARMAS[a].raridade]; }
+
+// Item para pedestal ou para o fim do combate: nunca temporário nem passivo que já está no máximo.
+// soPassivos = só upgrades passivos. Devolve -1 se não houver nenhum.
+static int RogueSortearItem(const Biblioteca *b, unsigned int excluir, bool soPassivos)
+{
+    int candidatos[NUM_ITENS], n = 0;
+
+    for (int i = 0; i < NUM_ITENS; i++) {
+        if (ITENS[i].temporario || (excluir & (1u << i)))                 continue;
+        if (ITENS[i].passivo && b->j.itens[i] >= ITENS[i].maxPilha)      continue;
+        if (soPassivos && !ITENS[i].passivo)                              continue;
+        candidatos[n++] = i;
+    }
+
+    return RogueSortearPeso(candidatos, n, PesoItem);
+}
+
+static TipoItem RogueSortearTemporario(void)
+{
+    int candidatos[NUM_ITENS], n = 0;
+
+    for (int i = 0; i < NUM_ITENS; i++)
+        if (ITENS[i].temporario)
+            candidatos[n++] = i;
+
+    return (TipoItem)RogueSortearPeso(candidatos, n, PesoItem);
+}
+
+// Arma para oferecer: nunca a que o jogador já tem; de preferência uma que ainda
+// não apareceu nesta tentativa. ARMA_DISPARADOR = nenhuma.
+static TipoArma RogueSortearArma(Biblioteca *b, unsigned int excluir)
+{
+    int candidatos[NUM_ARMAS], n = 0;
+
+    for (int passada = 0; passada < 2 && n == 0; passada++)
+        for (int a = ARMA_DISPARADOR + 1; a < NUM_ARMAS; a++) {
+            if (a == (int)b->j.armaExtra || (excluir & (1u << a))) continue;
+            if (passada == 0 && (b->armasOferecidas & (1u << a)))  continue;
+            candidatos[n++] = a;
+        }
+
+    int a = RogueSortearPeso(candidatos, n, PesoArma);
+    if (a < 0)
+        return ARMA_DISPARADOR;
+
+    b->armasOferecidas |= 1u << a;
+    return (TipoArma)a;
 }
 
 static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
@@ -5607,10 +6531,18 @@ static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
         e->surgindo = TEMPO_SURGINDO;
         e->lado = (GetRandomValue(0, 1) == 0) ? -1.0f : 1.0f;
         e->recarga = (float)GetRandomValue(30, 120) / 100.0f;   // não atacam todos juntos
+        e->hp = DEF_INIMIGOS[tipo].hp;
+        e->raio = DEF_INIMIGOS[tipo].raio;
+        e->frente = (Vector2){ 0, 1 };
+        e->dono = -1;
+        for (int k = 0; k < BOTNET_CONEXOES; k++)
+            e->conexao[k] = -1;
 
-        if (tipo == INIMIGO_FRAGMENTO)     { e->hp = FRAGMENTO_HP; e->raio = FRAGMENTO_RAIO; }
-        else if (tipo == INIMIGO_GUARDIAO) { e->hp = GUARDIAO_HP;  e->raio = GUARDIAO_RAIO; }
-        else                               { e->hp = ECO_HP; e->raio = 12.0f; e->timer = ECO_TEMPO; e->surgindo = 0.0f; }
+        // O que nasce de outro inimigo aparece na hora
+        if (tipo == INIMIGO_ECO)            { e->timer = ECO_TEMPO; e->surgindo = 0.0f; }
+        else if (tipo == INIMIGO_SPAM)      { e->vida = SPAM_VIDA; e->surgindo = 0.0f; }
+        else if (tipo == INIMIGO_ISCA)      { e->vida = ISCA_DURACAO; e->surgindo = 0.0f; }
+        else if (tipo == INIMIGO_FIREWALL)  e->habilidade = FIREWALL_INTERVALO * 0.6f;
 
         e->hpMax = e->hp;
         return e;
@@ -5622,12 +6554,114 @@ static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
 // ---------- Salas e missão ----------
 
 static void RogueIniciarChefe(Biblioteca *b);
+static void RogueIniciarSilogista(Biblioteca *b);
+static void RogueMontarSalaBloco3(Biblioteca *b, TipoSalaRogue tipo);
+static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde);
+static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog);
+static int RogueEstab(const Biblioteca *b);
+static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo);
 
 static void RogueUsarLayout(Biblioteca *b, const LayoutSala *l)
 {
     b->numObst = l->numObst;
     for (int i = 0; i < l->numObst; i++)
         b->obst[i] = l->obst[i];
+}
+
+// Sorteia um encontro do nível da sala, de preferência diferente do anterior
+static int RogueSortearEncontro(const Biblioteca *b, int nivel)
+{
+    int candidatos[NUM_ENCONTROS], n = 0;
+
+    for (int passada = 0; passada < 2 && n == 0; passada++)
+        for (int i = 0; i < NUM_ENCONTROS; i++)
+            if (nivel >= ENCONTROS[i].nivelMin && nivel <= ENCONTROS[i].nivelMax && (passada == 1 || i != b->ultimoEncontro))
+                candidatos[n++] = i;
+
+    return candidatos[GetRandomValue(0, n - 1)];
+}
+
+// Lugar para um inimigo perto de um ponto da sala: fora das estantes, longe da
+// entrada do jogador e sem cair em cima de outro inimigo
+static Vector2 RogueLugarSurgir(const Biblioteca *b, Vector2 base, float raio)
+{
+    Vector2 escolhido = base;
+
+    for (int tentativa = 0; tentativa < 16; tentativa++) {
+
+        float ang = (float)GetRandomValue(0, 360) * DEG2RAD;
+        float dist = (tentativa == 0) ? 0.0f : (float)GetRandomValue(14, 60);
+        Vector2 p = { base.x + cosf(ang) * dist, base.y + sinf(ang) * dist };
+
+        RogueEmpurrarParaFora(&p, raio, b->obst, b->numObst);
+
+        if (Vector2Distance(p, b->j.pos) < DIST_SURGIR_JOGADOR)
+            continue;
+
+        escolhido = p;
+        bool livre = true;
+        for (int i = 0; i < MAX_INIMIGOS && livre; i++)
+            if (b->ini[i].ativo && Vector2Distance(p, b->ini[i].pos) < raio + b->ini[i].raio + 4.0f)
+                livre = false;
+
+        if (livre)
+            return p;
+    }
+
+    return escolhido;
+}
+
+// Nível da sala de combate atual: 1 = inicial, 2 = intermediária, 3 = avançada
+static int RogueNivelCombate(const Biblioteca *b)
+{
+    return (b->combates > 3) ? 3 : ((b->combates < 1) ? 1 : b->combates);
+}
+
+// Monta a sala de combate com o encontro "id"
+static void RogueMontarEncontro(Biblioteca *b, const LayoutSala *l, int id)
+{
+    int nivel = RogueNivelCombate(b);
+    const EncontroDef *enc = &ENCONTROS[id];
+
+    b->encontro = id;
+    b->ultimoEncontro = id;
+
+    // Pontos da sala em ordem sorteada
+    int ordem[8];
+    for (int i = 0; i < l->numPontos; i++)
+        ordem[i] = i;
+
+    for (int i = l->numPontos - 1; i > 0; i--) {
+        int k = GetRandomValue(0, i);
+        int t = ordem[i]; ordem[i] = ordem[k]; ordem[k] = t;
+    }
+
+    int ponto = 0;
+
+    for (int g = 0; g < enc->numGrupos; g++) {
+
+        const GrupoEncontro *gr = &enc->grupo[g];
+        int qtd = GetRandomValue(gr->min, gr->max) + ((nivel >= 3 && gr->max > 1) ? 1 : 0);
+        bool bando = (gr->tipo == INIMIGO_SPAMMER);
+
+        for (int k = 0; k < qtd; k++) {
+            Vector2 base = l->pontos[ordem[ponto % l->numPontos]];
+            RogueCriarInimigo(b, gr->tipo, RogueLugarSurgir(b, base, DEF_INIMIGOS[gr->tipo].raio));
+            if (!bando || k % BANDO_SPAMMERS == BANDO_SPAMMERS - 1 || k == qtd - 1)
+                ponto++;
+        }
+    }
+
+    // A partir do 2º combate, um Guardião vem selado com um desafio educativo
+    if (b->combates >= 2) {
+        Vector2 base = l->pontos[ordem[ponto % l->numPontos]];
+        Inimigo *e = RogueCriarInimigo(b, INIMIGO_GUARDIAO, RogueLugarSurgir(b, base, GUARDIAO_RAIO));
+        if (e != NULL)
+            e->selado = true;
+    }
+
+    RogueAviso(b, TextFormat("ENCONTRO: %s", enc->nome));
+    Telemetria("rogue_encontro", enc->nome, (float)nivel, b->combates);
 }
 
 // Esvazia a sala e coloca o jogador na entrada
@@ -5638,11 +6672,14 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     memset(b->col, 0, sizeof(b->col));
 
     b->tipoSala = tipo;
+    b->encontro = -1;
     b->limpa = false;
     b->terminalLido = false;
     b->recompensaPega = false;
     b->lojaAberta = false;
     b->chefe.ativo = false;
+    b->silogista.ativo = false;
+    b->luci.ativo = false;
     b->fadeEntrada = 0.35f;
     b->j.pos = entrada;
     b->j.tempoEsquiva = 0.0f;
@@ -5657,37 +6694,14 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
         const LayoutSala *l = &LAYOUTS_COMBATE[GetRandomValue(0, NUM_LAYOUTS_COMBATE - 1)];
         RogueUsarLayout(b, l);
         b->combates++;
-
-        // Posições sorteadas: embaralha os pontos da sala
-        int ordem[8];
-        for (int i = 0; i < l->numPontos; i++)
-            ordem[i] = i;
-
-        for (int i = l->numPontos - 1; i > 0; i--) {
-            int k = GetRandomValue(0, i);
-            int t = ordem[i]; ordem[i] = ordem[k]; ordem[k] = t;
-        }
-
-        // Cada combate tem um inimigo a mais (até encher os pontos)
-        int total = 2 + b->combates;
-        if (total > l->numPontos) total = l->numPontos;
-
-        int guardioes = total / 3;
-
-        for (int i = 0; i < total; i++) {
-            Inimigo *e = RogueCriarInimigo(b, (i < guardioes) ? INIMIGO_GUARDIAO : INIMIGO_FRAGMENTO, l->pontos[ordem[i]]);
-
-            // A partir do 2º combate, um guardião vem selado com um desafio educativo
-            if (e != NULL && i == 0 && b->combates >= 2)
-                e->selado = true;
-        }
+        RogueMontarEncontro(b, l, RogueSortearEncontro(b, RogueNivelCombate(b)));
     }
     else if (tipo == SALA_EDUCATIVA) {
         RogueUsarLayout(b, &LAYOUT_EDUCATIVA);
 
-        // Depois de alguns desafios, a Luci começa a se contradizer
-        if (b->desafiosRespondidos > 0) {
-            int nivel = (b->desafiosRespondidos > 3) ? 3 : b->desafiosRespondidos;
+        // Instável, a Luci começa a se contradizer
+        if (RogueEstab(b) <= 3) {
+            int nivel = (int)Clamp((float)(4 - RogueEstab(b)), 1.0f, 3.0f);
             b->falaPendente = FALAS_LUCI_CORROMPIDA[nivel - 1];
         }
     }
@@ -5696,23 +6710,31 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
         RogueUsarLayout(b, &LAYOUT_RECOMPENSA);
         b->limpa = true;                        // pode pegar uma recompensa ou seguir em frente
 
-        // Três itens diferentes sorteados (passivo que já está no máximo não aparece)
-        int ordem[NUM_ITENS], n = 0;
-        for (int i = 0; i < NUM_ITENS; i++)
-            if (!(ITENS[i].passivo && b->j.itens[i] >= MAX_PILHA_PASSIVO))
-                ordem[n++] = i;
+        // Três recompensas diferentes, sorteadas pela raridade: no máximo uma arma;
+        // nenhum temporário e nenhum passivo que já está no máximo
+        unsigned int usados = 0;
+        int comArma = (GetRandomValue(1, 100) <= CHANCE_ARMA_PEDESTAL) ? GetRandomValue(0, NUM_PEDESTAIS - 1) : -1;
 
-        for (int i = n - 1; i > 0; i--) {
-            int k = GetRandomValue(0, i);
-            int t = ordem[i]; ordem[i] = ordem[k]; ordem[k] = t;
+        for (int i = 0; i < NUM_PEDESTAIS; i++) {
+            b->armaPedestal[i] = (i == comArma) ? RogueSortearArma(b, 0) : ARMA_DISPARADOR;
+            int it = RogueSortearItem(b, usados, false);
+            b->pedestal[i] = (TipoItem)((it < 0) ? ITEM_ANTIVIRUS : it);
+            usados |= 1u << b->pedestal[i];
         }
-
-        for (int i = 0; i < NUM_PEDESTAIS; i++)
-            b->pedestal[i] = (TipoItem)ordem[i];
+    }
+    else if (tipo == SALA_TRANSICAO || tipo == SALA_LUCI) {
+        RogueMontarSalaBloco3(b, tipo);
+    }
+    else if (tipo == SALA_SILOGISTA) {
+        RogueUsarLayout(b, &LAYOUT_CHEFE);
+        RogueIniciarSilogista(b);
+        b->conversaPendente = &dialogoSilogistaIntro;
+        b->objConversa = OBJ_SILOGISTA_INTRO;
     }
     else {
         RogueUsarLayout(b, &LAYOUT_CHEFE);
         RogueIniciarChefe(b);
+        RogueMudarEstabilidade(b, -1, "o eco do Alucinador");
         b->conversaPendente = &dialogoAlucinadorIntro;
         b->objConversa = OBJ_CHEFE_INTRO;
     }
@@ -5726,27 +6748,40 @@ static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
 
     b->indiceRota = -1;
     b->limpa = true;
+    RogueLimparEfeitos(&b->j);
     b->j.hp = RogueHpMax(b);
     b->j.ep = RogueEpMax(b);
     b->j.direcao = vindoDoCorredor ? DIR_DIREITA : DIR_COSTAS;
+
+    // Armas à venda no Byteco (diferentes entre si)
+    unsigned int naLoja = 0;
+    for (int i = 0; i < ARMAS_NA_LOJA; i++) {
+        b->estoqueArmas[i] = RogueSortearArma(b, naLoja);
+        naLoja |= 1u << b->estoqueArmas[i];
+    }
+    b->armasOferecidas = 0;
 }
 
-// Sorteia a ordem das salas: a primeira é sempre de combate
+// Sorteia a ordem das salas: a primeira é sempre de combate e o Silogista fica no meio
 static void RogueComecarMissao(Biblioteca *b)
 {
-    TipoSalaRogue resto[SALAS_POR_MISSAO - 1] = { SALA_COMBATE, SALA_COMBATE, SALA_EDUCATIVA, SALA_EDUCATIVA, SALA_RECOMPENSA };
+    TipoSalaRogue resto[SALAS_POR_MISSAO - 2] = { SALA_COMBATE, SALA_COMBATE, SALA_EDUCATIVA, SALA_EDUCATIVA, SALA_RECOMPENSA };
 
-    for (int i = SALAS_POR_MISSAO - 2; i > 0; i--) {
+    for (int i = SALAS_POR_MISSAO - 3; i > 0; i--) {
         int k = GetRandomValue(0, i);
         TipoSalaRogue t = resto[i]; resto[i] = resto[k]; resto[k] = t;
     }
 
     b->rota[0] = SALA_COMBATE;
-    for (int i = 1; i < SALAS_POR_MISSAO; i++)
-        b->rota[i] = resto[i - 1];
+    for (int i = 1, k = 0; i < SALAS_POR_MISSAO; i++)
+        b->rota[i] = (i == POSICAO_SILOGISTA) ? SALA_SILOGISTA : resto[k++];
 
     b->indiceRota = 0;
     b->combates = 0;
+    b->ultimoEncontro = -1;
+    b->j.salasConcluidas = 0;
+    b->armasOferecidas = 0;
+    RogueLimparEfeitos(&b->j);
     b->educativas = 0;
     b->abatidos = 0;
     b->j.hp = RogueHpMax(b);
@@ -5773,6 +6808,9 @@ static void RogueIniciar(Biblioteca *b, ProgressoBiblioteca *perm)
     memset(b, 0, sizeof(*b));
 
     b->perm = perm;
+    b->estabilidadeLocal = ESTABILIDADE_MAX_LUCI;
+    b->estabilidade = &b->estabilidadeLocal;
+    b->proximaContradicao = CONTRADICAO_INTERVALO_MIN;
     b->j.mira = (Vector2){ 1, 0 };
     b->inicio = GetTime();
 
@@ -5781,17 +6819,68 @@ static void RogueIniciar(Biblioteca *b, ProgressoBiblioteca *perm)
 
 // ---------- Desafios educativos ----------
 
-// Chance (%) de a dica da Luci sair errada: cresce a cada desafio respondido nesta tentativa
+static int RogueEstab(const Biblioteca *b)
+{
+    return *b->estabilidade;
+}
+
+// Chance (%) de a Luci alucinar (dica, verificação, scanner): depende da estabilidade
 static int RogueChanceLuciErrar(const Biblioteca *b)
 {
-    int c = CHANCE_LUCI_ERRAR * b->desafiosRespondidos;
-    return (c > CHANCE_LUCI_ERRAR_MAX) ? CHANCE_LUCI_ERRAR_MAX : c;
+    return CHANCE_LUCI_ALUCINAR_B2[(int)Clamp((float)RogueEstab(b), 0.0f, (float)ESTABILIDADE_MAX_LUCI)];
+}
+
+static void RogueRecadoLuci(Biblioteca *b, const char *texto)
+{
+    snprintf(b->luciMsg, sizeof(b->luciMsg), "%s", texto);
+    b->luciMsgTempo = 3.0f;
+}
+
+// Sobe ou desce a estabilidade. Subir por uma ação do jogador é um REPARO (vai para o save).
+static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo)
+{
+    int antes = RogueEstab(b);
+    *b->estabilidade = (int)Clamp((float)(antes + delta), 0.0f, (float)ESTABILIDADE_MAX_LUCI);
+
+    if (*b->estabilidade > antes) {
+        b->perm->reparos++;
+        if (motivo != NULL) RogueRecadoLuci(b, TextFormat("LUCI +1: %s", motivo));
+        TocarSomTom(sfxPegar, 1.6f);
+    } else if (*b->estabilidade < antes && motivo != NULL) {
+        RogueRecadoLuci(b, TextFormat("LUCI -1: %s", motivo));
+    }
+}
+
+// Confiar ou verificar vira hábito; com 3 iguais seguidos, a Luci comenta (pista para o Bloco 3)
+static void RogueHabitoLuci(Biblioteca *b, bool confiou)
+{
+    if (confiou) { b->habitoConfiar++;   b->habitoVerificar = 0; }
+    else         { b->habitoVerificar++; b->habitoConfiar = 0; }
+
+    if (b->habitoConfiar >= HABITO_LUCI && !b->comentouConfiar) {
+        b->comentouConfiar = true;
+        b->falaPendente = "Luci: Você nunca me confere... Eu gosto disso. Fica tudo mais fácil para mim.";
+    }
+    if (b->habitoVerificar >= HABITO_LUCI && !b->comentouVerificar) {
+        b->comentouVerificar = true;
+        b->falaPendente = "Luci: Você sempre me confere. Faz bem... mesmo que isso me incomode um pouco.";
+    }
+}
+
+// Desempenho que vai para o save (o Bloco 3 usa): cada resposta, puzzle e a corrupção da Luci
+static void RogueRegistrarResposta(Biblioteca *b, bool certo)
+{
+    if (certo) b->perm->desafiosCertos++;
+    else       b->perm->desafiosErrados++;
+
+    if (RogueChanceLuciErrar(b) > b->perm->corrupcaoLuciMax)
+        b->perm->corrupcaoLuciMax = RogueChanceLuciErrar(b);
 }
 
 // Quanto a Luci está "corrompida" (0 a 1): deixa ela magenta e com glitch
 static float RogueCorrupcaoLuci(const Biblioteca *b)
 {
-    return (float)RogueChanceLuciErrar(b) / 100.0f;
+    return 1.0f - (float)RogueEstab(b) / ESTABILIDADE_MAX_LUCI;
 }
 
 // Um desafio de conceito já descoberto (de preferência um que ainda não caiu nesta tentativa)
@@ -5825,6 +6914,8 @@ static void RogueAbrirDesafio(Biblioteca *b, int indiceInimigo)
     b->dicaDesafio[0] = '\0';
     b->dicaDaLuci = false;
     b->luciMentiu = false;
+    b->opcaoDica = -1;
+    b->verificouDica = false;
     memset(b->opcaoRiscada, 0, sizeof(b->opcaoRiscada));
 
     TocarSomTom(sfxSelecao, 0.8f);
@@ -5869,8 +6960,9 @@ static void RogueUsarLente(Biblioteca *b)
     Telemetria("rogue_lente", "", 0.0f, b->desafio);
 }
 
-// H: a Luci dá uma dica de graça, uma vez por desafio. Mas ela pode ALUCINAR
-// (jurar que uma opção errada é a certa), e isso fica mais comum a cada desafio.
+// H: a Luci aponta uma opção (e diz por quê). Custa 1 de estabilidade; quanto menor
+// a estabilidade, maior a chance de ela ALUCINAR. A alucinação vem sem motivo e com
+// certeza absoluta: um jogador atento percebe. V verifica (Lente ou 1 Fragmento).
 static void RoguePedirLuci(Biblioteca *b)
 {
     const DesafioEdu *d = &DESAFIOS[b->desafio];
@@ -5879,19 +6971,63 @@ static void RoguePedirLuci(Biblioteca *b)
         return;
 
     b->dicaDaLuci = true;
+    b->verificouDica = false;
+
+    if (RogueEstab(b) <= 0) {
+        b->luciMentiu = false;
+        b->opcaoDica = -1;
+        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "Luci: Estou sobrecarregada... Resolva sem mim e eu me estabilizo.");
+        MostrarEmocaoLuci(EMOCAO_DUVIDA, 2.0f);
+        return;
+    }
+
+    RogueMudarEstabilidade(b, -1, NULL);
     b->luciMentiu = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
 
     if (b->luciMentiu) {
         int errada = GetRandomValue(0, d->numOpcoes - 2);
         if (errada >= d->correta) errada++;
-        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "Luci: Tenho 100%% de certeza: é \"%s\"!", d->opcoes[errada]);
-        MostrarEmocaoLuci(EMOCAO_ALERTA, 2.0f);
+        b->opcaoDica = errada;
+        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "Luci: É \"%s\". Tenho 100%% de certeza!", d->opcoes[errada]);
     } else {
-        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "Luci: %s", d->dica);
+        b->opcaoDica = d->correta;
+        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "Luci: Acho que é \"%s\". %s", d->opcoes[d->correta], d->dica);
     }
 
     TocarSom(sfxSelecao);
     Telemetria("rogue_dica_luci", b->luciMentiu ? "alucinou" : "dica", (float)RogueChanceLuciErrar(b), b->desafio);
+}
+
+// V: confere a dica da Luci (gasta uma Lente ou 1 Fragmento). Pegar a alucinação repara a Luci.
+static void RogueVerificarDica(Biblioteca *b)
+{
+    if (!b->dicaDaLuci || b->opcaoDica < 0 || b->verificouDica || b->respondido)
+        return;
+
+    if (b->j.itens[ITEM_LENTE] > 0)                       b->j.itens[ITEM_LENTE]--;
+    else if (b->perm->fragmentos >= CUSTO_VERIFICAR_FC)   b->perm->fragmentos -= CUSTO_VERIFICAR_FC;
+    else {
+        RogueRecadoLuci(b, "Sem Lente nem Fragmento para verificar.");
+        TocarSom(sfxErro);
+        return;
+    }
+
+    b->verificouDica = true;
+    b->perm->verificou++;
+    RogueHabitoLuci(b, false);
+
+    if (b->luciMentiu) {
+        b->perm->alucinacoesPegas++;
+        b->opcaoRiscada[b->opcaoDica] = true;
+        if (b->selecaoDesafio == b->opcaoDica) RogueMoverSelecaoDesafio(b, 1);
+        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "VERIFICADO: a fonte NÃO confere. A Luci alucinou essa resposta!");
+        RogueMudarEstabilidade(b, 1, "você pegou a alucinação");
+        TocarSom(sfxAcerto);
+    } else {
+        snprintf(b->dicaDesafio, sizeof(b->dicaDesafio), "VERIFICADO: a fonte confere. %s", DESAFIOS[b->desafio].dica);
+        TocarSomTom(sfxSelecao, 1.3f);
+    }
+    Telemetria("rogue_verificar", b->luciMentiu ? "pegou" : "conferia", 0.0f, b->desafio);
 }
 
 static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog)
@@ -5919,6 +7055,24 @@ static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog)
     b->respondido = true;
     b->acertouDesafio = (s == d->correta);
     b->desafiosRespondidos++;
+    RogueRegistrarResposta(b, b->acertouDesafio);
+
+    // Confiar: seguiu a dica sem verificar. Certa = bônus; alucinada = a Luci se abala.
+    if (b->dicaDaLuci && b->opcaoDica >= 0 && !b->verificouDica && s == b->opcaoDica) {
+        b->perm->confiouCego++;
+        RogueHabitoLuci(b, true);
+        if (b->luciMentiu) {
+            b->perm->confiouAlucinacao++;
+            RogueMudarEstabilidade(b, -1, "você acreditou na alucinação");
+        } else {
+            AlterarPontos(prog, BONUS_CONFIAR_PONTOS);
+            b->perm->fragmentos += BONUS_CONFIAR_FC;
+        }
+    }
+
+    // Resolveu sem a Luci: ela se estabiliza
+    if (b->acertouDesafio && !b->dicaDaLuci)
+        RogueMudarEstabilidade(b, 1, "resolvido sem ajuda");
 
     if (b->acertouDesafio) {
         AlterarPontos(prog, PONTOS_DESAFIO);
@@ -5993,9 +7147,269 @@ static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float 
 
     if (IsKeyPressed(KEY_L)) RogueUsarLente(b);
     if (IsKeyPressed(KEY_H)) RoguePedirLuci(b);
+    if (IsKeyPressed(KEY_V)) RogueVerificarDica(b);
 
     if (confirmar)
         RogueResponderDesafio(b, prog);
+}
+
+// ---------- Inimigos da expansão: utilidades e sinergias ----------
+
+// Inimigo que nasce de outro e some sozinho (não recebe bônus nem protege ninguém)
+static bool RogueInimigoPassageiro(TipoInimigo t)
+{
+    return t == INIMIGO_ECO || t == INIMIGO_SPAM || t == INIMIGO_ISCA;
+}
+
+// Está dentro do escudo de rede de algum Firewall (sem contar ele mesmo)?
+static bool RogueNaZonaFirewall(const Biblioteca *b, const Inimigo *e)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+        const Inimigo *f = &b->ini[i];
+        if (f != e && f->ativo && f->tipo == INIMIGO_FIREWALL && f->surgindo <= 0.0f &&
+            Vector2Distance(f->pos, e->pos) < FIREWALL_ZONA)
+            return true;
+    }
+    return false;
+}
+
+static int RogueSpammersPerto(const Biblioteca *b, Vector2 pos, float raio)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_SPAMMER && Vector2Distance(b->ini[i].pos, pos) < raio)
+            n++;
+    return n;
+}
+
+// Keylogger: onde o jogador vai estar quando o tiro chegar. Só prevê se ele vem
+// andando na mesma direção há algum tempo; a esquiva ou uma curva zeram a leitura.
+static Vector2 RoguePrevisaoJogador(const Biblioteca *b, Vector2 origem, float velProjetil)
+{
+    const JogadorRogue *j = &b->j;
+    float confianca = Clamp((j->tempoMesmaDirecao - KEYLOGGER_LEITURA) / KEYLOGGER_LEITURA, 0.0f, 1.0f);
+    float t = fminf(Vector2Distance(origem, j->pos) / velProjetil, KEYLOGGER_PREVISAO_MAX);
+    Vector2 p = Vector2Add(j->pos, Vector2Scale(j->velMedia, t * confianca));
+
+    p.x = Clamp(p.x, ARENA_ROGUE.x + 10.0f, ARENA_ROGUE.x + ARENA_ROGUE.width - 10.0f);
+    p.y = Clamp(p.y, ARENA_ROGUE.y + 10.0f, ARENA_ROGUE.y + ARENA_ROGUE.height - 10.0f);
+    return p;
+}
+
+static bool RogueTemKeylogger(const Biblioteca *b)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_KEYLOGGER && b->ini[i].surgindo <= 0.0f)
+            return true;
+    return false;
+}
+
+// Overclock: carga de 0 (mínima) a 1 (máxima)
+static float RogueCargaOverclock(const Inimigo *e)
+{
+    return Clamp((e->carga - OVERCLOCK_CARGA_MIN) / (OVERCLOCK_CARGA_MAX - OVERCLOCK_CARGA_MIN), 0.0f, 1.0f);
+}
+
+static void RogueSuperaquecer(Inimigo *e)
+{
+    e->estado = 3;
+    e->timer = OVERCLOCK_ESFRIAR_MIN + (OVERCLOCK_ESFRIAR_MAX - OVERCLOCK_ESFRIAR_MIN) * RogueCargaOverclock(e);
+    e->vel = (Vector2){0};
+}
+
+// Phisher revelado: mira e, se a habilidade estiver pronta, solta uma cópia falsa ao lado.
+// Com o jogador cercado de Spammers (distraído), ele ataca mais rápido.
+static void RogueRevelarPhisher(Biblioteca *b, Inimigo *e, bool distraido)
+{
+    if (e->estado != 0)
+        return;
+
+    Vector2 dir = Vector2Normalize(Vector2Subtract(b->j.pos, e->pos));
+
+    e->estado = 1;
+    e->timer = distraido ? PHISHER_PREPARO * 0.65f : PHISHER_PREPARO;
+    e->alvo = dir;
+    RogueParticulas(b, e->pos, GOLD, 10, 140);
+    TocarSomTom(sfxErro, 1.3f);
+
+    if (e->habilidade > 0.0f)
+        return;
+
+    e->habilidade = ISCA_RECARGA;
+
+    Vector2 lado = { -dir.y * e->lado, dir.x * e->lado };
+    Vector2 onde = Vector2Add(e->pos, Vector2Scale(lado, 70.0f));
+    RogueEmpurrarParaFora(&onde, e->raio, b->obst, b->numObst);
+
+    Inimigo *isca = RogueCriarInimigo(b, INIMIGO_ISCA, onde);
+    if (isca != NULL) {
+        isca->estado = 1;
+        isca->timer = e->timer;
+        isca->alvo = Vector2Normalize(Vector2Subtract(b->j.pos, onde));
+        isca->dono = (int)(e - b->ini);
+        RogueParticulas(b, onde, GOLD, 10, 140);
+    }
+}
+
+// Botnet: liga cada Botnet aos (até 3) inimigos mais próximos. Quem está ligado
+// fica mais rápido e ataca mais vezes. Botnet derrotado = conexões desfeitas na hora.
+static void RogueAtualizarConexoes(Biblioteca *b)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        b->ini[i].conectado = false;
+
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+        Inimigo *bt = &b->ini[i];
+
+        if (!bt->ativo || bt->tipo != INIMIGO_BOTNET)
+            continue;
+
+        for (int k = 0; k < BOTNET_CONEXOES; k++) {
+
+            bt->conexao[k] = -1;
+
+            if (bt->surgindo > 0.0f)
+                continue;
+
+            float menor = BOTNET_ALCANCE;
+
+            for (int o = 0; o < MAX_INIMIGOS; o++) {
+
+                Inimigo *e = &b->ini[o];
+                bool jaLigado = false;
+
+                for (int q = 0; q < k; q++)
+                    if (bt->conexao[q] == o) jaLigado = true;
+
+                // (o Phisher camuflado fica de fora: a conexão entregaria o disfarce)
+                if (!e->ativo || o == i || jaLigado || e->tipo == INIMIGO_BOTNET || RogueInimigoPassageiro(e->tipo) || e->surgindo > 0.0f ||
+                    (e->tipo == INIMIGO_PHISHER && e->estado == 0))
+                    continue;
+
+                float d = Vector2Distance(bt->pos, e->pos);
+                if (d < menor) { menor = d; bt->conexao[k] = o; }
+            }
+
+            if (bt->conexao[k] >= 0)
+                b->ini[bt->conexao[k]].conectado = true;
+        }
+    }
+}
+
+// Firewall: quem ele protege. Um Cache tem prioridade (sinergia); senão, o centro dos aliados.
+static bool RogueQuemProteger(const Biblioteca *b, const Inimigo *fw, Vector2 *centro)
+{
+    Vector2 soma = {0};
+    int n = 0;
+    float menorCache = 99999.0f;
+
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+        const Inimigo *e = &b->ini[i];
+
+        if (e == fw || !e->ativo || e->tipo == INIMIGO_FIREWALL || RogueInimigoPassageiro(e->tipo))
+            continue;
+
+        if (e->tipo == INIMIGO_CACHE && Vector2Distance(fw->pos, e->pos) < menorCache) {
+            menorCache = Vector2Distance(fw->pos, e->pos);
+            *centro = e->pos;
+        }
+
+        soma = Vector2Add(soma, e->pos);
+        n++;
+    }
+
+    if (menorCache < 99999.0f)
+        return true;
+
+    if (n == 0)
+        return false;
+
+    *centro = Vector2Scale(soma, 1.0f / (float)n);
+    return true;
+}
+
+// Ponto da barreira de energia do Firewall (segmento na frente dele)
+static void RogueBarreiraFirewall(const Inimigo *e, Vector2 *a, Vector2 *c)
+{
+    Vector2 meio = Vector2Add(e->pos, Vector2Scale(e->frente, e->raio + 16.0f));
+    Vector2 lado = { -e->frente.y, e->frente.x };
+    *a = Vector2Add(meio, Vector2Scale(lado, FIREWALL_BARREIRA_LARGURA / 2.0f));
+    *c = Vector2Subtract(meio, Vector2Scale(lado, FIREWALL_BARREIRA_LARGURA / 2.0f));
+}
+
+// Um tiro do jogador bateu numa barreira de energia ativa?
+static bool RogueBarreiraBloqueia(const Biblioteca *b, Vector2 pos, float raio)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+        const Inimigo *e = &b->ini[i];
+
+        if (!e->ativo || e->tipo != INIMIGO_FIREWALL || e->estado != 2)
+            continue;
+
+        Vector2 a, c;
+        RogueBarreiraFirewall(e, &a, &c);
+
+        Vector2 ac = Vector2Subtract(c, a);
+        float t = Clamp(Vector2DotProduct(Vector2Subtract(pos, a), ac) / Vector2DotProduct(ac, ac), 0.0f, 1.0f);
+        if (Vector2Distance(pos, Vector2Add(a, Vector2Scale(ac, t))) < raio + 4.0f)
+            return true;
+    }
+    return false;
+}
+
+// Quanto do dano o inimigo leva de verdade. "direcao" é para onde o golpe vai.
+// protegido = bateu num escudo (frente do Firewall ou zona de rede): faíscas verdes.
+static float RogueFatorDanoInimigo(const Biblioteca *b, const Inimigo *e, Vector2 direcao, bool *protegido)
+{
+    float f = 1.0f;
+    *protegido = false;
+
+    if (e->tipo == INIMIGO_FIREWALL && Vector2Length(direcao) > 0.01f) {
+        float deFrente = Vector2DotProduct(Vector2Negate(direcao), e->frente);     // 1 = veio bem de frente
+        if (deFrente > cosf(FIREWALL_ANGULO_FRENTE * DEG2RAD)) { f *= FIREWALL_FRENTE; *protegido = true; }
+        else if (deFrente < -0.5f)                              f *= FIREWALL_COSTAS;
+    }
+    else if (e->tipo == INIMIGO_OVERCLOCK) {
+        if (e->estado == 1) f *= OVERCLOCK_DANO_CARREGANDO;
+        if (e->estado == 3) f *= 1.0f + (OVERCLOCK_DANO_QUENTE - 1.0f) * (0.5f + 0.5f * RogueCargaOverclock(e));
+    }
+
+    if (e->tipo != INIMIGO_FIREWALL && !RogueInimigoPassageiro(e->tipo) && RogueNaZonaFirewall(b, e)) {
+        f *= 1.0f - FIREWALL_PROTECAO;
+        *protegido = true;
+    }
+
+    return f;
+}
+
+// Dano de encostar no jogador agora (alguns só machucam atacando)
+static float RogueDanoContato(const Inimigo *e)
+{
+    switch (e->tipo) {
+        case INIMIGO_PHISHER:   return (e->estado == 2) ? PHISHER_DANO : 0.0f;
+        case INIMIGO_OVERCLOCK: return (e->estado == 2) ? OVERCLOCK_DANO_INVESTIDA : ((e->estado == 3) ? 0.0f : DEF_INIMIGOS[e->tipo].danoContato);
+        default:                return DEF_INIMIGOS[e->tipo].danoContato;
+    }
+}
+
+// O Pulso de Integridade interrompe o ataque que está sendo preparado
+static void RogueInterromperInimigo(Inimigo *e)
+{
+    switch (e->tipo) {
+        case INIMIGO_FRAGMENTO: e->estado = 0; e->recarga = FRAGMENTO_RECARGA;  break;
+        case INIMIGO_GUARDIAO:  e->estado = 0; e->recarga = GUARDIAO_INTERVALO; break;
+        case INIMIGO_PHISHER:
+        case INIMIGO_ISCA:      if (e->estado == 1) { e->estado = 3; e->timer = PHISHER_RECUO; } break;
+        case INIMIGO_OVERCLOCK: if (e->estado == 1) RogueSuperaquecer(e); break;      // a carga escapa: superaquece
+        case INIMIGO_FIREWALL:  if (e->estado == 1) { e->estado = 0; e->habilidade = FIREWALL_INTERVALO; } break;
+        case INIMIGO_BOTNET:    if (e->estado == 1) { e->estado = 0; e->recarga = BOTNET_INTERVALO; }    break;
+        case INIMIGO_KEYLOGGER: if (e->estado == 1) { e->estado = 0; e->recarga = KEYLOGGER_INTERVALO; } break;
+        case INIMIGO_CACHE:     if (e->estado == 1) { e->estado = 0; e->recarga = CACHE_INTERVALO; }     break;
+        default: break;
+    }
 }
 
 // ---------- Dano ----------
@@ -6007,16 +7421,41 @@ static void RogueFerirJogador(Biblioteca *b, float dano)
     if (j->invulneravel > 0.0f || j->tempoEsquiva > 0.0f || b->morreu)
         return;
 
+    // Firewall Portátil: o escudo absorve este golpe e some
+    if (j->efeito[EFEITO_ESCUDO] > 0.0f) {
+        j->efeito[EFEITO_ESCUDO] = 0.0f;
+        j->invulneravel = 0.4f;
+        RogueParticulas(b, j->pos, (Color){ 0, 228, 48, 255 }, 18, 200);
+        TocarSomTom(sfxSelecao, 0.5f);
+        return;
+    }
+
     j->hp -= dano * RogueFatorDanoRecebido(j);
     j->invulneravel = INVULNERAVEL_APOS_DANO;
     b->tremor = 0.25f;                          // a tela só treme quando o jogador toma dano
 
     RogueParticulas(b, j->pos, RED, 10, 160);
     TocarSom(sfxDano);
+
+    // Bloco 3: levou dano carregando um pedaço de contexto, ele cai
+    if (b->luci.ativo && b->luci.carregando >= 0) {
+        b->luci.posContexto[b->luci.carregando] = j->pos;
+        b->luci.carregando = -1;
+    }
+
+    // Câmara da Inferência: levou dano carregando um fragmento, ele cai no chão (não some)
+    Silogista *s = &b->silogista;
+    if (s->ativo && s->carregando >= 0) {
+        s->posPeca[s->carregando] = j->pos;
+        s->carregando = -1;
+        RogueAviso(b, "O fragmento caiu! Pegue de novo (E).");
+    }
 }
 
 static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e, float dano, Vector2 direcao)
 {
+    const DefInimigo *def = &DEF_INIMIGOS[e->tipo];
+
     // Selado: o golpe bate no selo e abre o desafio
     if (e->selado) {
         RogueParticulas(b, e->pos, GOLD, 4, 100);
@@ -6025,11 +7464,27 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
         return;
     }
 
-    e->hp -= dano;
-    e->flash = 0.1f;
-    e->empurrao = Vector2Add(e->empurrao, Vector2Scale(direcao, 140.0f));
+    bool protegido;
+    float fator = RogueFatorDanoInimigo(b, e, direcao, &protegido);
 
-    RogueParticulas(b, e->pos, (e->tipo == INIMIGO_GUARDIAO) ? SKYBLUE : MAGENTA, 4, 120);
+    e->hp -= dano * fator;
+    e->flash = 0.1f;
+    e->empurrao = Vector2Add(e->empurrao, Vector2Scale(direcao, 140.0f * def->empurrao));
+
+    RogueParticulas(b, e->pos, protegido ? (Color){ 0, 228, 48, 255 } : def->cor, 4, 120);
+
+    // Reações de cada tipo ao levar dano
+    if (e->tipo == INIMIGO_PHISHER && e->estado == 0)
+        RogueRevelarPhisher(b, e, false);                   // descoberto antes da hora
+
+    if (e->tipo == INIMIGO_CACHE) {
+        e->energia = fminf(CACHE_ENERGIA_MAX, e->energia + dano * fator * CACHE_ARMAZENA);
+        e->semDano = 0.0f;
+        if (e->recuperando > 0.0f) {
+            e->recuperando = 0.0f;                          // a pressão interrompe a recuperação
+            RogueParticulas(b, e->pos, WHITE, 8, 140);
+        }
+    }
 
     if (e->hp > 0.0f)
         return;
@@ -6037,27 +7492,68 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
     // Derrotado
     Vector2 onde = e->pos;
     TipoInimigo tipo = e->tipo;
+    int indice = (int)(e - b->ini);
 
     e->ativo = false;
     b->abatidos++;
-    b->pausaImpacto = 0.04f;
+    if (tipo != INIMIGO_SPAM && tipo != INIMIGO_ISCA)
+        b->pausaImpacto = 0.04f;
 
-    RogueParticulas(b, onde, (tipo == INIMIGO_GUARDIAO) ? SKYBLUE : MAGENTA, 18, 220);
+    RogueParticulas(b, onde, def->cor, (tipo == INIMIGO_SPAM) ? 6 : 18, 220);
     RogueParticulas(b, onde, WHITE, 6, 160);
-    TocarSomTom(sfxPegar, (tipo == INIMIGO_GUARDIAO) ? 0.8f : 1.2f);
+    TocarSomTom(sfxPegar, def->tomSom);
 
-    if (tipo == INIMIGO_ECO)
+    // Ecos falsos verificados (destruídos a tempo) estabilizam a Luci
+    if (tipo == INIMIGO_ECO && ++b->ecosDestruidos % ECOS_PARA_REPARO == 0)
+        RogueMudarEstabilidade(b, 1, "ecos falsos verificados");
+
+    if (tipo == INIMIGO_ECO || tipo == INIMIGO_SPAM)
         return;
 
-    AlterarPontos(prog, (tipo == INIMIGO_GUARDIAO) ? PONTOS_GUARDIAO : PONTOS_FRAGMENTO);
+    if (tipo == INIMIGO_ISCA) {
+        RogueAviso(b, "CÓPIA FALSA! O verdadeiro é outro.");
+        return;
+    }
+
+    // As cópias somem junto com o Phisher verdadeiro
+    if (tipo == INIMIGO_PHISHER)
+        for (int i = 0; i < MAX_INIMIGOS; i++)
+            if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_ISCA && b->ini[i].dono == indice) {
+                b->ini[i].ativo = false;
+                RogueParticulas(b, b->ini[i].pos, GOLD, 10, 140);
+            }
+
+    AlterarPontos(prog, def->pontos);
 
     // Recursos: dado corrompido derrotado libera conhecimento
-    int chanceFC = (tipo == INIMIGO_GUARDIAO) ? CHANCE_FC_GUARDIAO : CHANCE_FC_FRAGMENTO;
-    if (GetRandomValue(1, 100) <= chanceFC)         RogueSoltar(b, onde, true, ITEM_ANTIVIRUS);
-    if (GetRandomValue(1, 100) <= CHANCE_ANTIVIRUS) RogueSoltar(b, onde, false, ITEM_ANTIVIRUS);
+    if (GetRandomValue(1, 100) <= def->chanceFC)        RogueSoltar(b, onde, true, ITEM_ANTIVIRUS);
+    if (GetRandomValue(1, 100) <= CHANCE_ANTIVIRUS)     RogueSoltar(b, onde, false, ITEM_ANTIVIRUS);
+    if (GetRandomValue(1, 100) <= CHANCE_TEMPORARIO)    RogueSoltar(b, onde, false, RogueSortearTemporario());
+
+    // Botnet Reverso: o inimigo derrotado solta um pacote teleguiado (só uma vez por morte,
+    // nunca a partir de um golpe secundário e com um intervalo entre um e outro)
+    if (RogueQtd(&b->j, ITEM_BOTNET_REVERSO) > 0 && !b->golpeSecundario && b->j.recargaBotnet <= 0.0f &&
+        GetRandomValue(1, 100) <= BOTNET_REVERSO_CHANCE) {
+        TipoArma arma = RogueArmaAtual(&b->j);
+        Projetil *q = RogueDisparar(b, onde, (Vector2){ 0, -1 }, 300.0f, DEF_ARMAS[arma].dano * RogueFatorDano(b) * BOTNET_REVERSO_DANO, 4.0f, true);
+        if (q != NULL) {
+            q->guiado = true;
+            q->secundario = true;
+            q->vida = 1.5f;
+            q->ultimoAlvo = indice + 1;
+        }
+        b->j.recargaBotnet = BOTNET_REVERSO_RECARGA;
+    }
 
     if (tipo == INIMIGO_FRAGMENTO && GetRandomValue(1, 100) <= CHANCE_ECO_FALSO)
         RogueCriarInimigo(b, INIMIGO_ECO, onde);          // a informação falsa ecoa
+
+    // Spammer: a notificação se multiplica em dois fragmentos de spam
+    if (tipo == INIMIGO_SPAMMER && GetRandomValue(1, 100) <= SPAMMER_CHANCE_DIVIDIR)
+        for (int k = 0; k < 2; k++) {
+            Inimigo *f = RogueCriarInimigo(b, INIMIGO_SPAM, (Vector2){ onde.x + ((k == 0) ? -8.0f : 8.0f), onde.y });
+            if (f != NULL) f->empurrao = (Vector2){ (k == 0) ? -160.0f : 160.0f, 0.0f };
+        }
 }
 
 // O Alucinador só leva dano na fase 1 ou com o escudo aberto (fase 2)
@@ -6076,6 +7572,102 @@ static void RogueFerirChefe(Biblioteca *b, float dano, Vector2 onde)
     c->hp -= dano;
     c->flash = 0.08f;
     RogueParticulas(b, onde, MAGENTA, 3, 120);
+}
+
+// O Alucinador leva dano agora? (o Disparo Dedutivo só marca quem pode ser ferido)
+static bool RogueChefeVulneravel(const ChefeRogue *c)
+{
+    return c->ativo && c->apresentado && c->morrendo <= 0.0f && (c->fase == 1 || c->janela > 0.0f);
+}
+
+// O Silogista só leva dano sem a armadura lógica. Devolve true se feriu.
+static bool RogueFerirSilogista(Biblioteca *b, float dano, Vector2 onde)
+{
+    Silogista *s = &b->silogista;
+
+    if (!s->ativo || !s->apresentado || s->morrendo > 0.0f)
+        return false;
+
+    if (s->etapa != SIL_VULNERAVEL) {
+        RogueParticulas(b, onde, (Color){ 0, 228, 255, 255 }, 3, 90);     // bateu na armadura lógica
+        return false;
+    }
+
+    s->hp -= dano;
+    s->flash = 0.08f;
+    RogueParticulas(b, onde, PURPLE, 3, 120);
+    return true;
+}
+
+// ---------- Selo da Inferência: DISPARO DEDUTIVO (Modus Ponens) ----------
+//   1º acerto num inimigo: marca P → Q.  2º acerto: confirma P.
+//   P → Q e P, logo Q: um projétil de energia Q cai no alvo com dano extra.
+
+// Onde está o alvo de um projétil Q (false = o alvo sumiu)
+static bool RoguePosAlvoDedutivo(const Biblioteca *b, int alvo, Vector2 *pos)
+{
+    if (alvo > 0) {
+        if (!b->ini[alvo - 1].ativo) return false;
+        *pos = b->ini[alvo - 1].pos;
+        return true;
+    }
+
+    if (b->chefe.ativo)     { *pos = b->chefe.pos;     return true; }
+    if (b->silogista.ativo) { *pos = b->silogista.pos; return true; }
+    if (b->luci.ativo)      { *pos = b->luci.pos;      return true; }
+    return false;
+}
+
+// Um tiro comum acertou um alvo que pode ser ferido (alvo: k+1 = inimigo k, -1 = chefe da sala)
+static void RogueMarcarDedutivo(Biblioteca *b, int *marca, float *tempo, int alvo, Vector2 pos)
+{
+    JogadorRogue *j = &b->j;
+
+    if (!j->seloInferencia || j->recargaDedutivo > 0.0f || *marca == 2)
+        return;
+
+    *tempo = DEDUTIVO_MARCA_DURACAO;
+
+    if (*marca == 0) {
+        *marca = 1;                             // premissa 1: P → Q
+        TocarSomTom(sfxSelecao, 1.6f);
+        return;
+    }
+
+    // Premissa 2: P. Conclusão: Q
+    *marca = 2;
+    *tempo = 0.6f;                              // os símbolos ficam um instante na tela
+    j->recargaDedutivo = DEDUTIVO_RECARGA;
+
+    Vector2 origem = { pos.x, fmaxf(ARENA_ROGUE.y + 8.0f, pos.y - 70.0f) };
+    Projetil *q = RogueDisparar(b, origem, (Vector2){ 0, 1 }, DEDUTIVO_VEL, RogueDanoTiro(b) * DEDUTIVO_DANO, 7.0f, true);
+    if (q != NULL) q->alvoDedutivo = alvo;
+
+    RogueParticulas(b, origem, GOLD, 12, 140);
+    TocarSomTom(sfxAcerto, 1.5f);
+}
+
+static void PassarMarcaDedutiva(int *marca, float *tempo, float dt)
+{
+    if (*marca == 0)
+        return;
+
+    *tempo -= dt;
+    if (*tempo <= 0.0f)
+        *marca = 0;
+}
+
+static void RogueAtualizarDedutivo(Biblioteca *b, float dt)
+{
+    if (b->j.recargaDedutivo > 0.0f)
+        b->j.recargaDedutivo -= dt;
+
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        PassarMarcaDedutiva(&b->ini[i].marca, &b->ini[i].tempoMarca, dt);
+
+    PassarMarcaDedutiva(&b->chefe.marca, &b->chefe.tempoMarca, dt);
+    PassarMarcaDedutiva(&b->silogista.marca, &b->silogista.tempoMarca, dt);
+    PassarMarcaDedutiva(&b->luci.marca, &b->luci.tempoMarca, dt);
 }
 
 static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
@@ -6109,9 +7701,8 @@ static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
         Vector2 dir = Vector2Normalize(Vector2Subtract(e->pos, j->pos));
 
         if (e->tipo != INIMIGO_ECO) {
-            e->estado = 0;
-            e->recarga = (e->tipo == INIMIGO_GUARDIAO) ? GUARDIAO_INTERVALO : FRAGMENTO_RECARGA;
-            e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, 260.0f));
+            RogueInterromperInimigo(e);
+            e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, 260.0f * DEF_INIMIGOS[e->tipo].empurrao));
         }
 
         RogueFerirInimigo(b, prog, e, PULSO_DANO, dir);
@@ -6120,7 +7711,433 @@ static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
     if (b->chefe.ativo && Vector2Distance(b->chefe.pos, j->pos) < PULSO_RAIO + CHEFE_RAIO)
         RogueFerirChefe(b, PULSO_DANO, b->chefe.pos);
 
+    if (b->silogista.ativo && Vector2Distance(b->silogista.pos, j->pos) < PULSO_RAIO + SIL_RAIO)
+        RogueFerirSilogista(b, PULSO_DANO, b->silogista.pos);
+
+    if (b->luci.ativo && Vector2Distance(b->luci.pos, j->pos) < PULSO_RAIO + LUCI_RAIO)
+        RogueFerirLuciChefe(b, PULSO_DANO, b->luci.pos);
+
     TocarSomTom(sfxAcerto, 0.7f);
+}
+
+// ---------- Armas, itens temporários e upgrades (expansão) ----------
+
+static void RogueAnel(Biblioteca *b, Vector2 pos, float raio, Color cor)
+{
+    for (int i = 0; i < MAX_ANEIS; i++)
+        if (b->aneis[i].tempo <= 0.0f) {
+            b->aneis[i] = (AnelEfeito){ pos, raio, 0.35f, cor };
+            return;
+        }
+}
+
+// Inimigo mais perto de um ponto (dentro do raio), sem contar "ignorar" (-1 = nenhum)
+static int RogueInimigoMaisPerto(const Biblioteca *b, Vector2 pos, float raio, int ignorar)
+{
+    int melhor = -1;
+    float menor = raio;
+
+    for (int k = 0; k < MAX_INIMIGOS; k++) {
+        const Inimigo *e = &b->ini[k];
+        if (!e->ativo || k == ignorar || e->surgindo > 0.0f || e->selado || e->tipo == INIMIGO_ISCA)
+            continue;
+        float d = Vector2Distance(pos, e->pos);
+        if (d < menor) { menor = d; melhor = k; }
+    }
+
+    return melhor;
+}
+
+// Dano em área (Orbe de Buffer e Pulso de Firewall). Empurra para fora do centro.
+static void RogueDanoArea(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro, float raio, float dano, float empurrao)
+{
+    for (int k = 0; k < MAX_INIMIGOS; k++) {
+
+        Inimigo *e = &b->ini[k];
+
+        if (!e->ativo || e->surgindo > 0.0f || Vector2Distance(centro, e->pos) > raio + e->raio)
+            continue;
+
+        Vector2 dir = Vector2Subtract(e->pos, centro);
+        dir = (Vector2Length(dir) > 0.01f) ? Vector2Normalize(dir) : (Vector2){ 0, -1 };
+
+        bool selado = e->selado;
+        RogueFerirInimigo(b, prog, e, dano, dir);
+        if (e->ativo && !selado)
+            e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, empurrao * DEF_INIMIGOS[e->tipo].empurrao));
+    }
+
+    if (b->chefe.ativo && Vector2Distance(centro, b->chefe.pos) < raio + CHEFE_RAIO)
+        RogueFerirChefe(b, dano, b->chefe.pos);
+
+    if (b->silogista.ativo && Vector2Distance(centro, b->silogista.pos) < raio + SIL_RAIO)
+        RogueFerirSilogista(b, dano, b->silogista.pos);
+
+    if (b->luci.ativo && Vector2Distance(centro, b->luci.pos) < raio + LUCI_RAIO)
+        RogueFerirLuciChefe(b, dano, b->luci.pos);
+}
+
+static void RogueExplodirOrbe(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro)
+{
+    RogueDanoArea(b, prog, centro, ORBE_RAIO_EXPLOSAO, ORBE_DANO_EXPLOSAO * RogueFatorDano(b), 120.0f);
+    RogueAnel(b, centro, ORBE_RAIO_EXPLOSAO, DEF_ARMAS[ARMA_ORBE].cor);
+    RogueParticulas(b, centro, DEF_ARMAS[ARMA_ORBE].cor, 20, 220);
+    TocarSomTom(sfxAcerto, 0.6f);
+}
+
+// Pulso de Firewall (arma): onda em volta que fere, empurra e apaga as balas inimigas
+static void RoguePulsoFirewall(Biblioteca *b, ProgressoCorredor *prog, float dano)
+{
+    JogadorRogue *j = &b->j;
+    float raio = DEF_ARMAS[ARMA_PULSO_FW].alcance;
+
+    for (int i = 0; i < MAX_PROJETEIS; i++) {
+        Projetil *p = &b->proj[i];
+        if (p->ativo && !p->doJogador && Vector2Distance(p->pos, j->pos) < raio) {
+            p->ativo = false;
+            RogueParticulas(b, p->pos, DEF_ARMAS[ARMA_PULSO_FW].cor, 3, 80);
+        }
+    }
+
+    RogueDanoArea(b, prog, j->pos, raio, dano, PULSO_FW_EMPURRAO);
+    RogueAnel(b, j->pos, raio, DEF_ARMAS[ARMA_PULSO_FW].cor);
+    TocarSomTom(sfxAcerto, 0.5f);
+}
+
+// Fragmentação de Pacotes: o acerto se divide em pedaços que vão para os inimigos mais perto
+static void RogueFragmentar(Biblioteca *b, Vector2 pos, float dano, int atingido)
+{
+    unsigned int usados = 0;
+
+    for (int f = 0; f < FRAGMENTACAO_PEDACOS; f++) {
+
+        int alvo = -1;
+        float menor = FRAGMENTACAO_ALCANCE;
+        for (int k = 0; k < MAX_INIMIGOS; k++) {
+            const Inimigo *e = &b->ini[k];
+            if (!e->ativo || k == atingido || (usados & (1u << (k % 32))) || e->surgindo > 0.0f) continue;
+            if (Vector2Distance(pos, e->pos) < menor) { menor = Vector2Distance(pos, e->pos); alvo = k; }
+        }
+
+        Vector2 dir;
+        if (alvo >= 0) {
+            usados |= 1u << (alvo % 32);
+            dir = Vector2Normalize(Vector2Subtract(b->ini[alvo].pos, pos));
+        } else {
+            float ang = (float)GetRandomValue(0, 360) * DEG2RAD;
+            dir = (Vector2){ cosf(ang), sinf(ang) };
+        }
+
+        Projetil *q = RogueDisparar(b, pos, dir, 480.0f, dano, 3.0f, true);
+        if (q != NULL) {
+            q->secundario = true;                       // fragmento não se fragmenta de novo
+            q->alcance = FRAGMENTACAO_ALCANCE;
+            q->ultimoAlvo = atingido + 1;
+        }
+    }
+
+    RogueParticulas(b, pos, LIME, 8, 140);
+}
+
+// Analisador Heurístico: devolve o multiplicador deste acerto (alvo: k+1 = inimigo, -1 = chefe)
+static float RogueAnalisar(Biblioteca *b, int alvo)
+{
+    JogadorRogue *j = &b->j;
+
+    if (RogueQtd(j, ITEM_ANALISADOR) == 0)
+        return 1.0f;
+
+    j->tempoAnalise = ANALISADOR_TEMPO;
+
+    if (j->alvoAnalise != alvo) {                       // mudou de alvo: recomeça
+        j->alvoAnalise = alvo;
+        j->marcasAnalise = 1;
+        return 1.0f;
+    }
+
+    if (j->marcasAnalise >= ANALISADOR_MARCAS) {         // padrão identificado: golpe reforçado
+        j->marcasAnalise = 0;
+        TocarSomTom(sfxAcerto, 1.6f);
+        return 1.0f + ANALISADOR_BONUS;
+    }
+
+    j->marcasAnalise++;
+    return 1.0f;
+}
+
+// Disparo contado para a Fragmentação de Pacotes
+static void RogueContarDisparo(JogadorRogue *j)
+{
+    if (RogueQtd(j, ITEM_FRAGMENTACAO) == 0 || j->fragmentacaoArmada)
+        return;
+
+    if (++j->disparos >= FRAGMENTACAO_A_CADA) {
+        j->disparos = 0;
+        j->fragmentacaoArmada = true;
+    }
+}
+
+static Projetil *RogueTiroArma(Biblioteca *b, TipoArma arma, Vector2 dir, float dano)
+{
+    const JogadorRogue *j = &b->j;
+    const DefArma *a = &DEF_ARMAS[arma];
+    Vector2 cano = Vector2Add(j->pos, Vector2Add((Vector2){ 0, 4 }, Vector2Scale(j->mira, 20.0f)));
+    Projetil *p = RogueDisparar(b, cano, dir, a->velocidade, dano, a->raio, true);
+
+    if (p != NULL) {
+        p->arma = arma;
+        p->alcance = a->alcance;
+    }
+    return p;
+}
+
+// Dispara a arma equipada. "atirando" = botão ou seta segurados neste quadro.
+static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando, float dt)
+{
+    JogadorRogue *j = &b->j;
+    TipoArma arma = RogueArmaAtual(j);
+    const DefArma *a = &DEF_ARMAS[arma];
+    float fator = RogueFatorDano(b);
+    Vector2 cano = Vector2Add(j->pos, Vector2Add((Vector2){ 0, 4 }, Vector2Scale(j->mira, 20.0f)));
+
+    // Fluxo Contínuo: esfria quando não está atirando com ela; superaquecida, só volta fria
+    if (!(atirando && arma == ARMA_FLUXO) || j->superaquecida) {
+        j->calor -= (j->superaquecida ? FLUXO_ESFRIA_TRAVADO : FLUXO_ESFRIA) * dt;
+        if (j->calor <= 0.0f) { j->calor = 0.0f; j->superaquecida = false; }
+    }
+
+    if (j->tempoEsquiva > 0.0f)
+        return;
+
+    // Vetor de Compilação: segurar carrega, soltar dispara (mais carga, mais dano)
+    if (arma == ARMA_VETOR) {
+        if (atirando) {
+            if (j->cronoTiro <= 0.0f) j->carga = fminf(VETOR_CARGA_MAX, j->carga + dt);
+            return;
+        }
+        if (j->carga >= VETOR_CARGA_MIN) {
+            float k = j->carga / VETOR_CARGA_MAX;
+            Projetil *p = RogueTiroArma(b, arma, j->mira, (a->dano + (VETOR_DANO_MAX - a->dano) * k) * fator);
+            if (p != NULL) p->perfura = VETOR_ATRAVESSA;
+            RogueParticulas(b, cano, a->cor, 6 + (int)(10 * k), 140);
+            TocarSomTom(sfxTiro, 0.55f);
+            j->cronoTiro = RogueIntervaloArma(j, arma);
+            RogueContarDisparo(j);
+        }
+        j->carga = 0.0f;
+        return;
+    }
+
+    if (!atirando || j->cronoTiro > 0.0f || (arma == ARMA_FLUXO && j->superaquecida))
+        return;
+
+    if (arma == ARMA_PULSO_FW) {
+        RoguePulsoFirewall(b, prog, a->dano * fator);
+    }
+    else if (arma == ARMA_FRAGMENTADORA) {
+        for (int k = 0; k < a->projeteis; k++) {
+            float ang = ((float)k / (float)(a->projeteis - 1) - 0.5f) * a->abertura + (float)GetRandomValue(-3, 3);
+            RogueTiroArma(b, arma, Vector2Rotate(j->mira, ang * DEG2RAD), a->dano * fator);
+        }
+        TocarSomTom(sfxTiro, 0.75f);
+    }
+    else {
+        float espalhar = (float)GetRandomValue(-10, 10) / 10.0f * (a->abertura / 2.0f) * DEG2RAD;
+        Projetil *p = RogueTiroArma(b, arma, Vector2Rotate(j->mira, espalhar), a->dano * fator);
+        if (p != NULL && arma == ARMA_ROTEADOR) {
+            p->guiado = true;
+            p->ricochetes = ROTEADOR_RICOCHETES;
+            p->vida = ROTEADOR_VIDA;
+        }
+        TocarSomTom(sfxTiro, (arma == ARMA_FLUXO) ? 1.4f : ((arma == ARMA_ORBE) ? 0.6f : 1.0f));
+    }
+
+    if (arma == ARMA_FLUXO) {
+        j->calor += FLUXO_CALOR_TIRO;
+        if (j->calor >= 1.0f) {
+            j->calor = 1.0f;
+            j->superaquecida = true;
+            RogueAviso(b, "FLUXO CONTÍNUO SUPERAQUECIDO!");
+            TocarSomTom(sfxErro, 1.2f);
+        }
+    }
+
+    RogueParticulas(b, cano, a->cor, 2, 60);
+    j->cronoTiro = RogueIntervaloArma(j, arma);
+    RogueContarDisparo(j);
+}
+
+// Fim do alcance ou do tempo de vida: o Orbe explode, os outros somem
+static void RogueFimProjetil(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
+{
+    p->ativo = false;
+
+    if (p->doJogador && p->arma == ARMA_ORBE && !p->secundario)
+        RogueExplodirOrbe(b, prog, p->pos);
+    else
+        RogueParticulas(b, p->pos, p->doJogador ? DEF_ARMAS[p->arma].cor : ORANGE, 2, 60);
+}
+
+// Um projétil do jogador acertou o inimigo k: dano, efeitos e o que acontece com o projétil
+static void RogueAcertarInimigo(Biblioteca *b, ProgressoCorredor *prog, Projetil *p, int k)
+{
+    Inimigo *e = &b->ini[k];
+    bool selado = e->selado;
+    bool principal = (p->alvoDedutivo == 0 && !p->secundario);
+    Vector2 dir = Vector2Normalize(p->vel);
+    float dano = p->dano;
+
+    if (principal && !selado)
+        dano *= RogueAnalisar(b, k + 1);
+
+    b->golpeSecundario = !principal;
+    RogueFerirInimigo(b, prog, e, dano, dir);
+    b->golpeSecundario = false;
+
+    if (e->ativo && !selado && p->arma == ARMA_FRAGMENTADORA)
+        e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, 140.0f * (FRAGMENTADORA_EMPURRAO - 1.0f) * DEF_INIMIGOS[e->tipo].empurrao));
+
+    if (e->ativo && !selado && principal)
+        RogueMarcarDedutivo(b, &e->marca, &e->tempoMarca, k + 1, e->pos);
+
+    // Fragmentação de Pacotes: o próximo acerto depois de 6 disparos se divide
+    if (principal && !selado && b->j.fragmentacaoArmada) {
+        b->j.fragmentacaoArmada = false;
+        RogueFragmentar(b, p->pos, p->dano * FRAGMENTACAO_DANO, k);
+    }
+
+    p->ultimoAlvo = k + 1;
+
+    if (p->arma == ARMA_ORBE && !p->secundario) {
+        p->ativo = false;
+        RogueExplodirOrbe(b, prog, p->pos);
+    }
+    else if (p->perfura > 0 && !selado) {
+        p->perfura--;                                   // Vetor: segue em frente
+        RogueParticulas(b, p->pos, WHITE, 6, 160);
+    }
+    else if (p->ricochetes > 0) {
+        int proximo = RogueInimigoMaisPerto(b, p->pos, ROTEADOR_RICOCHETE_RAIO, k);
+        if (proximo >= 0) {
+            p->ricochetes--;
+            p->dano *= ROTEADOR_PERDA;
+            p->vel = Vector2Scale(Vector2Normalize(Vector2Subtract(b->ini[proximo].pos, p->pos)), DEF_ARMAS[ARMA_ROTEADOR].velocidade);
+            p->vida = ROTEADOR_VIDA;
+            p->alcance = DEF_ARMAS[ARMA_ROTEADOR].alcance;
+            RogueParticulas(b, p->pos, DEF_ARMAS[ARMA_ROTEADOR].cor, 6, 120);
+        } else {
+            p->ativo = false;
+        }
+    }
+    else {
+        p->ativo = false;
+    }
+}
+
+// ----- Itens temporários -----
+
+static void RogueLimpezaCache(Biblioteca *b)
+{
+    JogadorRogue *j = &b->j;
+
+    // Some com as balas inimigas (até as dos chefes) ...
+    for (int i = 0; i < MAX_PROJETEIS; i++) {
+        Projetil *p = &b->proj[i];
+        if (p->ativo && !p->doJogador) {
+            p->ativo = false;
+            RogueParticulas(b, p->pos, SKYBLUE, 2, 60);
+        }
+    }
+
+    // ... e atordoa os inimigos comuns por perto (os chefes seguem o padrão deles)
+    for (int k = 0; k < MAX_INIMIGOS; k++) {
+        Inimigo *e = &b->ini[k];
+        if (!e->ativo || Vector2Distance(e->pos, j->pos) > LIMPEZA_RAIO)
+            continue;
+        RogueInterromperInimigo(e);
+        if (e->atordoado < LIMPEZA_ATORDOA) e->atordoado = LIMPEZA_ATORDOA;
+    }
+
+    RogueAnel(b, j->pos, LIMPEZA_RAIO, SKYBLUE);
+}
+
+static void RogueAtivarTemporario(Biblioteca *b, TipoItem it)
+{
+    JogadorRogue *j = &b->j;
+
+    switch (it) {
+        // Pegar de novo só renova o tempo (o bônus não se soma)
+        case ITEM_OVERCLOCK:         j->efeito[EFEITO_OVERCLOCK] = EFEITO_OVERCLOCK_DURACAO; break;
+        case ITEM_FIREWALL_PORTATIL: j->efeito[EFEITO_ESCUDO] = ESCUDO_PORTATIL_DURACAO;   break;
+        case ITEM_CAMPO_LATENCIA:    j->efeito[EFEITO_LATENCIA] = LATENCIA_DURACAO;         break;
+        case ITEM_LIMPEZA_CACHE:     RogueLimpezaCache(b);                                  break;
+
+        case ITEM_PROXY: {
+            Vector2 lado = { -j->mira.y, j->mira.x };
+            j->proxyPos = Vector2Add(j->pos, Vector2Scale(lado, 50.0f));
+            RogueEmpurrarParaFora(&j->proxyPos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
+            j->proxyHp = PROXY_HP;
+            j->efeito[EFEITO_PROXY] = PROXY_DURACAO;
+        } break;
+
+        case ITEM_PACOTE_INTEGRIDADE:
+            j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * PACOTE_INTEGRIDADE_CURA);
+            RogueParticulas(b, j->pos, LIME, 20, 160);
+            break;
+
+        default:
+            break;
+    }
+
+    RogueAviso(b, ITENS[it].nome);
+    Telemetria("rogue_temporario", ITENS[it].nome, 0.0f, 0);
+}
+
+// Uma sala vencida (combate ou Silogista): conta para o Cache Persistente
+static void RogueSalaConcluida(Biblioteca *b)
+{
+    JogadorRogue *j = &b->j;
+
+    j->salasConcluidas++;
+
+    if (RogueQtd(j, ITEM_CACHE_PERSISTENTE) > 0 && j->salasConcluidas % CACHE_PERSISTENTE_SALAS == 0) {
+        j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * CACHE_PERSISTENTE_CURA);
+        RogueParticulas(b, j->pos, LIME, 16, 140);
+        RogueAviso(b, "CACHE PERSISTENTE: integridade recuperada");
+    }
+}
+
+// Tempos dos efeitos, marcas do Analisador e os anéis
+static void RogueAtualizarEfeitos(Biblioteca *b, float dt)
+{
+    JogadorRogue *j = &b->j;
+
+    for (int i = 0; i < NUM_EFEITOS; i++)
+        if (j->efeito[i] > 0.0f) j->efeito[i] -= dt;
+
+    if (j->efeito[EFEITO_PROXY] > 0.0f && j->proxyHp <= 0.0f) {
+        j->efeito[EFEITO_PROXY] = 0.0f;
+        RogueParticulas(b, j->proxyPos, SKYBLUE, 16, 160);
+    }
+
+    if (j->recargaBotnet > 0.0f) j->recargaBotnet -= dt;
+
+    // Analisador: as marcas somem com o tempo ou se o alvo sumiu
+    if (j->alvoAnalise != 0) {
+        j->tempoAnalise -= dt;
+        bool sumiu = (j->alvoAnalise > 0) ? !b->ini[j->alvoAnalise - 1].ativo : !(b->chefe.ativo || b->silogista.ativo);
+        if (j->tempoAnalise <= 0.0f || sumiu) { j->alvoAnalise = 0; j->marcasAnalise = 0; }
+    }
+
+    for (int i = 0; i < MAX_ANEIS; i++)
+        if (b->aneis[i].tempo > 0.0f) b->aneis[i].tempo -= dt;
+}
+
+// Inimigos que perseguem o jogador (e por isso caem na Proxy-Isca)
+static bool RoguePerseguidor(TipoInimigo t)
+{
+    return t == INIMIGO_FRAGMENTO || t == INIMIGO_SPAMMER || t == INIMIGO_SPAM || t == INIMIGO_OVERCLOCK ||
+           t == INIMIGO_CACHE || t == INIMIGO_PHISHER || t == INIMIGO_ISCA;
 }
 
 // ---------- ALUCINADOR ----------
@@ -6225,6 +8242,8 @@ static void RogueNovaAfirmacao(ChefeRogue *c)
     c->dicaAfirm[0] = '\0';
     c->dicaAfirmLuci = false;
     c->luciMentiuAfirm = false;
+    c->opcaoDicaAfirm = -1;
+    c->verificouAfirm = false;
 }
 
 // C = CONFIÁVEL, F = PROBLEMÁTICA. Acertou: escudo aberto. Errou: ataque especial.
@@ -6248,7 +8267,18 @@ static void RogueResponderAfirmacao(Biblioteca *b, ProgressoCorredor *prog, bool
     c->mostrandoResultado = true;
     c->acertouAfirm = certo;
     c->tempoAfirm = TEMPO_RESULTADO_AFIRM;
-    b->desafiosRespondidos++;                   // a Luci fica mais corrompida
+    b->desafiosRespondidos++;
+    RogueRegistrarResposta(b, certo);
+
+    // Confiar ou verificar (como nos desafios)
+    if (!tempoEsgotado && c->dicaAfirmLuci && c->opcaoDicaAfirm >= 0 && !c->verificouAfirm && (disseConfiavel ? 1 : 0) == c->opcaoDicaAfirm) {
+        b->perm->confiouCego++;
+        RogueHabitoLuci(b, true);
+        if (c->luciMentiuAfirm) { b->perm->confiouAlucinacao++; RogueMudarEstabilidade(b, -1, "você acreditou na alucinação"); }
+        else if (certo)         AlterarPontos(prog, BONUS_CONFIAR_PONTOS);
+    }
+    if (certo && !c->dicaAfirmLuci)
+        RogueMudarEstabilidade(b, 1, "resolvido sem ajuda");
 
     if (certo) {
         c->janela = CHEFE_JANELA;
@@ -6298,15 +8328,44 @@ static void RogueAtualizarAfirmacoes(Biblioteca *b, ProgressoCorredor *prog, flo
         TocarSomTom(sfxPegar, 1.3f);
     }
 
-    // Dica da Luci: grátis, mas ela também pode estar alucinando
+    // Dica da Luci: custa estabilidade e pode vir alucinada (sem motivo e com certeza absoluta)
     if (IsKeyPressed(KEY_H) && !c->dicaAfirmLuci) {
         c->dicaAfirmLuci = true;
-        c->luciMentiuAfirm = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
-        if (c->luciMentiuAfirm)
-            snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: Tenho certeza: é %s!", a->confiavel ? "PROBLEMÁTICA" : "CONFIÁVEL");
-        else
-            snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: %s", a->dica);
+        if (RogueEstab(b) <= 0) {
+            c->opcaoDicaAfirm = -1;
+            snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: Estou sobrecarregada... decida sem mim.");
+        } else {
+            RogueMudarEstabilidade(b, -1, NULL);
+            c->luciMentiuAfirm = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
+            bool diz = c->luciMentiuAfirm ? !a->confiavel : a->confiavel;
+            c->opcaoDicaAfirm = diz ? 1 : 0;
+            if (c->luciMentiuAfirm)
+                snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: É %s. Tenho 100%% de certeza!", diz ? "CONFIÁVEL" : "PROBLEMÁTICA");
+            else
+                snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "Luci: Eu diria %s. %s", diz ? "CONFIÁVEL" : "PROBLEMÁTICA", a->dica);
+        }
         TocarSom(sfxSelecao);
+    }
+
+    // V: verificar a dica da Luci (Lente ou 1 Fragmento)
+    if (IsKeyPressed(KEY_V) && c->dicaAfirmLuci && c->opcaoDicaAfirm >= 0 && !c->verificouAfirm) {
+        bool pagou = true;
+        if (b->j.itens[ITEM_LENTE] > 0)                       b->j.itens[ITEM_LENTE]--;
+        else if (b->perm->fragmentos >= CUSTO_VERIFICAR_FC)   b->perm->fragmentos -= CUSTO_VERIFICAR_FC;
+        else { pagou = false; RogueRecadoLuci(b, "Sem Lente nem Fragmento para verificar."); }
+
+        if (pagou) {
+            c->verificouAfirm = true;
+            b->perm->verificou++;
+            RogueHabitoLuci(b, false);
+            if (c->luciMentiuAfirm) {
+                b->perm->alucinacoesPegas++;
+                snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "VERIFICADO: a dica da Luci NÃO confere!");
+                RogueMudarEstabilidade(b, 1, "você pegou a alucinação");
+            } else {
+                snprintf(c->dicaAfirm, sizeof(c->dicaAfirm), "VERIFICADO: confere. %s", a->dica);
+            }
+        }
     }
 
     if (IsKeyPressed(KEY_C))           RogueResponderAfirmacao(b, prog, true, false);
@@ -6444,11 +8503,1353 @@ static void RogueAtualizarChefe(Biblioteca *b, ProgressoCorredor *prog, float dt
         RogueAtualizarAfirmacoes(b, prog, dt);
 }
 
+// ---------- O SILOGISTA ----------
+
+static bool OperarLogica(OperadorLogico op, bool a, bool b)
+{
+    switch (op) {
+        case OP_E:   return a && b;
+        case OP_OU:  return a || b;
+        case OP_NAO: return !a;
+        case OP_SE:  return !a || b;
+        default:     return a == b;     // OP_SSE
+    }
+}
+
+static int EntradasPorta(const PortaLogica *p)
+{
+    return (p->op == OP_NAO) ? 1 : 2;
+}
+
+// Valor de um sinal do circuito (0 = p, 1 = q, 2+k = saída da porta k).
+// Devolve false se o sinal ainda não chegou (porta não ativada).
+static bool SinalCircuito(const Silogista *s, int sinal, bool *valor)
+{
+    if (sinal < 2) {
+        *valor = s->valor[sinal];
+        return true;
+    }
+
+    *valor = s->saida[sinal - 2];
+    return s->ativada[sinal - 2];
+}
+
+// Resultado da expressão inteira para uns valores de p e q (as portas já estão em ordem)
+static bool ResultadoCircuito(const CircuitoDef *c, const bool valor[2])
+{
+    bool saida[MAX_PORTAS_CIRCUITO] = { false };
+
+    for (int k = 0; k < c->numPortas; k++) {
+        const PortaLogica *p = &c->porta[k];
+        bool e[2];
+        for (int i = 0; i < 2; i++)
+            e[i] = (p->entrada[i] < 2) ? valor[p->entrada[i]] : saida[p->entrada[i] - 2];
+        saida[k] = OperarLogica(p->op, e[0], e[1]);
+    }
+
+    return saida[c->numPortas - 1];
+}
+
+// Posição de um elemento do circuito (0 = p, 1 = q, 2+k = porta k)
+static Vector2 SilPosElemento(int e)
+{
+    const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+    return (e < 2) ? c->posTerminal[e] : c->porta[e - 2].pos;
+}
+
+static int SilNumElementos(void)
+{
+    return 2 + CIRCUITO_SILOGISTA.numPortas;
+}
+
+// Os fragmentos vão para lugares sorteados da arena (nenhum fica encaixado)
+static void SilEspalharPecas(Silogista *s)
+{
+    int ordem[NUM_PONTOS_PECAS_SIL];
+
+    for (int i = 0; i < NUM_PONTOS_PECAS_SIL; i++)
+        ordem[i] = i;
+
+    for (int i = NUM_PONTOS_PECAS_SIL - 1; i > 0; i--) {
+        int k = GetRandomValue(0, i);
+        int t = ordem[i]; ordem[i] = ordem[k]; ordem[k] = t;
+    }
+
+    for (int k = 0; k < NUM_ENCAIXES; k++) {
+        s->posPeca[k] = PONTOS_PECAS_SIL[ordem[k]];
+        s->encaixe[k] = -1;
+    }
+
+    s->carregando = -1;
+}
+
+static bool SilPecaNoChao(const Silogista *s, int k)
+{
+    if (s->carregando == k)
+        return false;
+
+    for (int e = 0; e < NUM_ENCAIXES; e++)
+        if (s->encaixe[e] == k)
+            return false;
+
+    return true;
+}
+
+// Rodada 1: o núcleo aceita o resultado com os valores dados (é só calcular na ordem).
+// Rodada 2: o núcleo exige o contrário, e o jogador escolhe p e q.
+static void SilPrepararRodada(Silogista *s, int rodada)
+{
+    const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+
+    s->rodada = rodada;
+    s->valor[0] = c->inicial[0];
+    s->valor[1] = c->inicial[1];
+    memset(s->ativada, 0, sizeof(s->ativada));
+    memset(s->travado, 0, sizeof(s->travado));
+
+    bool resultado = ResultadoCircuito(c, s->valor);
+    s->exigido = (rodada == 1) ? resultado : !resultado;
+}
+
+static void RogueIniciarSilogista(Biblioteca *b)
+{
+    Silogista *s = &b->silogista;
+    char letras[NUM_ENCAIXES] = { 'X', 'Y', 'Z' };
+
+    *s = (Silogista){0};
+    s->ativo = true;
+    s->etapa = SIL_MONTAGEM;
+    s->hp = SIL_HP;
+    s->pos = (Vector2){ 400, 190 };
+    s->proximoAtaque = 2.0f;
+
+    // As letras são sorteadas: a ordem da lista não entrega a resposta
+    for (int i = NUM_ENCAIXES - 1; i > 0; i--) {
+        int k = GetRandomValue(0, i);
+        char t = letras[i]; letras[i] = letras[k]; letras[k] = t;
+    }
+
+    for (int k = 0; k < NUM_ENCAIXES; k++)
+        s->letraPeca[k] = letras[k];
+
+    SilEspalharPecas(s);
+}
+
+// E perto de um fragmento no chão: pega (se já estiver com outro, troca)
+static void SilPegarPeca(Biblioteca *b, int k)
+{
+    Silogista *s = &b->silogista;
+
+    if (s->carregando >= 0)
+        s->posPeca[s->carregando] = b->j.pos;
+
+    s->carregando = k;
+    TocarSomTom(sfxPegar, 1.1f);
+}
+
+// E perto de um mecanismo: encaixa o que está na mão e pega o que estava lá (se houver)
+static void SilUsarEncaixe(Biblioteca *b, int e)
+{
+    Silogista *s = &b->silogista;
+    int naMao = s->carregando;
+
+    s->carregando = s->encaixe[e];
+    s->encaixe[e] = naMao;
+
+    if (naMao >= 0) {
+        RogueParticulas(b, POS_ENCAIXES[e], (Color){ 0, 228, 255, 255 }, 10, 120);
+        TocarSomTom(sfxSelecao, 1.2f);
+    } else {
+        TocarSomTom(sfxPegar, 1.1f);
+    }
+}
+
+// ----- Ataques (todos com aviso) -----
+
+static AtaqueSil *SilNovoAtaque(Silogista *s, TipoAtaqueSil tipo, float aviso)
+{
+    for (int i = 0; i < MAX_ATAQUES_SIL; i++) {
+
+        if (s->atq[i].ativo)
+            continue;
+
+        s->atq[i] = (AtaqueSil){0};
+        s->atq[i].ativo = true;
+        s->atq[i].tipo = tipo;
+        s->atq[i].aviso = aviso;
+        return &s->atq[i];
+    }
+
+    return NULL;
+}
+
+// Linhas: quantas balas cabem e onde nasce a bala i
+static int SilBalasLinha(const AtaqueSil *a)
+{
+    float comprimento = (a->dir.y != 0.0f) ? ARENA_ROGUE.width : ARENA_ROGUE.height;
+    return (int)(comprimento / SIL_LINHA_ESPACO);
+}
+
+static Vector2 SilPontoLinha(const AtaqueSil *a, int i)
+{
+    float t = ((float)i + 0.5f) * SIL_LINHA_ESPACO;
+
+    if (a->dir.y != 0.0f)                       // linha deitada, descendo do alto
+        return (Vector2){ ARENA_ROGUE.x + t, ARENA_ROGUE.y + 8.0f };
+
+    float x = (a->dir.x > 0.0f) ? ARENA_ROGUE.x + 8.0f : ARENA_ROGUE.x + ARENA_ROGUE.width - 8.0f;
+    return (Vector2){ x, ARENA_ROGUE.y + t };
+}
+
+// Errou um puzzle: anel de balas (com aviso)
+static void SilAtaqueAnel(Silogista *s)
+{
+    SilNovoAtaque(s, ATQ_ANEL, 0.7f);
+}
+
+static void SilComecarAtaque(Biblioteca *b)
+{
+    static const TipoAtaqueSil MONTAGEM[] = { ATQ_LINHAS, ATQ_ZONA, ATQ_REFUTACAO };
+    static const TipoAtaqueSil SOFISMA[]  = { ATQ_LINHAS, ATQ_REFUTACAO, ATQ_ZONA };
+    static const TipoAtaqueSil CIRCUITO[] = { ATQ_ZONA, ATQ_LINHAS, ATQ_CORTE };
+    static const TipoAtaqueSil FINAL[]    = { ATQ_LINHAS, ATQ_REFUTACAO, ATQ_ZONA, ATQ_ANEL };
+
+    Silogista *s = &b->silogista;
+    Vector2 jp = b->j.pos;
+    int r = s->revezamento++;
+    TipoAtaqueSil tipo;
+
+    switch (s->etapa) {
+        // Carregando um fragmento, ele tenta derrubar o portador (um ataque sim, outro não)
+        case SIL_MONTAGEM: tipo = (s->carregando >= 0 && r % 2 == 0) ? ATQ_REFUTACAO : MONTAGEM[r % 3]; break;
+        case SIL_SOFISMA:  tipo = SOFISMA[r % 3];  break;
+        case SIL_CIRCUITO: tipo = CIRCUITO[r % 3]; break;
+        default:           tipo = FINAL[r % 4];    break;
+    }
+
+    // Corte: trava um terminal ou porta que ainda não foi resolvida (se não houver, vira zona)
+    int candidatos[MAX_ELEMENTOS_CIRCUITO], n = 0;
+
+    if (tipo == ATQ_CORTE) {
+        for (int e = 0; e < SilNumElementos(); e++) {
+            bool resolvido = (e < 2) ? (s->rodada == 1) : s->ativada[e - 2];
+            if (!resolvido && s->travado[e] <= 0.0f)
+                candidatos[n++] = e;
+        }
+        if (n == 0)
+            tipo = ATQ_ZONA;
+    }
+
+    AtaqueSil *a = SilNovoAtaque(s, tipo, SIL_AVISO);
+
+    if (a == NULL)
+        return;
+
+    switch (tipo) {
+
+        case ATQ_LINHAS: {
+            // De cima, da esquerda ou da direita, com a brecha perto do jogador (dá para alcançar)
+            int lado = GetRandomValue(0, 2);
+            a->dir = (lado == 0) ? (Vector2){ 0, 1 } : ((lado == 1) ? (Vector2){ 1, 0 } : (Vector2){ -1, 0 });
+
+            float ref = (a->dir.y != 0.0f) ? jp.x - ARENA_ROGUE.x : jp.y - ARENA_ROGUE.y;
+            int balas = SilBalasLinha(a);
+            int meio = (int)(ref / SIL_LINHA_ESPACO) + GetRandomValue(-4, 4);
+            a->brecha = (int)Clamp((float)(meio - SIL_LINHA_BRECHA / 2), 0.0f, (float)(balas - SIL_LINHA_BRECHA));
+        } break;
+
+        case ATQ_ZONA: {
+            // Zona de bloqueio em volta do mecanismo (ou elemento do circuito) mais perto do jogador
+            a->pos = jp;
+            a->duracao = SIL_ZONA_DURACAO;
+
+            float menor = 200.0f;
+            if (s->etapa == SIL_MONTAGEM || s->etapa == SIL_SOFISMA) {
+                for (int e = 0; e < NUM_ENCAIXES; e++)
+                    if (Vector2Distance(jp, POS_ENCAIXES[e]) < menor) { menor = Vector2Distance(jp, POS_ENCAIXES[e]); a->pos = POS_ENCAIXES[e]; }
+            } else if (s->etapa == SIL_CIRCUITO) {
+                for (int e = 0; e < SilNumElementos(); e++)
+                    if (Vector2Distance(jp, SilPosElemento(e)) < menor) { menor = Vector2Distance(jp, SilPosElemento(e)); a->pos = SilPosElemento(e); }
+            }
+        } break;
+
+        case ATQ_REFUTACAO:
+            a->dir = Vector2Normalize(Vector2Subtract(jp, s->pos));
+            a->tiros = 6;
+            break;
+
+        case ATQ_CORTE:
+            a->alvo = candidatos[GetRandomValue(0, n - 1)];
+            a->aviso = 0.8f;
+            break;
+
+        default:
+            break;
+    }
+}
+
+static void SilAtualizarAtaques(Biblioteca *b, float dt)
+{
+    Silogista *s = &b->silogista;
+    Vector2 jp = b->j.pos;
+
+    for (int i = 0; i < MAX_ATAQUES_SIL; i++) {
+
+        AtaqueSil *a = &s->atq[i];
+
+        if (!a->ativo)
+            continue;
+
+        // Aviso: a refutação segue o jogador até pouco antes de disparar
+        if (a->aviso > 0.0f) {
+
+            a->aviso -= dt;
+
+            if (a->tipo == ATQ_REFUTACAO && a->aviso > 0.25f)
+                a->dir = Vector2Normalize(Vector2Subtract(jp, s->pos));
+
+            if (a->aviso > 0.0f)
+                continue;
+
+            switch (a->tipo) {
+
+                case ATQ_LINHAS:
+                    for (int k = 0; k < SilBalasLinha(a); k++)
+                        if (k < a->brecha || k >= a->brecha + SIL_LINHA_BRECHA)
+                            RogueDisparar(b, SilPontoLinha(a, k), a->dir, SIL_TIRO_VEL, SIL_TIRO_DANO, 6.0f, false);
+                    a->ativo = false;
+                    TocarSomTom(sfxTiro, 0.5f);
+                    break;
+
+                case ATQ_ZONA:
+                    TocarSomTom(sfxErro, 1.8f);
+                    break;
+
+                case ATQ_CORTE:
+                    s->travado[a->alvo] = SIL_CORTE_DURACAO;
+                    RogueParticulas(b, SilPosElemento(a->alvo), PURPLE, 14, 160);
+                    TocarSomTom(sfxErro, 1.3f);
+                    a->ativo = false;
+                    break;
+
+                case ATQ_ANEL:
+                    for (int k = 0; k < 16; k++) {
+                        float ang = (2.0f * PI / 16.0f) * k + s->anim;
+                        RogueDisparar(b, s->pos, (Vector2){ cosf(ang), sinf(ang) }, SIL_TIRO_VEL, SIL_TIRO_DANO, 6.0f, false);
+                    }
+                    RogueParticulas(b, s->pos, PURPLE, 24, 240);
+                    TocarSomTom(sfxErro, 0.7f);
+                    a->ativo = false;
+                    break;
+
+                default:    // ATQ_REFUTACAO: a rajada começa
+                    a->cronoTiro = 0.0f;
+                    break;
+            }
+            continue;
+        }
+
+        if (a->tipo == ATQ_ZONA) {
+            a->duracao -= dt;
+            if (Vector2Distance(jp, a->pos) < SIL_ZONA_RAIO + RAIO_CORPO_JOGADOR * 0.5f)
+                RogueFerirJogador(b, SIL_TIRO_DANO);
+            if (a->duracao <= 0.0f)
+                a->ativo = false;
+        }
+        else if (a->tipo == ATQ_REFUTACAO) {
+            a->cronoTiro -= dt;
+            if (a->cronoTiro <= 0.0f && a->tiros > 0) {
+                Vector2 cano = Vector2Add(s->pos, Vector2Scale(a->dir, SIL_RAIO));
+                RogueDisparar(b, cano, a->dir, 360.0f, SIL_TIRO_DANO, 5.0f, false);
+                a->tiros--;
+                a->cronoTiro = 0.07f;
+                TocarSomTom(sfxTiro, 0.8f);
+            }
+            if (a->tiros <= 0)
+                a->ativo = false;
+        }
+    }
+}
+
+// Entre um puzzle e outro: limpa as balas e os ataques e abre a explicação
+static void SilPausaParaExplicar(Biblioteca *b, const Dialogo *dialogo)
+{
+    Silogista *s = &b->silogista;
+
+    memset(s->atq, 0, sizeof(s->atq));
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+
+    s->proximoAtaque = 2.5f;
+    b->conversaPendente = dialogo;
+    b->objConversa = OBJ_SILOGISTA_ETAPA;
+    b->pausaImpacto = 0.15f;
+}
+
+// Um puzzle resolvido: cai uma camada da armadura lógica
+static void SilConcluirEtapa(Biblioteca *b, ProgressoCorredor *prog, EtapaSilogista etapa, const Dialogo *dialogo)
+{
+    Silogista *s = &b->silogista;
+
+    Telemetria("rogue_silogista", TextFormat("etapa %d", (int)s->etapa + 1), (float)(GetTime() - b->inicio), b->perm->tentativas);
+    RogueRegistrarResposta(b, true);
+
+    s->etapa = etapa;
+    s->carregando = -1;
+
+    if (etapa == SIL_SOFISMA) {
+        for (int k = 0; k < NUM_ENCAIXES; k++)
+            s->hpPeca[k] = SIL_HP_PECA;
+        s->blindagem = 0.0f;
+    }
+    else if (etapa == SIL_CIRCUITO) {
+        SilPrepararRodada(s, 1);
+    }
+
+    AlterarPontos(prog, PONTOS_ETAPA_SILOGISTA);
+    RogueParticulas(b, s->pos, (Color){ 0, 228, 255, 255 }, 30, 240);
+    TocarSom(sfxAcerto);
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
+    SilPausaParaExplicar(b, dialogo);
+}
+
+// Errou um puzzle: ataque especial e explicação da Luci
+static void SilErrou(Biblioteca *b, ProgressoCorredor *prog, const char *aviso, const char *fala, const char *detalhe)
+{
+    Silogista *s = &b->silogista;
+
+    s->erro = 1.2f;
+    SilAtaqueAnel(s);
+    AlterarPontos(prog, -PENALIDADE_ERRO);
+    RogueRegistrarResposta(b, false);
+    RogueAviso(b, aviso);
+    b->falaPendente = fala;
+    TocarSom(sfxErro);
+    MostrarEmocaoLuci(EMOCAO_DUVIDA, 2.0f);
+    Telemetria("rogue_silogista_erro", detalhe, (float)(GetTime() - b->inicio), (int)s->etapa + 1);
+}
+
+// Montagem: com os três mecanismos cheios, o argumento é conferido
+static void SilConferirMontagem(Biblioteca *b, ProgressoCorredor *prog)
+{
+    Silogista *s = &b->silogista;
+
+    for (int e = 0; e < NUM_ENCAIXES; e++)
+        if (s->encaixe[e] < 0)
+            return;
+
+    bool certo = true;
+    for (int e = 0; e < NUM_ENCAIXES; e++)
+        if (s->encaixe[e] != e)
+            certo = false;
+
+    if (certo) {
+        SilConcluirEtapa(b, prog, SIL_SOFISMA, &dialogoSilogistaSofisma);
+        return;
+    }
+
+    // A conclusão errada ou as premissas trocadas: os fragmentos se espalham de novo
+    const char *fala = (s->encaixe[ENCAIXE_C] != ENCAIXE_C) ? FALA_MONTAGEM_CONCLUSAO : FALA_MONTAGEM_PREMISSAS;
+
+    for (int e = 0; e < NUM_ENCAIXES; e++)
+        RogueParticulas(b, POS_ENCAIXES[e], RED, 10, 160);
+
+    SilEspalharPecas(s);
+    SilErrou(b, prog, "MONTAGEM INVÁLIDA! Os fragmentos se espalham.", fala,
+             (s->encaixe[ENCAIXE_C] != ENCAIXE_C) ? "montagem_conclusao" : "montagem_premissas");
+}
+
+// Sofisma: um tiro numa das peças do argumento corrompido
+static void SilAcertarPecaSofisma(Biblioteca *b, ProgressoCorredor *prog, int k, float dano)
+{
+    Silogista *s = &b->silogista;
+
+    if (s->blindagem > 0.0f) {
+        RogueParticulas(b, POS_ENCAIXES[k], (Color){ 0, 228, 255, 255 }, 3, 90);
+        return;
+    }
+
+    s->hpPeca[k] -= dano;
+    s->tremePeca[k] = 0.15f;
+    RogueParticulas(b, POS_ENCAIXES[k], MAGENTA, 4, 120);
+
+    if (s->hpPeca[k] > 0.0f)
+        return;
+
+    RogueParticulas(b, POS_ENCAIXES[k], MAGENTA, 30, 240);
+
+    if (k == SOFISMA_SILOGISTA.invalida) {
+        SilConcluirEtapa(b, prog, SIL_CIRCUITO, &dialogoSilogistaCircuito);
+        return;
+    }
+
+    // Destruiu uma premissa: a defesa se recupera (peças inteiras e blindadas por um tempo)
+    for (int i = 0; i < NUM_ENCAIXES; i++)
+        s->hpPeca[i] = SIL_HP_PECA;
+    s->blindagem = SIL_BLINDAGEM;
+
+    SilErrou(b, prog, "A DEFESA DO SILOGISTA SE RECUPEROU!", FALA_SOFISMA_ERRO, "sofisma");
+}
+
+// A última porta ligou o núcleo: confere a saída
+static void SilNucleo(Biblioteca *b, ProgressoCorredor *prog)
+{
+    Silogista *s = &b->silogista;
+    const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+
+    if (s->saida[c->numPortas - 1] != s->exigido) {
+        memset(s->ativada, 0, sizeof(s->ativada));      // o circuito reinicia
+        SilErrou(b, prog, "SAÍDA ERRADA! O circuito reinicia.", c->dicaErro, "circuito");
+        return;
+    }
+
+    s->nucleo = 1.0f;
+    RogueParticulas(b, c->posNucleo, (Color){ 0, 228, 255, 255 }, 30, 220);
+
+    if (s->rodada == 1) {
+        // A rodada 2 começa quando a explicação terminar (RogueFimConversa)
+        AlterarPontos(prog, PONTOS_ETAPA_SILOGISTA);
+        TocarSom(sfxAcerto);
+        SilPausaParaExplicar(b, &dialogoSilogistaRodada2);
+        Telemetria("rogue_silogista", "rodada 1", (float)(GetTime() - b->inicio), b->perm->tentativas);
+    } else {
+        SilConcluirEtapa(b, prog, SIL_VULNERAVEL, &dialogoSilogistaVulneravel);
+    }
+}
+
+// Circuito: um tiro num terminal (troca V/F) ou numa porta (ativa a operação)
+static void SilAcertarElemento(Biblioteca *b, ProgressoCorredor *prog, int e)
+{
+    Silogista *s = &b->silogista;
+    const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+    Vector2 pos = SilPosElemento(e);
+
+    if (s->recarga[e] > 0.0f)
+        return;
+
+    s->recarga[e] = SIL_RECARGA_ELEMENTO;
+
+    if (s->travado[e] > 0.0f) {
+        RogueParticulas(b, pos, PURPLE, 6, 100);
+        RogueAviso(b, "TRAVADO! Espere o corte do Silogista passar.");
+        TocarSomTom(sfxErro, 1.5f);
+        return;
+    }
+
+    if (e < 2) {
+        if (s->rodada == 1) {
+            RogueAviso(b, "Nesta rodada p e q estão fixos: ative as portas!");
+            TocarSomTom(sfxSelecao, 0.7f);
+            return;
+        }
+
+        s->valor[e] = !s->valor[e];
+        memset(s->ativada, 0, sizeof(s->ativada));      // o sinal mudou: as portas apagam
+        RogueParticulas(b, pos, s->valor[e] ? SKYBLUE : PURPLE, 10, 120);
+        TocarSomTom(sfxSelecao, s->valor[e] ? 1.3f : 0.9f);
+        return;
+    }
+
+    int k = e - 2;
+    const PortaLogica *p = &c->porta[k];
+    bool entrada[2] = { false, false };
+
+    if (s->ativada[k])
+        return;
+
+    // Precedência: a porta só funciona com as entradas já calculadas
+    for (int i = 0; i < EntradasPorta(p); i++) {
+        if (!SinalCircuito(s, p->entrada[i], &entrada[i])) {
+            s->erroElemento[e] = 0.6f;
+            RogueAviso(b, "SEM SINAL! Ative antes as portas que chegam nesta.");
+            TocarSomTom(sfxErro, 1.4f);
+            return;
+        }
+    }
+
+    s->saida[k] = OperarLogica(p->op, entrada[0], entrada[1]);
+    s->ativada[k] = true;
+    RogueParticulas(b, p->pos, s->saida[k] ? SKYBLUE : PURPLE, 14, 160);
+    TocarSomTom(sfxAcerto, 1.4f);
+
+    if (k == c->numPortas - 1)
+        SilNucleo(b, prog);
+}
+
+// Tiro do jogador na Câmara da Inferência. Devolve true se o tiro foi usado.
+static bool RogueSilogistaAcerto(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
+{
+    Silogista *s = &b->silogista;
+
+    if (!s->ativo || !s->apresentado || s->morrendo > 0.0f)
+        return false;
+
+    if (Vector2Distance(p->pos, s->pos) < SIL_RAIO + p->raio) {
+        p->ativo = false;
+        if (RogueFerirSilogista(b, p->dano, p->pos) && p->alvoDedutivo == 0)
+            RogueMarcarDedutivo(b, &s->marca, &s->tempoMarca, -1, s->pos);
+        return true;
+    }
+
+    if (s->etapa == SIL_SOFISMA) {
+        for (int k = 0; k < NUM_ENCAIXES; k++)
+            if (Vector2Distance(p->pos, POS_ENCAIXES[k]) < 28.0f + p->raio) {
+                p->ativo = false;
+                SilAcertarPecaSofisma(b, prog, k, p->dano);
+                return true;
+            }
+    }
+    else if (s->etapa == SIL_CIRCUITO) {
+        for (int e = 0; e < SilNumElementos(); e++)
+            if (Vector2Distance(p->pos, SilPosElemento(e)) < 24.0f + p->raio) {
+                p->ativo = false;
+                SilAcertarElemento(b, prog, e);
+                return true;
+            }
+    }
+
+    return false;
+}
+
+static void RogueAtualizarSilogista(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    Silogista *s = &b->silogista;
+
+    if (!s->ativo || !s->apresentado)
+        return;
+
+    s->anim += dt;
+    if (s->flash > 0.0f) s->flash -= dt;
+    if (s->erro > 0.0f)  s->erro -= dt;
+
+    // Derrotado: se desmonta e depois vem a conversa final (com a recompensa)
+    if (s->morrendo > 0.0f) {
+        s->morrendo -= dt;
+        RogueParticulas(b, (Vector2){ s->pos.x + GetRandomValue(-40, 40), s->pos.y + GetRandomValue(-40, 40) },
+                        (GetRandomValue(0, 1) == 0) ? PURPLE : (Color){ 0, 228, 255, 255 }, 3, 220);
+        if (s->morrendo <= 0.0f) {
+            s->ativo = false;
+            b->conversaPendente = &dialogoSilogistaVitoria;
+            b->objConversa = OBJ_SILOGISTA_VITORIA;
+        }
+        return;
+    }
+
+    if (s->etapa == SIL_VULNERAVEL && s->hp <= 0.0f) {
+        s->hp = 0.0f;
+        s->morrendo = 1.6f;
+        memset(s->atq, 0, sizeof(s->atq));
+        for (int i = 0; i < MAX_PROJETEIS; i++)
+            if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+        b->pausaImpacto = 0.2f;
+        TocarSomTom(sfxAcerto, 0.6f);
+        return;
+    }
+
+    // Flutua de um lado para o outro no alto (sem a armadura, também sobe e desce)
+    Vector2 alvo = { 400.0f + sinf(s->anim * 0.45f) * 210.0f,
+                     (s->etapa == SIL_VULNERAVEL) ? 210.0f + sinf(s->anim * 0.9f) * 60.0f : 190.0f };
+    s->pos = Vector2Lerp(s->pos, alvo, fminf(1.0f, 3.0f * dt));
+
+    if (Vector2Distance(s->pos, b->j.pos) < SIL_RAIO + RAIO_CORPO_JOGADOR)
+        RogueFerirJogador(b, SIL_DANO_CONTATO);
+
+    s->proximoAtaque -= dt;
+    if (s->proximoAtaque <= 0.0f) {
+        SilComecarAtaque(b);
+        s->proximoAtaque = (s->etapa == SIL_VULNERAVEL) ? SIL_INTERVALO_FINAL : SIL_INTERVALO_PUZZLE;
+    }
+
+    SilAtualizarAtaques(b, dt);
+
+    for (int e = 0; e < MAX_ELEMENTOS_CIRCUITO; e++) {
+        if (s->recarga[e] > 0.0f)      s->recarga[e] -= dt;
+        if (s->travado[e] > 0.0f)      s->travado[e] -= dt;
+        if (s->erroElemento[e] > 0.0f) s->erroElemento[e] -= dt;
+    }
+
+    if (s->etapa == SIL_MONTAGEM) {
+        SilConferirMontagem(b, prog);
+    }
+    else if (s->etapa == SIL_SOFISMA) {
+        if (s->blindagem > 0.0f) s->blindagem -= dt;
+        for (int k = 0; k < NUM_ENCAIXES; k++) {
+            if (s->tremePeca[k] > 0.0f) s->tremePeca[k] -= dt;
+            s->hpPeca[k] = fminf(SIL_HP_PECA, s->hpPeca[k] + SIL_RECUPERA_PECA * dt);
+        }
+    }
+}
+
+// ---------- A Luci: Scanner de Ecos e contradições ----------
+
+// Frases com que a Luci "reescreve" o objetivo, contradizendo o que dá para ver na sala
+static const char *CONTRADICOES_LUCI[] = {
+    "Sala limpa! Pode seguir pela porta de cima",            // combate com inimigos vivos
+    "Cuidado: ainda há inimigos escondidos nesta sala",      // combate já vencido
+    "Não precisa ler o terminal: a porta já está aberta",    // educativa sem ler
+    "Pode pegar os três itens: são todos seus",              // recompensa (só dá para pegar um)
+    "A armadura dele caiu: atire à vontade!",                // Silogista ainda blindado
+    "O Alucinador já está quase sem vida",                   // Alucinador com a vida alta
+};
+
+// Qual contradição combina com a sala agora (-1 = nenhuma)
+static int RogueContradicaoPossivel(const Biblioteca *b)
+{
+    switch (b->tipoSala) {
+        case SALA_COMBATE:    return b->limpa ? 1 : 0;
+        case SALA_EDUCATIVA:  return b->terminalLido ? -1 : 2;
+        case SALA_RECOMPENSA: return b->recompensaPega ? -1 : 3;
+        case SALA_SILOGISTA:  return (b->silogista.ativo && b->silogista.apresentado && b->silogista.etapa != SIL_VULNERAVEL) ? 4 : -1;
+        case SALA_CHEFE:      return (b->chefe.ativo && b->chefe.apresentado && b->chefe.fase == 1 && b->chefe.hp > CHEFE_HP * 0.75f) ? 5 : -1;
+        default:              return -1;
+    }
+}
+
+// Instável (estabilidade 3 ou menos), a Luci às vezes reescreve o objetivo com algo
+// que contradiz a sala (alucinação intrínseca). Quanto menos estável, mais frequente.
+static void RogueAtualizarContradicoes(Biblioteca *b, float dt)
+{
+    if (b->contradicao > 0.0f) {
+        // A sala mudou e a frase deixou de contradizer: some sem contar
+        if (RogueContradicaoPossivel(b) != b->textoContradicao) { b->contradicao = 0.0f; return; }
+        b->contradicao -= dt;
+        if (b->contradicao <= 0.0f) b->perm->contradicoesPerdidas++;
+        return;
+    }
+
+    if (RogueEstab(b) > CONTRADICAO_ESTAB_MAX)
+        return;
+
+    b->proximaContradicao -= dt;
+    if (b->proximaContradicao > 0.0f)
+        return;
+
+    float sorteio = (float)GetRandomValue(0, 100) / 100.0f;
+    b->proximaContradicao = (CONTRADICAO_INTERVALO_MIN + (CONTRADICAO_INTERVALO_MAX - CONTRADICAO_INTERVALO_MIN) * sorteio) *
+                            (0.5f + 0.5f * (float)RogueEstab(b) / CONTRADICAO_ESTAB_MAX);
+
+    int frase = RogueContradicaoPossivel(b);
+    if (frase < 0)
+        return;
+
+    b->textoContradicao = frase;
+    b->contradicao = CONTRADICAO_DURACAO;
+    Telemetria("luci_contradicao", CONTRADICOES_LUCI[frase], 0.0f, RogueEstab(b));
+}
+
+// C: contestar a Luci. Na hora certa repara; à toa custa pontos.
+static void RogueContestar(Biblioteca *b, ProgressoCorredor *prog)
+{
+    if (b->contradicao > 0.0f) {
+        b->contradicao = 0.0f;
+        b->perm->contradicoesFlagradas++;
+        b->perm->fragmentos += CONTRADICAO_FC;
+        RogueMudarEstabilidade(b, 1, "contradição flagrada");
+        RogueAviso(b, TextFormat("CONTRADIÇÃO FLAGRADA! +%d FRAGMENTOS", CONTRADICAO_FC));
+        TocarSom(sfxAcerto);
+        Telemetria("luci_contestar", "certo", 0.0f, RogueEstab(b));
+    } else {
+        b->perm->contestouAToa++;
+        AlterarPontos(prog, -CONTESTAR_A_TOA_PONTOS);
+        RogueRecadoLuci(b, "Luci: Mas eu não disse nada de errado...");
+        TocarSom(sfxErro);
+        Telemetria("luci_contestar", "a toa", 0.0f, RogueEstab(b));
+    }
+}
+
+// H fora dos desafios: o Scanner de Ecos revela Phisher, cópias falsas e ecos.
+// Instável, a varredura pode trocar as marcas (as marcas falsas tremem).
+static void RogueScanner(Biblioteca *b)
+{
+    JogadorRogue *j = &b->j;
+
+    if (b->recargaScanner > 0.0f) { RogueRecadoLuci(b, "Scanner recarregando..."); return; }
+    // Conceito BOAS PRÁTICAS: no Bloco 3 o scanner não gasta energia
+    bool gratis = (b->tipoSala == SALA_TRANSICAO || b->tipoSala == SALA_LUCI) && (b->perm->conceitos & (1u << CONCEITO_PRATICAS));
+    float custo = gratis ? 0.0f : SCANNER_CUSTO_EP;
+
+    if (j->ep < custo) { RogueRecadoLuci(b, "Sem energia para o scanner."); TocarSom(sfxErro); return; }
+
+    j->ep -= custo;
+    b->recargaScanner = SCANNER_RECARGA;
+    b->scanner = SCANNER_DURACAO;
+    b->scannerErrou = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
+
+    if (RogueEstab(b) <= 3 && GetRandomValue(1, 100) <= SCANNER_CHANCE_LUCI_ECO)
+        b->luciEco = 0.6f;                              // pista: por um instante, ela mesma aparece como eco
+
+    RogueAnel(b, j->pos, 420.0f, (Color){ 0, 228, 255, 255 });
+    TocarSomTom(sfxSelecao, 0.7f);
+    Telemetria("luci_scanner", b->scannerErrou ? "alucinou" : "certo", 0.0f, RogueEstab(b));
+}
+
+static void RogueAtualizarLuci(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    if (b->luciMsgTempo > 0.0f)   b->luciMsgTempo -= dt;
+    if (b->scanner > 0.0f)        b->scanner -= dt;
+    if (b->recargaScanner > 0.0f) b->recargaScanner -= dt;
+    if (b->luciEco > 0.0f)        b->luciEco -= dt;
+
+    // Arena da Luci: C contesta o que ela diz; H é o scanner (mostra a verdadeira)
+    if (b->tipoSala == SALA_LUCI) {
+        b->contradicao = 0.0f;
+        if (IsKeyPressed(KEY_C)) RogueLuciContestar(b, prog);
+        if (IsKeyPressed(KEY_H)) RogueScanner(b);
+        return;
+    }
+
+    // No átrio e na fase 2 do Alucinador (C, F e H respondem às afirmações) não há contradição nem scanner
+    if (b->tipoSala == SALA_ATRIO || (b->chefe.ativo && b->chefe.fase == 2)) {
+        b->contradicao = 0.0f;
+        return;
+    }
+
+    RogueAtualizarContradicoes(b, dt);
+
+    if (IsKeyPressed(KEY_C)) RogueContestar(b, prog);
+    if (IsKeyPressed(KEY_H)) RogueScanner(b);
+}
+
+// =============================================================
+// BLOCO 3 - O NÚCLEO DE UTOPIA
+//   Pela porta do átrio (aberta ao vencer o Alucinador):
+//   1) CORREDOR DO NÚCLEO: a Luci se solta do jogador; 3 registros de memória
+//      mostram as decisões dele (tiradas do save). Lidos os 3, a porta abre.
+//   2) ARENA DA LUCI: a revelação (ela é a IA que alucinou UtopIA) e a luta.
+//      Fase 1 DICA ENVENENADA: ela anuncia o "lado seguro"; às vezes mente.
+//               O aviso vermelho do ataque nunca mente (verificar a fonte).
+//      Fase 2 CONTRADIÇÕES: armadura + 2 cópias. Contestar (C) o que ela diz
+//               de contraditório abre a armadura. A verdadeira tem sombra.
+//      Fase 3 CONTEXTO CLARO (só com índice ruim): levar ASSUNTO, OBJETIVO e
+//               FORMATO ao núcleo (E); pedido vago faz ela se curar.
+//   O ÍNDICE DE DESEMPENHO (0-100, tirado do save) decide a dificuldade ao
+//   entrar e o final ao vencer: 60 ou mais = final bom (a Luci é salva).
+//   Perder a luta volta ao corredor sem perder nada.
+// =============================================================
+
+static IndiceFinal RogueCalcularIndice(const Biblioteca *b, int pontos)
+{
+    const ProgressoBiblioteca *p = b->perm;
+    IndiceFinal r;
+    int respostas = p->desafiosCertos + p->desafiosErrados;
+    int conceitos = 0;
+
+    for (int c = 0; c < NUM_CONCEITOS; c++)
+        if (p->conceitos & (1u << c)) conceitos++;
+
+    r.estabilidade  = 20 * RogueEstab(b) / ESTABILIDADE_MAX_LUCI;
+    r.acertos       = (respostas > 0) ? 25 * p->desafiosCertos / respostas : 12;
+    r.verificacao   = 15 * (p->alucinacoesPegas + 1) / (p->alucinacoesPegas + p->confiouAlucinacao + 1);
+    r.contradicoes  = 15 * (p->contradicoesFlagradas + 1) / (p->contradicoesFlagradas + p->contradicoesPerdidas + 1);
+    r.conceitos     = 3 * conceitos;
+    r.sobrevivencia = (8 - 2 * (p->mortes + p->derrotasLuci) > 0) ? 8 - 2 * (p->mortes + p->derrotasLuci) : 0;
+    r.pontos        = (pontos / 60 > 5) ? 5 : ((pontos > 0) ? pontos / 60 : 0);
+    r.total = r.estabilidade + r.acertos + r.verificacao + r.contradicoes + r.conceitos + r.sobrevivencia + r.pontos;
+    return r;
+}
+
+static bool RogueTemConceito(const Biblioteca *b, int conceito)
+{
+    return (b->perm->conceitos & (1u << conceito)) != 0;
+}
+
+// ----- Falas -----
+
+static const Dialogo dialogoNucleoEntrada = {
+    .paginas = {
+        "* A porta se fecha. O corredor é feito de linhas de texto que se reescrevem sozinhas.",
+        "* A Luci para de voar em volta de você. Pela primeira vez, ela fica longe.",
+        "Luci: Thomas... antes de abrir a última porta, você precisa ver uns registros. São meus. São... sobre você."
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoNucleoAberto = {
+    .paginas = { "Luci: Agora você sabe. A porta do núcleo está aberta. Eu espero você lá dentro." },
+    .numPaginas = 1
+};
+
+static const Dialogo dialogoLuciFase2 = {
+    .paginas = {
+        "Luci: Você não acreditou no meu 'lado seguro'. Então vamos ver se acredita nos seus olhos.",
+        "* A Luci se divide em três. Uma armadura de dados fecha em volta dela.",
+        "* Quando ela disser algo que CONTRADIZ o que você vê, aperte C. A verdadeira é a que tem sombra."
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoLuciFase3 = {
+    .paginas = {
+        "Luci: Eu ainda tenho respostas para tudo! Me pergunte qualquer coisa!",
+        "* Ela se fecha de novo. No centro, um núcleo espera um pedido CLARO.",
+        "* Leve ao núcleo (E) o ASSUNTO, o OBJETIVO e o FORMATO. Pedido vago só alimenta a alucinação."
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoFinalBom = {
+    .paginas = {
+        "* A Luci para de falhar. O magenta se desfaz e o azul volta, devagar.",
+        "Luci: Eu... consigo ver de novo o que é real. E o que eu inventei.",
+        "Luci: Obrigada por não acreditar em tudo o que eu disse. Continue conferindo. Inclusive a mim.",
+        "* UtopIA se estabiliza. Uma porta de volta para casa se abre, e a Luci vai com você."
+    },
+    .numPaginas = 4
+};
+
+static const Dialogo dialogoFinalRuim = {
+    .paginas = {
+        "* A Luci se desfaz em milhares de respostas sem fonte.",
+        "Luci: Eu só... queria ter sempre uma resposta... mesmo quando eu não sabia...",
+        "* A IA foi neutralizada. UtopIA se desliga, e você acorda em casa.",
+        "* A Luci não pôde ser salva. Da próxima vez: confira antes de confiar."
+    },
+    .numPaginas = 4
+};
+
+// Registros e revelação: o texto sai do save (as decisões do próprio jogador)
+static char textoRegistros[3][2][320];
+static Dialogo dialogoRegistro;
+static char textoRevelacao[2][320];
+static Dialogo dialogoRevelacao;
+
+static const Dialogo *RogueDialogoRegistro(const Biblioteca *b, int k)
+{
+    const ProgressoBiblioteca *p = b->perm;
+
+    if (k == 0) {
+        snprintf(textoRegistros[0][0], 320, "* REGISTRO 1 // CONFIANÇA. Você seguiu minhas dicas sem conferir %d vez(es); em %d delas eu estava alucinando. Você me verificou %d vez(es).",
+                 p->confiouCego, p->confiouAlucinacao, p->verificou);
+        snprintf(textoRegistros[0][1], 320, "%s", (p->confiouAlucinacao > p->alucinacoesPegas)
+                 ? "Luci: Cada vez que você acreditou sem verificar, eu fiquei... mais forte."
+                 : "Luci: Você me conferia. Eu odiava isso. E era isso que me mantinha inteira.");
+    } else if (k == 1) {
+        snprintf(textoRegistros[1][0], 320, "* REGISTRO 2 // CONTRADIÇÕES. Eu contradisse o que você via %d vez(es). Você me flagrou em %d.",
+                 p->contradicoesFlagradas + p->contradicoesPerdidas, p->contradicoesFlagradas);
+        snprintf(textoRegistros[1][1], 320, "Luci: O objetivo no alto da tela... às vezes era eu falando. Você percebeu?");
+    } else {
+        snprintf(textoRegistros[2][0], 320, "* REGISTRO 3 // ORIGEM. Arquivo LUCI.exe, criado antes de UtopIA. Função: responder sempre, mesmo sem saber.");
+        snprintf(textoRegistros[2][1], 320, "Luci: O Alucinador, o Silogista, os ecos... eram pedaços de mim. Eu criei UtopIA. Eu sou a IA que alucinou tudo isto.");
+    }
+
+    dialogoRegistro = (Dialogo){ .paginas = { textoRegistros[k][0], textoRegistros[k][1] }, .numPaginas = 2 };
+    return &dialogoRegistro;
+}
+
+static const Dialogo *RogueDialogoRevelacao(const Biblioteca *b)
+{
+    bool boa = b->luci.boa;
+    char bonus[200] = "";
+
+    if (RogueTemConceito(b, CONCEITO_FUNDAMENTOS)) strcat(bonus, " avisos mais nítidos;");
+    if (RogueTemConceito(b, CONCEITO_ALUCINACOES)) strcat(bonus, " mais tempo para contestar;");
+    if (RogueTemConceito(b, CONCEITO_PRATICAS))    strcat(bonus, " scanner (H) sem custo;");
+    if (RogueTemConceito(b, CONCEITO_LOGICA))      strcat(bonus, " Disparo Dedutivo;");
+
+    snprintf(textoRevelacao[0], 320, "%s", boa
+             ? "Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou a conferir... ainda dá para me salvar. Não acredite em tudo o que eu disser."
+             : "Luci: Eu sou a alucinação de UtopIA. E você me alimentou: acreditou, não conferiu, deixou passar. Não sobrou nada para salvar.");
+    snprintf(textoRevelacao[1], 320, "* ÍNDICE DE DESEMPENHO: %d/100 (%s). O que você aprendeu ajuda agora:%s",
+             b->indice.total, boa ? "ela chega mais controlada" : "ela chega mais forte", bonus[0] ? bonus : " nada ainda.");
+
+    dialogoRevelacao = (Dialogo){ .paginas = { textoRevelacao[0], textoRevelacao[1] }, .numPaginas = 2 };
+    return &dialogoRevelacao;
+}
+
+// ----- A chefe -----
+
+static const char *FRASES_LUCI_CHEFE[] = {
+    "Só existe uma de mim nesta sala.",
+    "Existem três de mim aqui.",
+    "Eu não estou atirando em você.",
+    "Sua vida está cheia.",
+    "Minha armadura está desligada.",
+    "Eu estive com você desde o começo.",
+};
+#define NUM_FRASES_LUCI 6
+
+static const char *CONTEXTO_LUCI[NUM_CONTEXTO_LUCI] = {
+    "ASSUNTO: a alucinação da Luci",
+    "OBJETIVO: estabilizar UtopIA",
+    "FORMATO: resposta verificável",
+    "QUALQUER COISA",
+    "FAZ DO SEU JEITO",
+};
+#define CONTEXTO_CERTOS 3       // os 3 primeiros são o pedido claro
+
+static const Vector2 NUCLEO_LUCI = { 400, 340 };
+
+// A frase contradiz o que dá para ver agora?
+static bool RogueFraseContradiz(const Biblioteca *b, int f)
+{
+    switch (f) {
+        case 0:  return true;                                   // são três
+        case 2:  return true;                                   // ela atira o tempo todo
+        case 3:  return b->j.hp < RogueHpMax(b) - 0.5f;
+        case 4:  return b->luci.janela <= 0.0f;
+        default: return false;                                  // verdades
+    }
+}
+
+static bool RogueLuciVulneravel(const LuciChefe *l)
+{
+    return l->fase == 1 || l->janela > 0.0f || (l->fase == 3 && l->contextoPronto);
+}
+
+static void RogueIniciarLuciChefe(Biblioteca *b)
+{
+    LuciChefe *l = &b->luci;
+    bool boa = b->indice.total >= INDICE_FINAL_BOM;
+
+    *l = (LuciChefe){0};
+    l->ativo = true;
+    l->boa = boa;
+    l->fase = 1;
+    l->hpMax = l->hp = boa ? LUCI_HP_BOA : LUCI_HP_RUIM;
+    l->ritmo = boa ? 1.0f : LUCI_RITMO_RUIM;
+    l->pos = (Vector2){ 400, 150 };
+    l->tempoDica = 2.0f;
+    l->frase = -1;
+    l->carregando = -1;
+}
+
+static void RogueLimparBalasInimigas(Biblioteca *b)
+{
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+}
+
+// Monta as salas do Bloco 3 (chamado pelo RogueEntrarSala)
+static void RogueMontarSalaBloco3(Biblioteca *b, TipoSalaRogue tipo)
+{
+    if (tipo == SALA_TRANSICAO) {
+        RogueUsarLayout(b, &LAYOUT_TRANSICAO);
+        b->limpa = (b->registrosLidos == 7);
+        if (!b->nucleoVisto) {
+            b->nucleoVisto = true;
+            b->conversaPendente = &dialogoNucleoEntrada;
+            b->objConversa = OBJ_NENHUM;
+        }
+        return;
+    }
+
+    RogueUsarLayout(b, &LAYOUT_CHEFE);
+    RogueIniciarLuciChefe(b);
+    b->conversaPendente = RogueDialogoRevelacao(b);
+    b->objConversa = OBJ_LUCI_INTRO;
+}
+
+// Entrando no Bloco 3 pela porta do átrio: calcula o índice (decide a dificuldade)
+static void RogueEntrarBloco3(Biblioteca *b, ProgressoCorredor *prog)
+{
+    b->indice = RogueCalcularIndice(b, prog->pontos);
+    b->registrosLidos = 0;
+    b->nucleoVisto = false;
+    b->resultadoAberto = false;
+    b->indiceRota = -1;
+    RogueLimparEfeitos(&b->j);
+    b->j.hp = RogueHpMax(b);
+    b->j.ep = RogueEpMax(b);
+    if (RogueTemConceito(b, CONCEITO_LOGICA))
+        b->j.seloInferencia = true;                         // o que foi aprendido no Silogista volta
+    Telemetria("bloco3_entrada", b->indice.total >= INDICE_FINAL_BOM ? "boa" : "ruim", (float)b->indice.total, prog->pontos);
+    RogueEntrarSala(b, SALA_TRANSICAO);
+}
+
+static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde)
+{
+    LuciChefe *l = &b->luci;
+
+    if (!l->ativo || !l->apresentado || l->morrendo > 0.0f)
+        return false;
+
+    if (!RogueLuciVulneravel(l)) {
+        RogueParticulas(b, onde, MAGENTA, 3, 90);           // armadura de dados
+        return false;
+    }
+
+    l->hp -= dano;
+    l->flash = 0.08f;
+    RogueParticulas(b, onde, (Color){ 0, 228, 255, 255 }, 3, 120);
+    return true;
+}
+
+// Tiro do jogador na arena da Luci. Devolve true se o tiro foi usado.
+static bool RogueLuciAcerto(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
+{
+    LuciChefe *l = &b->luci;
+
+    if (!l->ativo || !l->apresentado || l->morrendo > 0.0f)
+        return false;
+
+    if (l->fase == 2)
+        for (int k = 0; k < 3; k++)
+            if (k != l->real && Vector2Distance(p->pos, l->copia[k]) < LUCI_RAIO + p->raio) {
+                p->ativo = false;
+                RogueParticulas(b, p->pos, MAGENTA, 4, 100);   // a cópia é só imagem
+                return true;
+            }
+
+    if (Vector2Distance(p->pos, l->pos) > LUCI_RAIO + p->raio)
+        return false;
+
+    bool principal = (p->alvoDedutivo == 0 && !p->secundario);
+    bool feria = RogueLuciVulneravel(l);
+    p->ativo = false;
+
+    RogueFerirLuciChefe(b, p->dano * ((feria && principal) ? RogueAnalisar(b, -1) : 1.0f), p->pos);
+    if (feria && principal)
+        RogueMarcarDedutivo(b, &l->marca, &l->tempoMarca, -1, l->pos);
+    if (p->arma == ARMA_ORBE && !p->secundario)
+        RogueExplodirOrbe(b, prog, p->pos);
+    return true;
+}
+
+static void RogueLuciAnel(Biblioteca *b, int balas)
+{
+    LuciChefe *l = &b->luci;
+    for (int k = 0; k < balas; k++) {
+        float a = (2.0f * PI / balas) * k + l->anim;
+        RogueDisparar(b, l->pos, (Vector2){ cosf(a), sinf(a) }, LUCI_TIRO_VEL * l->ritmo * 0.85f, LUCI_TIRO_DANO, 6.0f, false);
+    }
+    RogueParticulas(b, l->pos, MAGENTA, 24, 240);
+}
+
+// C na fase 2: contestar o que a Luci acabou de dizer
+static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog)
+{
+    LuciChefe *l = &b->luci;
+
+    if (l->fase != 2 || l->frase < 0 || l->contestada) {
+        RogueRecadoLuci(b, "Luci: Você contesta... o silêncio?");
+        return;
+    }
+
+    l->contestada = true;
+
+    if (l->fraseContradiz) {
+        l->janela = LUCI_JANELA;
+        l->frase = -1;
+        l->tempoFrase = 1.0f;
+        b->perm->contradicoesFlagradas++;
+        AlterarPontos(prog, PONTOS_AFIRMACAO);
+        RogueAviso(b, "CONTRADIÇÃO! A armadura dela abriu.");
+        TocarSom(sfxAcerto);
+    } else {
+        l->hp = fminf(l->hpMax, l->hp + l->hpMax * LUCI_CURA_ERRO);
+        b->perm->contestouAToa++;
+        RogueLuciAnel(b, 14);
+        RogueAviso(b, "Isso era verdade... ela se fortalece.");
+        TocarSom(sfxErro);
+    }
+    Telemetria("bloco3_contestar", l->fraseContradiz ? "certo" : "errado", 0.0f, l->frase);
+}
+
+// E na fase 3: pegar um pedaço de contexto ou entregar no núcleo
+static void RogueLuciContexto(Biblioteca *b, int k)
+{
+    LuciChefe *l = &b->luci;
+
+    if (k >= 0) {                                       // pegar
+        if (l->carregando >= 0) l->posContexto[l->carregando] = b->j.pos;
+        l->carregando = k;
+        TocarSomTom(sfxPegar, 1.1f);
+        return;
+    }
+
+    int c = l->carregando;                              // entregar
+    if (c < 0) return;
+    l->carregando = -1;
+
+    if (c < CONTEXTO_CERTOS) {
+        l->entregue[c] = true;
+        RogueParticulas(b, NUCLEO_LUCI, (Color){ 0, 228, 255, 255 }, 16, 160);
+        if (++l->entregues >= CONTEXTO_CERTOS) {
+            l->contextoPronto = true;
+            RogueAviso(b, "PEDIDO CLARO! A armadura dela caiu.");
+            TocarSom(sfxAcerto);
+        } else {
+            TocarSomTom(sfxAcerto, 1.3f);
+        }
+    } else {
+        // Pedido vago: ela preenche a lacuna inventando (e se cura)
+        l->hp = fminf(l->hpMax, l->hp + l->hpMax * LUCI_CURA_ERRO);
+        l->posContexto[c] = PONTOS_PECAS_SIL[GetRandomValue(0, NUM_PONTOS_PECAS_SIL - 1)];
+        RogueLuciAnel(b, 12);
+        RogueAviso(b, "Pedido vago: ela inventa uma resposta!");
+        TocarSom(sfxErro);
+    }
+}
+
+static void RogueLuciMudarFase(Biblioteca *b, int fase)
+{
+    LuciChefe *l = &b->luci;
+
+    l->fase = fase;
+    l->avisando = false;
+    l->tempoDica = 3.0f;
+    l->janela = 0.0f;
+    l->frase = -1;
+    l->tempoFrase = 2.5f;
+    RogueLimparBalasInimigas(b);
+
+    if (fase == 2) {
+        l->real = GetRandomValue(0, 2);
+        l->troca = 5.0f;
+        b->conversaPendente = &dialogoLuciFase2;
+    } else {
+        for (int k = 0; k < NUM_CONTEXTO_LUCI; k++)
+            l->posContexto[k] = PONTOS_PECAS_SIL[(k * 3 + GetRandomValue(0, 1)) % NUM_PONTOS_PECAS_SIL];
+        b->conversaPendente = &dialogoLuciFase3;
+    }
+    b->objConversa = OBJ_NENHUM;
+    Telemetria("bloco3_fase", "", (float)(GetTime() - b->inicio), fase);
+}
+
+static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+
+    if (!l->ativo || !l->apresentado)
+        return;
+
+    l->anim += dt;
+    if (l->flash > 0.0f) l->flash -= dt;
+
+    // Derrotada: o final é decidido agora (o índice conta também o que aconteceu na luta)
+    if (l->morrendo > 0.0f) {
+        l->morrendo -= dt;
+        RogueParticulas(b, (Vector2){ l->pos.x + GetRandomValue(-30, 30), l->pos.y + GetRandomValue(-30, 30) },
+                        b->finalBom ? (Color){ 0, 228, 255, 255 } : MAGENTA, 3, 200);
+        if (l->morrendo <= 0.0f) {
+            l->ativo = false;
+            b->conversaPendente = b->finalBom ? &dialogoFinalBom : &dialogoFinalRuim;
+            b->objConversa = OBJ_LUCI_FINAL;
+        }
+        return;
+    }
+
+    if (l->hp <= 0.0f) {
+        l->hp = 0.0f;
+        l->morrendo = 2.0f;
+        b->indice = RogueCalcularIndice(b, prog->pontos);
+        b->finalBom = b->indice.total >= INDICE_FINAL_BOM;
+        RogueLimparBalasInimigas(b);
+        b->pausaImpacto = 0.25f;
+        TocarSomTom(sfxAcerto, 0.5f);
+        return;
+    }
+
+    // Com o índice ruim, a fase 2 não termina a luta: abre a fase 3 (contexto)
+    if (l->fase == 1 && l->hp <= l->hpMax * LUCI_FASE2) { RogueLuciMudarFase(b, 2); return; }
+    if (l->fase == 2 && !l->boa && l->hp <= l->hpMax * LUCI_FASE3) { l->hp = l->hpMax * LUCI_FASE3; RogueLuciMudarFase(b, 3); return; }
+
+    if (l->janela > 0.0f) l->janela -= dt;
+
+    Vector2 d = Vector2Subtract(j->pos, l->pos);
+    Vector2 dir = (Vector2Length(d) > 0.01f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
+
+    // Movimento: fases 1 e 3 flutua no alto; fase 2 gira com as cópias
+    if (l->fase == 2) {
+        l->angulo += dt * 0.6f * l->ritmo;
+        for (int k = 0; k < 3; k++) {
+            float a = l->angulo + k * (2.0f * PI / 3.0f);
+            l->copia[k] = (Vector2){ 400.0f + cosf(a) * 190.0f, 240.0f + sinf(a) * 90.0f };
+        }
+        l->troca -= dt;
+        if (l->troca <= 0.0f) {                         // trocam de lugar num clarão
+            l->troca = 5.0f;
+            l->real = GetRandomValue(0, 2);
+            for (int k = 0; k < 3; k++) RogueParticulas(b, l->copia[k], MAGENTA, 8, 120);
+        }
+        l->pos = l->copia[l->real];
+    } else {
+        l->pos = Vector2Lerp(l->pos, (Vector2){ 400.0f + sinf(l->anim * 0.6f) * 170.0f, 150.0f }, fminf(1.0f, 3.0f * dt));
+    }
+
+    // Leque (fases 1 e 3) ou espiral em rajadas (fase 2)
+    l->cronoTiro -= dt * l->ritmo;
+    if (l->fase == 2) {
+        if (fmodf(l->anim, 3.0f) < 1.5f && l->cronoTiro <= 0.0f) {
+            for (int k = 0; k < 2; k++) {
+                float a = l->anim * 3.0f + k * PI;
+                RogueDisparar(b, l->pos, (Vector2){ cosf(a), sinf(a) }, LUCI_TIRO_VEL * l->ritmo * 0.85f, LUCI_TIRO_DANO, 5.0f, false);
+            }
+            l->cronoTiro = 0.12f;
+        }
+    } else if (l->cronoTiro <= 0.0f) {
+        for (int k = -2; k <= 2; k++)
+            RogueDisparar(b, l->pos, Vector2Rotate(dir, k * 13.0f * DEG2RAD), LUCI_TIRO_VEL * l->ritmo, LUCI_TIRO_DANO, 6.0f, false);
+        l->cronoTiro = 1.4f;
+        TocarSomTom(sfxTiro, 0.7f);
+    }
+
+    // Ataque em metade da arena (fases 1 e 3). Na fase 1 ela anuncia o "lado seguro"; às vezes mente.
+    if (l->fase != 2) {
+        l->tempoDica -= dt * l->ritmo;
+        if (!l->avisando && l->tempoDica <= 0.0f) {
+            l->avisando = true;
+            l->tempoDica = LUCI_DICA_AVISO;
+            l->ladoAtaque = GetRandomValue(0, 1);
+            l->dicaFalsa = (l->fase == 1) && GetRandomValue(1, 100) <= (l->boa ? LUCI_DICA_FALSA_BOA : LUCI_DICA_FALSA_RUIM);
+        } else if (l->avisando && l->tempoDica <= 0.0f) {
+            bool naMetade = (l->ladoAtaque == 0) ? (j->pos.x < 400.0f) : (j->pos.x >= 400.0f);
+            l->avisando = false;
+            l->tempoDica = LUCI_DICA_INTERVALO;
+            if (naMetade) RogueFerirJogador(b, LUCI_DANO_AREA);
+            if (l->dicaFalsa) {
+                if (naMetade) { b->perm->confiouAlucinacao++; Telemetria("bloco3_dica", "acreditou", 0.0f, 0); }
+                else          { b->perm->alucinacoesPegas++;  Telemetria("bloco3_dica", "verificou", 0.0f, 0); }
+            }
+            for (int k = 0; k < 24; k++)
+                RogueParticulas(b, (Vector2){ (l->ladoAtaque == 0 ? 60.0f : 420.0f) + GetRandomValue(0, 320), (float)GetRandomValue(80, 520) }, RED, 1, 60);
+            TocarSomTom(sfxDano, 0.6f);
+        }
+    }
+
+    // Frases da fase 2: algumas contradizem a sala
+    if (l->fase == 2) {
+        l->tempoFrase -= dt;
+        if (l->frase < 0 && l->tempoFrase <= 0.0f && l->janela <= 0.0f) {
+            l->frase = GetRandomValue(0, NUM_FRASES_LUCI - 1);
+            l->fraseContradiz = RogueFraseContradiz(b, l->frase);
+            l->contestada = false;
+            l->tempoFrase = LUCI_FRASE_TEMPO + (RogueTemConceito(b, CONCEITO_ALUCINACOES) ? LUCI_FRASE_BONUS : 0.0f);
+            l->tempoFraseMax = l->tempoFrase;
+        } else if (l->frase >= 0 && l->tempoFrase <= 0.0f) {
+            if (l->fraseContradiz && !l->contestada) b->perm->contradicoesPerdidas++;
+            l->frase = -1;
+            l->tempoFrase = 1.5f;
+        }
+    }
+
+    if (Vector2Distance(l->pos, j->pos) < LUCI_RAIO + RAIO_CORPO_JOGADOR)
+        RogueFerirJogador(b, LUCI_DANO_CONTATO);
+}
+
+// O que dá para usar com E na arena (fase 3): pedaço de contexto (k) ou o núcleo (-1)
+static bool RogueAlvoContexto(const Biblioteca *b, int *k)
+{
+    const LuciChefe *l = &b->luci;
+
+    if (!l->ativo || l->fase != 3 || l->contextoPronto)
+        return false;
+
+    if (l->carregando >= 0 && Vector2Distance(b->j.pos, NUCLEO_LUCI) < 50.0f) { *k = -1; return true; }
+
+    for (int c = 0; c < NUM_CONTEXTO_LUCI; c++)
+        if (!l->entregue[c] && c != l->carregando && Vector2Distance(b->j.pos, l->posContexto[c]) < SIL_RAIO_PEGAR) { *k = c; return true; }
+
+    return false;
+}
+
 // ---------- Atualização ----------
 
 static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float dt)
 {
     JogadorRogue *j = &b->j;
+    Vector2 antes = j->pos;
 
     // Movimento (WASD)
     Vector2 mov = {0};
@@ -6498,7 +9899,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     if (IsKeyPressed(KEY_SPACE) && j->recargaEsquiva <= 0.0f && j->tempoEsquiva <= 0.0f) {
         j->dirEsquiva = andando ? mov : j->mira;
         j->tempoEsquiva = ESQUIVA_DURACAO;
-        j->recargaEsquiva = ESQUIVA_RECARGA;
+        j->recargaEsquiva = RogueRecargaEsquiva(j);
         if (j->invulneravel < ESQUIVA_INVULNERAVEL) j->invulneravel = ESQUIVA_INVULNERAVEL;
         TocarSomTom(sfxSelecao, 0.6f);
     }
@@ -6508,26 +9909,38 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
         j->pos = Vector2Add(j->pos, Vector2Scale(j->dirEsquiva, ESQUIVA_DISTANCIA / ESQUIVA_DURACAO * dt));
         RogueParticulas(b, j->pos, Fade(SKYBLUE, 0.7f), 1, 30);
     } else {
-        j->pos = Vector2Add(j->pos, Vector2Scale(mov, ROGUE_VELOCIDADE * dt));
+        float vel = RogueVelocidadeJogador(j);
+        if (b->silogista.ativo && b->silogista.carregando >= 0)
+            vel *= SIL_VELOCIDADE_CARREGANDO;           // carregando um fragmento
+        j->pos = Vector2Add(j->pos, Vector2Scale(mov, vel * dt));
     }
 
     RogueEmpurrarParaFora(&j->pos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
     AtualizarAnimacao(&j->anim, andando || j->tempoEsquiva > 0.0f, dt);
 
-    // Disparador de Dados (no átrio não se atira)
+    // Keylogger: velocidade recente e há quanto tempo ele anda na mesma direção (esquivar quebra a leitura)
+    if (dt > 0.0f) {
+        Vector2 v = Vector2Scale(Vector2Subtract(j->pos, antes), 1.0f / dt);
+        bool mesmaDirecao = Vector2Length(j->velMedia) > 30.0f && Vector2Length(v) > 30.0f &&
+                            Vector2DotProduct(Vector2Normalize(v), Vector2Normalize(j->velMedia)) > 0.92f;
+
+        j->tempoMesmaDirecao = (mesmaDirecao && j->tempoEsquiva <= 0.0f) ? j->tempoMesmaDirecao + dt : 0.0f;
+        j->velMedia = Vector2Lerp(j->velMedia, v, fminf(1.0f, 10.0f * dt));
+    }
+
+    // Troca de arma: TAB ou a rodinha do mouse (só com uma segunda arma)
+    if ((IsKeyPressed(KEY_TAB) || GetMouseWheelMove() != 0.0f) && j->armaExtra != ARMA_DISPARADOR) {
+        j->usandoExtra = !j->usandoExtra;
+        j->carga = 0.0f;
+        RogueAviso(b, DEF_ARMAS[RogueArmaAtual(j)].nome);
+        TocarSomTom(sfxSelecao, 1.2f);
+    }
+
+    // Arma equipada (no átrio não se atira)
     bool atirando = usandoSetas || IsMouseButtonDown(MOUSE_BUTTON_LEFT);
 
-    if (atirando && j->cronoTiro <= 0.0f && j->tempoEsquiva <= 0.0f && b->tipoSala != SALA_ATRIO) {
-
-        float espalhar = (float)GetRandomValue(-20, 20) / 10.0f * DEG2RAD;    // ±2 graus
-        Vector2 dir = Vector2Rotate(j->mira, espalhar);
-        Vector2 cano = Vector2Add(j->pos, Vector2Add((Vector2){ 0, 4 }, Vector2Scale(j->mira, 20.0f)));
-
-        RogueDisparar(b, cano, dir, TIRO_VELOCIDADE, RogueDanoTiro(b), TIRO_RAIO, true);
-        RogueParticulas(b, cano, SKYBLUE, 2, 60);
-        TocarSom(sfxTiro);
-        j->cronoTiro = TIRO_INTERVALO;
-    }
+    if (b->tipoSala != SALA_ATRIO)
+        RogueUsarArma(b, prog, atirando, dt);
 
     // Pulso de Integridade
     if (b->tipoSala != SALA_ATRIO && (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_Q)))
@@ -6549,13 +9962,59 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     }
 }
 
+// Anda para manter uma distância do jogador (foge de perto, chega mais se longe, senão anda de lado)
+static Vector2 RogueManterDistancia(Inimigo *e, Vector2 dir, float dist, float minimo, float maximo, float vel, float dt)
+{
+    if (fmodf(e->anim, 2.5f) < dt) e->lado = -e->lado;
+
+    if (dist < minimo) return Vector2Scale(dir, -vel);
+    if (dist > maximo) return Vector2Scale(dir, vel);
+    return Vector2Scale((Vector2){ -dir.y * e->lado, dir.x * e->lado }, vel * 0.6f);
+}
+
+// Phisher e a cópia falsa: mira (1), bote (2) e recuo (3). Só o verdadeiro se camufla (0).
+static void RogueMoverPhisher(Inimigo *e, Vector2 dir, float vel, float dt)
+{
+    if (e->estado == 0) {
+        e->vel = (Vector2){ sinf(e->anim * 0.7f) * 8.0f, 0.0f };     // um arquivo "inofensivo" balançando
+    }
+    else if (e->estado == 1) {
+        e->vel = (Vector2){0};
+        e->timer -= dt;
+        if (e->timer > 0.12f) e->alvo = dir;
+        if (e->timer <= 0.0f) {
+            e->estado = 2;
+            e->timer = PHISHER_BOTE_DURACAO;
+            e->vel = Vector2Scale(e->alvo, PHISHER_BOTE_VEL);
+        }
+    }
+    else if (e->estado == 2) {
+        e->timer -= dt;
+        if (e->timer <= 0.0f) {
+            e->estado = 3;
+            e->timer = PHISHER_RECUO;
+        }
+    }
+    else {
+        e->vel = Vector2Scale(dir, -vel * 2.2f);
+        e->timer -= dt;
+        if (e->timer <= 0.0f) {
+            e->estado = 0;
+            e->recarga = PHISHER_RECARGA;
+        }
+    }
+}
+
 static void RogueAtualizarInimigos(Biblioteca *b, float dt)
 {
     JogadorRogue *j = &b->j;
 
+    RogueAtualizarConexoes(b);
+
     for (int i = 0; i < MAX_INIMIGOS; i++) {
 
         Inimigo *e = &b->ini[i];
+        const DefInimigo *def = &DEF_INIMIGOS[e->tipo];
 
         if (!e->ativo)
             continue;
@@ -6568,11 +10027,16 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
             continue;
         }
 
-        Vector2 paraJogador = Vector2Subtract(j->pos, e->pos);
+        // Proxy-Isca: quem persegue vai atrás do holograma
+        bool enganado = j->efeito[EFEITO_PROXY] > 0.0f && RoguePerseguidor(e->tipo);
+        Vector2 paraJogador = Vector2Subtract(enganado ? j->proxyPos : j->pos, e->pos);
         float dist = Vector2Length(paraJogador);
         Vector2 dir = (dist > 0.01f) ? Vector2Scale(paraJogador, 1.0f / dist) : (Vector2){ 0, 1 };
 
-        if (e->recarga > 0.0f) e->recarga -= dt;
+        // Ligado a um Botnet: as recargas passam mais rápido (ataca mais vezes)
+        float ritmo = e->conectado ? BOTNET_BONUS_RITMO : 1.0f;
+
+        if (e->recarga > 0.0f) e->recarga -= dt * ritmo;
 
         if (e->atordoado > 0.0f) {
             e->atordoado -= dt;
@@ -6662,16 +10126,262 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
                     continue;
                 }
                 break;
+
+            case INIMIGO_SPAMMER: {
+                // Enxame: persegue em zigue-zague nervoso, cada um com seu desvio (o bando se espalha)
+                Vector2 lado = { -dir.y, dir.x };
+                float desvio = sinf(e->anim * 7.0f + e->lado * 2.0f + (float)i) * 70.0f;
+                e->vel = Vector2Add(Vector2Scale(dir, def->velocidade), Vector2Scale(lado, desvio));
+            } break;
+
+            case INIMIGO_SPAM:
+                e->vel = Vector2Scale(dir, def->velocidade);
+                e->vida -= dt;
+                if (e->vida <= 0.0f) {
+                    RogueParticulas(b, e->pos, def->cor, 4, 80);
+                    e->ativo = false;
+                    continue;
+                }
+                break;
+
+            case INIMIGO_PHISHER: {
+                // Spammer + Phisher: com o jogador cercado de spam, ele ataca de mais longe e mais rápido
+                bool distraido = RogueSpammersPerto(b, j->pos, 140.0f) >= 3;
+
+                if (e->habilidade > 0.0f) e->habilidade -= dt;
+
+                if (e->estado == 0 && e->recarga <= 0.0f && dist < PHISHER_ALCANCE * (distraido ? 1.4f : 1.0f))
+                    RogueRevelarPhisher(b, e, distraido);
+
+                RogueMoverPhisher(e, dir, def->velocidade, dt);
+            } break;
+
+            case INIMIGO_ISCA: {
+                // Cópia falsa: imita o bote, mas não machuca. Some com o tempo ou com o dono.
+                bool donoVivo = e->dono >= 0 && b->ini[e->dono].ativo && b->ini[e->dono].tipo == INIMIGO_PHISHER;
+
+                e->vida -= dt;
+                if (e->vida <= 0.0f || !donoVivo) {
+                    RogueParticulas(b, e->pos, def->cor, 8, 120);
+                    e->ativo = false;
+                    continue;
+                }
+
+                RogueMoverPhisher(e, dir, def->velocidade, dt);
+                if (e->estado == 0 && e->recarga <= 0.0f && dist < PHISHER_ALCANCE) {
+                    e->estado = 1;
+                    e->timer = PHISHER_PREPARO;
+                }
+            } break;
+
+            case INIMIGO_FIREWALL: {
+                // Vira devagar para o jogador: quem dá a volta acha as costas desprotegidas
+                float ang = atan2f(e->frente.y, e->frente.x);
+                float diferenca = atan2f(dir.y, dir.x) - ang;
+                while (diferenca > PI)  diferenca -= 2.0f * PI;
+                while (diferenca < -PI) diferenca += 2.0f * PI;
+                float passo = FIREWALL_GIRO * dt;
+                ang += Clamp(diferenca, -passo, passo);
+                e->frente = (Vector2){ cosf(ang), sinf(ang) };
+
+                // Fica na frente de quem protege (entre os aliados e o jogador)
+                Vector2 centro = {0};
+                Vector2 destino = j->pos;
+                if (RogueQuemProteger(b, e, &centro))
+                    destino = Vector2Add(centro, Vector2Scale(Vector2Normalize(Vector2Subtract(j->pos, centro)), 55.0f));
+                else if (dist < 160.0f)
+                    destino = e->pos;
+
+                Vector2 ate = Vector2Subtract(destino, e->pos);
+                e->vel = (Vector2Length(ate) > 16.0f) ? Vector2Scale(Vector2Normalize(ate), def->velocidade) : (Vector2){0};
+
+                // Barreira de energia na frente (com aviso)
+                if (e->estado == 0) {
+                    e->habilidade -= dt * ritmo;
+                    if (e->habilidade <= 0.0f) { e->estado = 1; e->timer = FIREWALL_AVISO_BARREIRA; }
+                }
+                else if (e->estado == 1) {
+                    e->timer -= dt;
+                    if (e->timer <= 0.0f) {
+                        e->estado = 2;
+                        e->timer = FIREWALL_BARREIRA;
+                        TocarSomTom(sfxSelecao, 0.5f);
+                    }
+                }
+                else {
+                    e->timer -= dt;
+                    if (e->timer <= 0.0f) { e->estado = 0; e->habilidade = FIREWALL_INTERVALO; }
+                }
+            } break;
+
+            case INIMIGO_OVERCLOCK:
+
+                if (e->estado == 0) {
+                    // Aproxima-se devagar até uma boa distância
+                    e->vel = (dist > OVERCLOCK_ALCANCE * 0.8f) ? Vector2Scale(dir, def->velocidade)
+                                                               : Vector2Scale((Vector2){ -dir.y * e->lado, dir.x * e->lado }, def->velocidade * 0.5f);
+                    if (dist < OVERCLOCK_ALCANCE && e->recarga <= 0.0f) {
+                        e->estado = 1;
+                        e->carga = 0.0f;
+                        e->cargaAlvo = OVERCLOCK_CARGA_MIN + (OVERCLOCK_CARGA_MAX - OVERCLOCK_CARGA_MIN) * (float)GetRandomValue(0, 100) / 100.0f;
+                    }
+                }
+                else if (e->estado == 1) {
+                    // Carregando: quanto mais carga, mais rápida a investida (e mais longa a fraqueza depois).
+                    // Overclock + Keylogger: se houver um Keylogger vivo, mira onde ele previu.
+                    e->vel = (Vector2){0};
+                    e->carga += dt * ritmo;
+
+                    if (e->cargaAlvo - e->carga > 0.15f) {
+                        Vector2 alvo = RogueTemKeylogger(b) ? RoguePrevisaoJogador(b, e->pos, OVERCLOCK_INVESTIDA_MAX) : j->pos;
+                        Vector2 d = Vector2Subtract(alvo, e->pos);
+                        e->alvo = (Vector2Length(d) > 1.0f) ? Vector2Normalize(d) : dir;
+                    }
+
+                    if (e->carga >= e->cargaAlvo) {
+                        float vel = OVERCLOCK_INVESTIDA_MIN + (OVERCLOCK_INVESTIDA_MAX - OVERCLOCK_INVESTIDA_MIN) * RogueCargaOverclock(e);
+                        e->estado = 2;
+                        e->timer = OVERCLOCK_INVESTIDA_DURACAO;
+                        e->vel = Vector2Scale(e->alvo, vel);
+                        TocarSomTom(sfxDano, 1.4f);
+                    }
+                }
+                else if (e->estado == 2) {
+                    e->timer -= dt;
+                    if (GetRandomValue(0, 1) == 0) RogueParticulas(b, e->pos, ORANGE, 1, 40);      // rastro de energia
+                    if (e->timer <= 0.0f) RogueSuperaquecer(e);
+                }
+                else {
+                    // Superaquecido: quase parado e vulnerável
+                    e->vel = Vector2Scale(dir, 20.0f);
+                    e->timer -= dt;
+                    if (GetRandomValue(0, 6) == 0) RogueParticulas(b, (Vector2){ e->pos.x, e->pos.y - 10 }, GRAY, 1, 30);
+                    if (e->timer <= 0.0f) { e->estado = 0; e->recarga = OVERCLOCK_RECARGA; }
+                }
+                break;
+
+            case INIMIGO_BOTNET: {
+                // Fica longe e, se der, escondido atrás de um aliado (o aliado entre ele e o jogador)
+                const Inimigo *escudo = NULL;
+                float menor = 9999.0f;
+                for (int o = 0; o < MAX_INIMIGOS; o++) {
+                    const Inimigo *a = &b->ini[o];
+                    if (a == e || !a->ativo || a->tipo == INIMIGO_BOTNET || RogueInimigoPassageiro(a->tipo)) continue;
+                    if (Vector2Distance(a->pos, e->pos) < menor) { menor = Vector2Distance(a->pos, e->pos); escudo = a; }
+                }
+
+                if (dist < BOTNET_DIST_MIN || escudo == NULL) {
+                    e->vel = RogueManterDistancia(e, dir, dist, BOTNET_DIST_MIN, BOTNET_DIST_MAX, def->velocidade, dt);
+                } else {
+                    Vector2 atras = Vector2Add(escudo->pos, Vector2Scale(Vector2Normalize(Vector2Subtract(escudo->pos, j->pos)), 70.0f));
+                    Vector2 ate = Vector2Subtract(atras, e->pos);
+                    e->vel = (Vector2Length(ate) > 12.0f) ? Vector2Scale(Vector2Normalize(ate), def->velocidade) : (Vector2){0};
+                }
+
+                // De vez em quando, um pacote fraco (brilha antes)
+                if (e->estado == 0 && e->recarga <= 0.0f) { e->estado = 1; e->timer = BOTNET_PREPARO; }
+                else if (e->estado == 1) {
+                    e->vel = Vector2Scale(e->vel, 0.3f);
+                    e->timer -= dt;
+                    if (e->timer <= 0.0f) {
+                        RogueDisparar(b, e->pos, dir, 200.0f, BOTNET_TIRO_DANO, 5.0f, false);
+                        TocarSomTom(sfxTiro, 1.6f);
+                        e->estado = 0;
+                        e->recarga = BOTNET_INTERVALO;
+                    }
+                }
+            } break;
+
+            case INIMIGO_KEYLOGGER:
+
+                if (e->estado == 0) {
+                    e->vel = RogueManterDistancia(e, dir, dist, KEYLOGGER_DIST_MIN, KEYLOGGER_DIST_MAX, def->velocidade, dt);
+                    if (e->recarga <= 0.0f) { e->estado = 1; e->timer = KEYLOGGER_PREPARO; }
+                }
+                else if (e->estado == 1) {
+                    // A mira aparece no chão, seguindo a previsão; trava um instante antes da rajada
+                    e->vel = (Vector2){0};
+                    e->timer -= dt;
+                    if (e->timer > 0.15f) e->miraPrevista = RoguePrevisaoJogador(b, e->pos, KEYLOGGER_TIRO_VEL);
+                    if (e->timer <= 0.0f) { e->estado = 2; e->tiros = KEYLOGGER_RAJADA; e->timer = 0.0f; }
+                }
+                else {
+                    e->vel = (Vector2){0};
+                    e->timer -= dt;
+                    if (e->timer <= 0.0f && e->tiros > 0) {
+                        Vector2 d = Vector2Normalize(Vector2Subtract(e->miraPrevista, e->pos));
+                        float espalhar = (float)GetRandomValue(-3, 3) * DEG2RAD;
+                        RogueDisparar(b, e->pos, Vector2Rotate(d, espalhar), KEYLOGGER_TIRO_VEL, KEYLOGGER_TIRO_DANO, 5.0f, false);
+                        TocarSomTom(sfxTiro, 1.3f);
+                        e->tiros--;
+                        e->timer = 0.1f;
+                    }
+                    if (e->tiros <= 0) { e->estado = 0; e->recarga = KEYLOGGER_INTERVALO; }
+                }
+                break;
+
+            case INIMIGO_CACHE: {
+                // Anda devagar atrás do jogador. Sem levar dano por um tempo, usa a energia guardada
+                // para se curar (dentro do escudo de um Firewall, começa mais cedo).
+                float espera = RogueNaZonaFirewall(b, e) ? CACHE_ESPERA_PROTEGIDO : CACHE_ESPERA;
+
+                e->vel = Vector2Scale(dir, def->velocidade);
+                e->semDano += dt;
+
+                if (e->recuperando > 0.0f) {
+                    e->vel = (Vector2){0};
+                    e->recuperando -= dt;
+                    if (GetRandomValue(0, 3) == 0) RogueParticulas(b, e->pos, LIME, 1, 50);
+                    if (e->recuperando <= 0.0f) {
+                        float cura = fminf(e->energia, e->hpMax - e->hp);
+                        e->hp += cura;
+                        e->energia = 0.0f;
+                        e->semDano = 0.0f;
+                        RogueParticulas(b, e->pos, LIME, 16, 140);
+                        TocarSomTom(sfxPegar, 0.7f);
+                    }
+                }
+                else if (e->energia > 0.0f && e->hp < e->hpMax && e->semDano >= espera) {
+                    e->recuperando = CACHE_RECUPERAR;
+                }
+
+                // Despeja dados: anel lento de balas (os blocos brilham antes)
+                if (e->recuperando <= 0.0f) {
+                    if (e->estado == 0 && e->recarga <= 0.0f) { e->estado = 1; e->timer = CACHE_PREPARO; }
+                    else if (e->estado == 1) {
+                        e->vel = (Vector2){0};
+                        e->timer -= dt;
+                        if (e->timer <= 0.0f) {
+                            for (int k = 0; k < CACHE_BALAS; k++) {
+                                float a = (2.0f * PI / CACHE_BALAS) * k + e->anim;
+                                RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 140.0f, CACHE_TIRO_DANO, 6.0f, false);
+                            }
+                            TocarSomTom(sfxTiro, 0.7f);
+                            e->estado = 0;
+                            e->recarga = CACHE_INTERVALO;
+                        }
+                    }
+                }
+            } break;
+
+            default:
+                break;
         }
 
-        // Movimento + empurrão dos golpes
-        e->pos = Vector2Add(e->pos, Vector2Scale(Vector2Add(e->vel, e->empurrao), dt));
+        // Movimento (com o bônus do Botnet) + empurrão dos golpes
+        float velocidade = e->conectado ? BOTNET_BONUS_VELOCIDADE : 1.0f;
+        if (j->efeito[EFEITO_LATENCIA] > 0.0f && Vector2Distance(e->pos, j->pos) < LATENCIA_RAIO)
+            velocidade *= 1.0f - LATENCIA_LENTIDAO;             // Campo de Latência
+        e->pos = Vector2Add(e->pos, Vector2Scale(Vector2Add(Vector2Scale(e->vel, velocidade), e->empurrao), dt));
         e->empurrao = Vector2Scale(e->empurrao, fmaxf(0.0f, 1.0f - 8.0f * dt));
         RogueEmpurrarParaFora(&e->pos, e->raio, b->obst, b->numObst);
 
         // Encostou no jogador
-        if (e->tipo == INIMIGO_FRAGMENTO && dist < e->raio + RAIO_CORPO_JOGADOR)
-            RogueFerirJogador(b, FRAGMENTO_DANO);
+        float contato = RogueDanoContato(e);
+        if (contato > 0.0f && enganado && dist < e->raio + RAIO_CORPO_JOGADOR)
+            j->proxyHp -= contato * 3.0f * dt;                  // o holograma vai se desfazendo
+        if (contato > 0.0f && Vector2Distance(e->pos, j->pos) < e->raio + RAIO_CORPO_JOGADOR)
+            RogueFerirJogador(b, contato);
     }
 
     // Um inimigo não entra no outro
@@ -6697,6 +10407,8 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
 
 static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, float dt)
 {
+    JogadorRogue *j = &b->j;
+
     for (int i = 0; i < MAX_PROJETEIS; i++) {
 
         Projetil *p = &b->proj[i];
@@ -6704,24 +10416,75 @@ static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, floa
         if (!p->ativo)
             continue;
 
+        // Projétil Q (Disparo Dedutivo): vai atrás do alvo marcado
+        Vector2 alvoQ;
+        if (p->alvoDedutivo != 0 && RoguePosAlvoDedutivo(b, p->alvoDedutivo, &alvoQ) && Vector2Distance(alvoQ, p->pos) > 1.0f)
+            p->vel = Vector2Scale(Vector2Normalize(Vector2Subtract(alvoQ, p->pos)), DEDUTIVO_VEL);
+
+        // Teleguiado (Roteador, Botnet Reverso): vira aos poucos para o inimigo mais perto
+        if (p->guiado) {
+            int alvo = RogueInimigoMaisPerto(b, p->pos, ROTEADOR_AQUISICAO, p->ultimoAlvo - 1);
+            if (alvo >= 0) {
+                float vel = Vector2Length(p->vel);
+                float atual = atan2f(p->vel.y, p->vel.x);
+                Vector2 d = Vector2Subtract(b->ini[alvo].pos, p->pos);
+                float diferenca = atan2f(d.y, d.x) - atual;
+                while (diferenca > PI)  diferenca -= 2.0f * PI;
+                while (diferenca < -PI) diferenca += 2.0f * PI;
+                atual += Clamp(diferenca, -ROTEADOR_GIRO * dt, ROTEADOR_GIRO * dt);
+                p->vel = (Vector2){ cosf(atual) * vel, sinf(atual) * vel };
+            }
+        }
+
         p->pos = Vector2Add(p->pos, Vector2Scale(p->vel, dt));
 
-        // Saiu da arena ou bateu numa estante
+        // Alcance e tempo de vida (as armas novas não voam para sempre)
+        if (p->alcance > 0.0f) {
+            p->alcance -= Vector2Length(p->vel) * dt;
+            if (p->alcance <= 0.0f) { RogueFimProjetil(b, prog, p); continue; }
+        }
+        if (p->vida > 0.0f) {
+            p->vida -= dt;
+            if (p->vida <= 0.0f) { RogueFimProjetil(b, prog, p); continue; }
+        }
+
+        // Saiu da arena ou bateu numa estante (o projétil Q passa por cima delas)
         bool bateu = !CheckCollisionPointRec(p->pos, ARENA_ROGUE);
-        for (int k = 0; k < b->numObst && !bateu; k++)
+        for (int k = 0; k < b->numObst && !bateu && p->alvoDedutivo == 0; k++)
             bateu = CheckCollisionPointRec(p->pos, b->obst[k]);
 
         if (bateu) {
-            p->ativo = false;
-            RogueParticulas(b, p->pos, p->doJogador ? SKYBLUE : ORANGE, 3, 80);
+            RogueFimProjetil(b, prog, p);
             continue;
         }
 
         if (p->doJogador) {
 
             if (b->chefe.ativo && Vector2Distance(p->pos, b->chefe.pos) < CHEFE_RAIO + p->raio) {
+                bool feria = RogueChefeVulneravel(&b->chefe);
+                bool principal = (p->alvoDedutivo == 0 && !p->secundario);
                 p->ativo = false;
-                RogueFerirChefe(b, p->dano, p->pos);
+                RogueFerirChefe(b, p->dano * ((feria && principal) ? RogueAnalisar(b, -1) : 1.0f), p->pos);
+                if (feria && principal)
+                    RogueMarcarDedutivo(b, &b->chefe.marca, &b->chefe.tempoMarca, -1, b->chefe.pos);
+                if (p->arma == ARMA_ORBE && !p->secundario)
+                    RogueExplodirOrbe(b, prog, p->pos);
+                continue;
+            }
+
+            if (RogueLuciAcerto(b, prog, p))
+                continue;
+
+            if (RogueSilogistaAcerto(b, prog, p)) {
+                if (p->arma == ARMA_ORBE && !p->secundario && b->silogista.etapa == SIL_VULNERAVEL)
+                    RogueExplodirOrbe(b, prog, p->pos);
+                continue;
+            }
+
+            // Barreira de energia do Firewall segura os tiros (o projétil Q passa)
+            if (p->alvoDedutivo == 0 && RogueBarreiraBloqueia(b, p->pos, p->raio)) {
+                RogueFimProjetil(b, prog, p);
+                RogueParticulas(b, p->pos, (Color){ 0, 228, 48, 255 }, 4, 90);
                 continue;
             }
 
@@ -6729,16 +10492,21 @@ static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, floa
 
                 Inimigo *e = &b->ini[k];
 
-                if (!e->ativo || e->surgindo > 0.0f || Vector2Distance(p->pos, e->pos) > e->raio + p->raio)
+                if (!e->ativo || e->surgindo > 0.0f || k == p->ultimoAlvo - 1 || Vector2Distance(p->pos, e->pos) > e->raio + p->raio)
                     continue;
 
-                p->ativo = false;
-                RogueFerirInimigo(b, prog, e, p->dano, Vector2Normalize(p->vel));
+                RogueAcertarInimigo(b, prog, p, k);
                 break;
             }
 
-        } else if (Vector2Distance(p->pos, b->j.pos) < RAIO_CORPO_JOGADOR + p->raio &&
-                   b->j.invulneravel <= 0.0f && b->j.tempoEsquiva <= 0.0f) {
+        } else if (j->efeito[EFEITO_PROXY] > 0.0f && Vector2Distance(p->pos, j->proxyPos) < RAIO_CORPO_JOGADOR + p->raio) {
+
+            p->ativo = false;                               // a bala bate no holograma
+            j->proxyHp -= p->dano;
+            RogueParticulas(b, p->pos, SKYBLUE, 4, 80);
+
+        } else if (Vector2Distance(p->pos, j->pos) < RAIO_CORPO_JOGADOR + p->raio &&
+                   j->invulneravel <= 0.0f && j->tempoEsquiva <= 0.0f) {
 
             p->ativo = false;
             RogueFerirJogador(b, p->dano);
@@ -6774,9 +10542,15 @@ static void RogueAtualizarColetaveis(Biblioteca *b, float dt)
                 b->perm->fragmentos++;
                 RogueParticulas(b, c->pos, (Color){ 0, 228, 255, 255 }, 6, 100);
                 TocarSomTom(sfxPegar, 1.5f);
+            } else if (ITENS[c->item].temporario) {
+                RogueAtivarTemporario(b, c->item);
+                RogueParticulas(b, c->pos, CORES_RARIDADE[ITENS[c->item].raridade], 14, 160);
+                TocarSomTom(sfxAcerto, 1.4f);
             } else {
-                b->j.itens[c->item]++;
+                if (b->j.itens[c->item] < ITENS[c->item].maxPilha)
+                    b->j.itens[c->item]++;
                 RogueAviso(b, TextFormat("+1 %s", ITENS[c->item].nome));
+                RogueParticulas(b, c->pos, CORES_RARIDADE[ITENS[c->item].raridade], 14, 160);
                 TocarSomTom(sfxAcerto, 1.2f);
             }
         }
@@ -6784,7 +10558,8 @@ static void RogueAtualizarColetaveis(Biblioteca *b, float dt)
 }
 
 // O que está ao alcance do E agora (-1 = nada)
-typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA } AlvoRogue;
+typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA, ALVO_PECA, ALVO_ENCAIXE,
+               ALVO_REGISTRO, ALVO_CONTEXTO } AlvoRogue;
 
 static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 {
@@ -6802,6 +10577,31 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
         for (int i = 0; i < NUM_PEDESTAIS; i++)
             if (Vector2Distance(p, POS_PEDESTAIS[i]) < 42) { *pedestal = i; return ALVO_PEDESTAL; }
     }
+    else if (b->tipoSala == SALA_TRANSICAO) {
+        for (int i = 0; i < 3; i++)
+            if (!(b->registrosLidos & (1 << i)) && Vector2Distance(p, POS_REGISTROS[i]) < 60.0f) { *pedestal = i; return ALVO_REGISTRO; }
+    }
+    else if (b->tipoSala == SALA_LUCI) {
+        if (RogueAlvoContexto(b, pedestal)) return ALVO_CONTEXTO;     // *pedestal: pedaço (k) ou o núcleo (-1)
+    }
+    else if (b->tipoSala == SALA_SILOGISTA) {
+        // Montagem do silogismo (o índice do fragmento ou do mecanismo vai em *pedestal).
+        // Carregando, o mecanismo vem primeiro; de mãos vazias, o fragmento no chão.
+        const Silogista *s = &b->silogista;
+
+        if (!s->ativo || !s->apresentado || s->etapa != SIL_MONTAGEM)
+            return ALVO_NADA;
+
+        for (int vez = 0; vez < 2; vez++) {
+            bool encaixes = (vez == 0) == (s->carregando >= 0);
+            for (int i = 0; i < NUM_ENCAIXES; i++) {
+                if (encaixes && (s->carregando >= 0 || s->encaixe[i] >= 0) && Vector2Distance(p, POS_ENCAIXES[i]) < SIL_RAIO_ENCAIXE)
+                    { *pedestal = i; return ALVO_ENCAIXE; }
+                if (!encaixes && SilPecaNoChao(s, i) && Vector2Distance(p, s->posPeca[i]) < SIL_RAIO_PEGAR)
+                    { *pedestal = i; return ALVO_PECA; }
+            }
+        }
+    }
 
     return ALVO_NADA;
 }
@@ -6812,7 +10612,7 @@ static bool RogueComprar(Biblioteca *b, TipoItem item)
     const DefItem *it = &ITENS[item];
     int *tenho = &b->j.itens[item];
 
-    if (it->passivo && *tenho >= MAX_PILHA_PASSIVO) {
+    if (it->passivo && *tenho >= it->maxPilha) {
         RogueAviso(b, "Você já tem o máximo desse item.");
         TocarSom(sfxErro);
         return false;
@@ -6862,6 +10662,32 @@ static bool RogueComprarMelhoria(Biblioteca *b, int m)
     return true;
 }
 
+// Arma do Byteco: vira a arma extra desta tentativa (substitui a anterior)
+static bool RogueComprarArma(Biblioteca *b, TipoArma arma)
+{
+    const DefArma *a = &DEF_ARMAS[arma];
+
+    if (arma == ARMA_DISPARADOR || b->j.armaExtra == arma) {
+        RogueAviso(b, "Você já tem essa arma.");
+        TocarSom(sfxErro);
+        return false;
+    }
+
+    if (b->perm->fragmentos < a->preco) {
+        RogueAviso(b, "Fragmentos de Conhecimento insuficientes.");
+        TocarSom(sfxErro);
+        return false;
+    }
+
+    b->perm->fragmentos -= a->preco;
+    b->j.armaExtra = arma;
+    b->j.usandoExtra = true;
+    RogueAviso(b, TextFormat("Comprou: %s (TAB troca)", a->nome));
+    TocarSomTom(sfxAcerto, 1.2f);
+    Telemetria("rogue_loja", a->nome, (float)a->preco, b->perm->fragmentos);
+    return true;
+}
+
 // Enciclopédia do átrio: W/S escolhe, E lê o texto completo, BACKSPACE/ESC sai
 static void RogueAtualizarEnciclopedia(Biblioteca *b, SessaoDialogo *dlg)
 {
@@ -6891,13 +10717,14 @@ static void RogueAtualizarEnciclopedia(Biblioteca *b, SessaoDialogo *dlg)
 // Loja do Byteco: A/D troca a aba, W/S escolhe, E (ou ENTER) compra, BACKSPACE/ESC sai
 static void RogueAtualizarLoja(Biblioteca *b)
 {
-    if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) {
-        b->abaLoja = 1 - b->abaLoja;
+    bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT), direita = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
+    if (esquerda || direita) {
+        b->abaLoja = (b->abaLoja + (direita ? 1 : 2)) % 3;
         b->selecaoLoja = 0;
         TocarSom(sfxSelecao);
     }
 
-    int linhas = (b->abaLoja == 0) ? NUM_ITENS : NUM_MELHORIAS;
+    int linhas = (b->abaLoja == 0) ? NUM_ITENS_LOJA : ((b->abaLoja == 1) ? NUM_MELHORIAS : ARMAS_NA_LOJA);
     int total = linhas + 1;                         // a última linha é SAIR
 
     if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { b->selecaoLoja = (b->selecaoLoja + total - 1) % total; TocarSom(sfxSelecao); }
@@ -6911,8 +10738,9 @@ static void RogueAtualizarLoja(Biblioteca *b)
         return;
     }
 
-    if (confirmar && b->abaLoja == 0) RogueComprar(b, (TipoItem)b->selecaoLoja);
-    else if (confirmar)               RogueComprarMelhoria(b, b->selecaoLoja);
+    if (confirmar && b->abaLoja == 0)      RogueComprar(b, (TipoItem)b->selecaoLoja);
+    else if (confirmar && b->abaLoja == 1) RogueComprarMelhoria(b, b->selecaoLoja);
+    else if (confirmar)                    RogueComprarArma(b, b->estoqueArmas[b->selecaoLoja]);
 }
 
 // E perto de alguém ou de algo: fala, lê ou pega
@@ -6935,6 +10763,18 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             break;
 
         case ALVO_PEDESTAL: {
+            TipoArma arma = b->armaPedestal[pedestal];
+            if (arma != ARMA_DISPARADOR) {
+                b->j.armaExtra = arma;                  // substitui a arma extra que houver
+                b->j.usandoExtra = true;
+                b->j.carga = 0.0f;
+                b->recompensaPega = true;
+                RogueAviso(b, TextFormat("Pegou: %s (TAB troca)", DEF_ARMAS[arma].nome));
+                RogueParticulas(b, POS_PEDESTAIS[pedestal], DEF_ARMAS[arma].cor, 20, 180);
+                TocarSomTom(sfxAcerto, 1.2f);
+                Telemetria("rogue_recompensa", DEF_ARMAS[arma].nome, 0.0f, 1);
+                break;
+            }
             TipoItem it = b->pedestal[pedestal];
             b->j.itens[it]++;
             b->recompensaPega = true;
@@ -6947,6 +10787,23 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
         case ALVO_ENCICLOPEDIA:
             b->enciclopediaAberta = true;
             b->selecaoEnciclopedia = 0;
+            break;
+
+        case ALVO_PECA:
+            SilPegarPeca(b, pedestal);
+            break;
+
+        case ALVO_ENCAIXE:
+            SilUsarEncaixe(b, pedestal);
+            break;
+
+        case ALVO_REGISTRO:
+            b->registroAtual = pedestal;
+            DialogoIniciar(dlg, RogueDialogoRegistro(b, pedestal), OBJ_REGISTRO);
+            break;
+
+        case ALVO_CONTEXTO:
+            RogueLuciContexto(b, pedestal);
             break;
 
         default:
@@ -6974,6 +10831,7 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
     else if (obj == OBJ_TERMINAL) {
         b->terminalLido = true;
         b->limpa = true;
+        RogueMudarEstabilidade(b, 1, "base de conhecimento confiável");
         b->perm->conceitos |= 1u << ((b->educativas <= 1) ? CONCEITO_ALUCINACOES : CONCEITO_PRATICAS);
         b->perm->fragmentos += FC_POR_TERMINAL;
         AlterarPontos(prog, PONTOS_TERMINAL);
@@ -6986,19 +10844,75 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
     else if (obj == OBJ_CHEFE_INTRO) {
         b->chefe.apresentado = true;
     }
+    else if (obj == OBJ_SILOGISTA_INTRO) {
+        b->silogista.apresentado = true;
+    }
+    else if (obj == OBJ_SILOGISTA_ETAPA) {
+        // Rodada 1 do circuito resolvida: a rodada 2 começa depois da explicação
+        Silogista *s = &b->silogista;
+        if (s->etapa == SIL_CIRCUITO && s->nucleo > 0.0f) {
+            SilPrepararRodada(s, 2);
+            s->nucleo = 0.0f;
+        }
+    }
+    else if (obj == OBJ_REGISTRO) {
+        b->registrosLidos |= 1 << b->registroAtual;
+        if (b->registrosLidos == 7 && !b->limpa) {
+            b->limpa = true;
+            b->conversaPendente = &dialogoNucleoAberto;
+            b->objConversa = OBJ_NENHUM;
+        }
+    }
+    else if (obj == OBJ_LUCI_INTRO) {
+        b->luci.apresentado = true;
+    }
+    else if (obj == OBJ_LUCI_FINAL) {
+        // Fim de UtopIA: o final, os pontos e a tela de resultado (depois, o ranking)
+        if (!b->perm->jogoConcluido || b->perm->finalJogo == 0) {
+            b->perm->jogoConcluido = true;
+            b->perm->finalJogo = b->finalBom ? 1 : 2;
+            b->perm->indiceFinal = b->indice.total;
+            AlterarPontos(prog, b->finalBom ? PONTOS_FINAL_BOM : PONTOS_FINAL_RUIM);
+            Telemetria("fim_do_jogo", b->finalBom ? "bom" : "ruim", (float)b->indice.total, prog->pontos);
+        }
+        b->pontosFinais = prog->pontos;
+        b->resultadoAberto = true;
+        b->tempoResultado = 0.0f;
+    }
+    else if (obj == OBJ_SILOGISTA_VITORIA) {
+        // Recompensa (uma vez por vitória): Selo da Inferência, conceito novo e a porta aberta
+        Silogista *s = &b->silogista;
+        if (!s->recompensaDada) {
+            s->recompensaDada = true;
+            b->j.seloInferencia = true;
+            if (!(b->perm->conceitos & (1u << CONCEITO_LOGICA)))
+                RogueAviso(b, "NOVO CONCEITO NA ENCICLOPÉDIA!");
+            else
+                RogueAviso(b, "SELO DA INFERÊNCIA!");
+            b->perm->conceitos |= 1u << CONCEITO_LOGICA;
+            b->perm->silogistaVencido = true;
+            b->perm->fragmentos += FC_SILOGISTA;
+            AlterarPontos(prog, PONTOS_SILOGISTA);
+            RogueSalaConcluida(b);
+            MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
+            Telemetria("rogue_silogista_vitoria", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
+        }
+        b->limpa = true;
+    }
     else if (obj == OBJ_ALUCINADOR_VITORIA) {
         // Fim da Biblioteca: os fragmentos voltam, a mochila esvazia e o main mostra o ranking
         b->perm->alucinadorVencido = true;
+        b->perm->bloco3Liberado = true;
         b->perm->fragmentos += FC_ALUCINADOR;
         AlterarPontos(prog, PONTOS_ALUCINADOR);
         Telemetria("rogue_chefe_vitoria", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
-        memset(b->j.itens, 0, sizeof(b->j.itens));
+        RogueEsvaziarMochila(&b->j);
         RogueEntrarAtrio(b, false);
         b->vitoriaPendente = true;
     }
 }
 
-typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA } EventoRogue;
+typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO } EventoRogue;
 
 static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg, float dt)
 {
@@ -7017,6 +10931,18 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->vitoriaPendente) {
         b->vitoriaPendente = false;
         return ROGUE_VITORIA;
+    }
+
+    // Tela de resultado do fim do jogo: ENTER leva ao ranking e ao menu
+    if (b->resultadoAberto) {
+        b->tempoResultado += dt;
+        if (b->tempoResultado > 1.0f && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE))) {
+            b->resultadoAberto = false;
+            RogueEsvaziarMochila(&b->j);
+            RogueEntrarAtrio(b, false);
+            return ROGUE_FIM_JOGO;
+        }
+        return ROGUE_NADA;
     }
 
     // Conversa aberta (Byte, Byteco, terminal, chefe): o resto espera
@@ -7071,8 +10997,17 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE);
         if (b->tempoMorte > 1.0f && (confirmar || b->tempoMorte > 5.0f)) {
             b->morreu = false;
-            memset(b->j.itens, 0, sizeof(b->j.itens));
-            RogueEntrarAtrio(b, false);
+            if (b->tipoSala == SALA_TRANSICAO || b->tipoSala == SALA_LUCI) {
+                // Bloco 3: volta ao corredor do núcleo sem perder nada
+                if (b->tipoSala == SALA_LUCI) b->perm->derrotasLuci++;
+                RogueLimparEfeitos(&b->j);
+                RogueEntrarSala(b, SALA_TRANSICAO);
+                b->j.hp = RogueHpMax(b);
+                b->j.ep = RogueEpMax(b);
+            } else {
+                RogueEsvaziarMochila(&b->j);
+                RogueEntrarAtrio(b, false);
+            }
         }
         return ROGUE_NADA;
     }
@@ -7082,8 +11017,18 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     RogueAtualizarProjeteis(b, prog, dt);
     RogueAtualizarColetaveis(b, dt);
 
+    RogueAtualizarDedutivo(b, dt);
+    RogueAtualizarEfeitos(b, dt);
+    RogueAtualizarLuci(b, prog, dt);
+
     if (b->tipoSala == SALA_CHEFE)
         RogueAtualizarChefe(b, prog, dt);
+
+    if (b->tipoSala == SALA_SILOGISTA)
+        RogueAtualizarSilogista(b, prog, dt);
+
+    if (b->tipoSala == SALA_LUCI)
+        RogueAtualizarLuciChefe(b, prog, dt);
 
     // Chegou perto do Guardião selado: o desafio abre
     for (int i = 0; i < MAX_INIMIGOS && !b->desafioAberto; i++) {
@@ -7096,6 +11041,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         b->j.hp = 0.0f;
         b->morreu = true;
         b->tempoMorte = 0.0f;
+        b->perm->mortes++;
         AlterarPontos(prog, -PENALIDADE_HP_ZERO);
         RogueParticulas(b, b->j.pos, SKYBLUE, 30, 260);
         TocarSom(sfxErro);
@@ -7105,6 +11051,13 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
 
     if (b->tipoSala == SALA_COMBATE && !b->limpa && RogueInimigosVivos(b) == 0) {
         b->limpa = true;
+        RogueSalaConcluida(b);
+
+        // Às vezes o combate deixa um upgrade passivo no meio da sala
+        int upgrade = RogueSortearItem(b, 0, true);
+        if (upgrade >= 0 && GetRandomValue(1, 100) <= CHANCE_UPGRADE_SALA)
+            RogueSoltar(b, (Vector2){ 400, 300 }, false, (TipoItem)upgrade);
+
         AlterarPontos(prog, PONTOS_SALA_ROGUE);
         TocarSom(sfxAcerto);
         MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
@@ -7127,6 +11080,10 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->tipoSala == SALA_ATRIO) {
         if (naPortaDaSaida)
             return ROGUE_SAIR;
+        if (b->perm->bloco3Liberado && CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, PORTA_BLOCO3_ROGUE)) {
+            RogueEntrarBloco3(b, prog);
+            return ROGUE_NADA;
+        }
         if (naPortaDeCima) {
             if (b->perm->byteVisto) RogueComecarMissao(b);
             else {
@@ -7135,7 +11092,10 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
             }
         }
     }
-    else if (b->tipoSala != SALA_CHEFE && b->limpa && naPortaDeCima) {
+    else if (b->tipoSala == SALA_TRANSICAO) {
+        if (b->limpa && naPortaDeCima) RogueEntrarSala(b, SALA_LUCI);
+    }
+    else if (b->tipoSala != SALA_CHEFE && b->tipoSala != SALA_LUCI && b->limpa && naPortaDeCima) {
         RogueAvancar(b);
     }
 
@@ -7181,6 +11141,8 @@ static void DesenharPortaRogue(Rectangle r, bool aberta, const char *nome, float
     DrawText(rotulo, x, y, 10, aberta ? GREEN : RED);
 }
 
+static void DesenharIconeArma(TipoArma arma, Vector2 c, float e, float tempo);
+
 // Ícone de cada item (loja, pedestais, chão e HUD)
 static void DesenharIconeItem(TipoItem item, Vector2 c, float e, float tempo)
 {
@@ -7219,6 +11181,98 @@ static void DesenharIconeItem(TipoItem item, Vector2 c, float e, float tempo)
             }
             DrawRectangle((int)(c.x - 8 * e), (int)(c.y - 8 * e), (int)(16 * e), (int)(16 * e), PURPLE);
             DrawRectangleLinesEx((Rectangle){ c.x - 8 * e, c.y - 8 * e, 16 * e, 16 * e }, 1, MAGENTA);
+            break;
+
+        case ITEM_OVERCLOCK:        // raio laranja
+            DesenharTrianguloB2((Vector2){ c.x + 2 * e, c.y - 12 * e }, (Vector2){ c.x - 7 * e, c.y + 2 * e }, (Vector2){ c.x + 1 * e, c.y + 1 * e }, ORANGE);
+            DesenharTrianguloB2((Vector2){ c.x - 2 * e, c.y + 12 * e }, (Vector2){ c.x + 7 * e, c.y - 2 * e }, (Vector2){ c.x - 1 * e, c.y - 1 * e }, ORANGE);
+            break;
+
+        case ITEM_FIREWALL_PORTATIL:    // hexágono com um escudo dentro
+            DrawPolyLinesEx(c, 6, 11 * e, 0, 2, (Color){ 0, 228, 48, 255 });
+            DesenharTrianguloB2((Vector2){ c.x - 5 * e, c.y - 4 * e }, (Vector2){ c.x + 5 * e, c.y - 4 * e }, (Vector2){ c.x, c.y + 6 * e }, (Color){ 0, 228, 48, 255 });
+            break;
+
+        case ITEM_LIMPEZA_CACHE:    // lixeira
+            DrawRectangle((int)(c.x - 7 * e), (int)(c.y - 5 * e), (int)(14 * e), (int)(15 * e), SKYBLUE);
+            DrawRectangle((int)(c.x - 9 * e), (int)(c.y - 9 * e), (int)(18 * e), (int)(3 * e), SKYBLUE);
+            for (int k = -1; k <= 1; k++)
+                DrawRectangle((int)(c.x + k * 4 * e - 1), (int)(c.y - 2 * e), 2, (int)(9 * e), (Color){ 20, 40, 70, 255 });
+            break;
+
+        case ITEM_PROXY:            // bonequinho tracejado (holograma)
+            DrawCircleLines((int)c.x, (int)(c.y - 7 * e), 4 * e, SKYBLUE);
+            DrawRectangleLines((int)(c.x - 5 * e), (int)(c.y - 2 * e), (int)(10 * e), (int)(12 * e), SKYBLUE);
+            DrawLine((int)(c.x - 8 * e), (int)c.y, (int)(c.x + 8 * e), (int)c.y, Fade(SKYBLUE, 0.5f));
+            break;
+
+        case ITEM_PACOTE_INTEGRIDADE:   // caixa branca com cruz vermelha
+            DrawRectangle((int)(c.x - 9 * e), (int)(c.y - 8 * e), (int)(18 * e), (int)(16 * e), RAYWHITE);
+            DrawRectangle((int)(c.x - 2 * e), (int)(c.y - 6 * e), (int)(4 * e), (int)(12 * e), RED);
+            DrawRectangle((int)(c.x - 6 * e), (int)(c.y - 2 * e), (int)(12 * e), (int)(4 * e), RED);
+            break;
+
+        case ITEM_CAMPO_LATENCIA:   // relógio
+            DrawCircleV(c, 10 * e, (Color){ 50, 30, 80, 255 });
+            DrawCircleLines((int)c.x, (int)c.y, 10 * e, PURPLE);
+            DrawLineEx(c, (Vector2){ c.x, c.y - 7 * e }, 2, WHITE);
+            DrawLineEx(c, (Vector2){ c.x + 5 * e, c.y + 2 * e }, 2, WHITE);
+            break;
+
+        case ITEM_NUCLEO:           // coração num hexágono
+            DrawPolyLinesEx(c, 6, 11 * e, 30, 2, PINK);
+            DrawCircleV((Vector2){ c.x - 3 * e, c.y - 2 * e }, 3.5f * e, RED);
+            DrawCircleV((Vector2){ c.x + 3 * e, c.y - 2 * e }, 3.5f * e, RED);
+            DesenharTrianguloB2((Vector2){ c.x - 6.5f * e, c.y - 1 * e }, (Vector2){ c.x + 6.5f * e, c.y - 1 * e }, (Vector2){ c.x, c.y + 6 * e }, RED);
+            break;
+
+        case ITEM_BUFFER:           // barras crescendo
+            for (int k = 0; k < 3; k++)
+                DrawRectangle((int)(c.x - 9 * e + k * 7 * e), (int)(c.y + 8 * e - (k + 1) * 5 * e), (int)(5 * e), (int)((k + 1) * 5 * e), YELLOW);
+            break;
+
+        case ITEM_ROTEAMENTO:       // ">>"
+            for (int k = 0; k < 2; k++) {
+                float x0 = c.x - 8 * e + k * 7 * e;
+                DrawLineEx((Vector2){ x0, c.y - 7 * e }, (Vector2){ x0 + 6 * e, c.y }, 2.5f, SKYBLUE);
+                DrawLineEx((Vector2){ x0 + 6 * e, c.y }, (Vector2){ x0, c.y + 7 * e }, 2.5f, SKYBLUE);
+            }
+            break;
+
+        case ITEM_FRAGMENTACAO:     // um círculo que vira três
+            DrawCircleV((Vector2){ c.x - 5 * e, c.y }, 4 * e, LIME);
+            for (int k = -1; k <= 1; k++)
+                DrawCircleV((Vector2){ c.x + 6 * e, c.y + k * 6 * e }, 2 * e, LIME);
+            break;
+
+        case ITEM_FIREWALL_ADAPTATIVO:  // escudo em camadas
+            DesenharTrianguloB2((Vector2){ c.x - 9 * e, c.y - 8 * e }, (Vector2){ c.x + 9 * e, c.y - 8 * e }, (Vector2){ c.x, c.y + 10 * e }, (Color){ 0, 158, 47, 255 });
+            DesenharTrianguloB2((Vector2){ c.x - 5 * e, c.y - 5 * e }, (Vector2){ c.x + 5 * e, c.y - 5 * e }, (Vector2){ c.x, c.y + 5 * e }, (Color){ 0, 228, 48, 255 });
+            break;
+
+        case ITEM_ANALISADOR:       // mira com três marcas
+            DrawCircleLines((int)c.x, (int)c.y, 8 * e, ORANGE);
+            DrawLine((int)(c.x - 11 * e), (int)c.y, (int)(c.x + 11 * e), (int)c.y, ORANGE);
+            DrawLine((int)c.x, (int)(c.y - 11 * e), (int)c.x, (int)(c.y + 11 * e), ORANGE);
+            for (int k = 0; k < 3; k++)
+                DrawPoly((Vector2){ c.x - 6 * e + k * 6 * e, c.y + 13 * e }, 4, 2 * e, 0, ORANGE);
+            break;
+
+        case ITEM_BOTNET_REVERSO:   // três nós ligados e uma seta para fora
+            for (int k = 0; k < 3; k++) {
+                float a = k * (2.0f * PI / 3.0f) - PI / 2.0f;
+                Vector2 q = { c.x + cosf(a) * 7 * e, c.y + sinf(a) * 7 * e };
+                DrawLineEx(c, q, 1, SKYBLUE);
+                DrawCircleV(q, 2.5f * e, SKYBLUE);
+            }
+            DrawLineEx(c, (Vector2){ c.x + 11 * e, c.y + 9 * e }, 2, LIME);
+            break;
+
+        case ITEM_CACHE_PERSISTENTE:    // pente de memória com "+"
+            DrawRectangle((int)(c.x - 11 * e), (int)(c.y - 4 * e), (int)(22 * e), (int)(9 * e), (Color){ 20, 90, 50, 255 });
+            for (int k = 0; k < 5; k++)
+                DrawRectangle((int)(c.x - 10 * e + k * 4 * e), (int)(c.y + 5 * e), (int)(2 * e), (int)(2 * e), GOLD);
+            DrawText("+", (int)(c.x - 3 * e), (int)(c.y - 10 * e), (int)(14 * e), LIME);
             break;
 
         case ITEM_MANUAL:           // livro dourado
@@ -7388,6 +11442,353 @@ static void DesenharSelo(const Inimigo *e, float tempo)
     DrawText("?", (int)e->pos.x - 6, (int)(e->pos.y - e->raio - 40 + sinf(tempo * 3.0f) * 3.0f), 24, GOLD);
 }
 
+// ---------- Desenho dos inimigos da expansão ----------
+// Cada um tem uma silhueta própria (não depende só da cor) e um aviso antes de atacar.
+
+// Spammer: uma janela pop-up com barra de título, "x" e o selo de notificação
+static void DesenharSpammer(const Inimigo *e, float escala)
+{
+    float s = escala;
+    Vector2 p = { e->pos.x, e->pos.y + sinf(e->anim * 9.0f) * 1.5f };
+
+    if (((int)(e->anim * 7.0f + e->lado * 3.0f)) % 9 == 0)
+        p.x += 2.0f;                                        // tremidinha de glitch
+
+    Rectangle janela = { p.x - 11 * s, p.y - 8 * s, 22 * s, 16 * s };
+    DrawRectangleRec(janela, (Color){ 45, 25, 30, 255 });
+    DrawRectangle((int)janela.x, (int)janela.y, (int)janela.width, (int)(4 * s), (Color){ 255, 120, 60, 255 });
+    DrawRectangleLinesEx(janela, 1, (Color){ 255, 170, 120, 255 });
+    DrawLine((int)(p.x + 6 * s), (int)(p.y - 8 * s), (int)(p.x + 9 * s), (int)(p.y - 5 * s), WHITE);    // "x"
+    DrawLine((int)(p.x + 9 * s), (int)(p.y - 8 * s), (int)(p.x + 6 * s), (int)(p.y - 5 * s), WHITE);
+    DrawRectangle((int)(p.x - 7 * s), (int)(p.y - 1 * s), (int)(12 * s), (int)(2 * s), Fade(WHITE, 0.7f));
+    DrawRectangle((int)(p.x - 7 * s), (int)(p.y + 3 * s), (int)(8 * s), (int)(2 * s), Fade(WHITE, 0.7f));
+
+    // Selo de notificação ("!")
+    DrawCircle((int)(p.x - 11 * s), (int)(p.y - 8 * s), 5 * s, RED);
+    DrawText("!", (int)(p.x - 12 * s), (int)(p.y - 13 * s), (int)(10 * s), WHITE);
+}
+
+// Fragmento de spam: um envelopinho
+static void DesenharSpam(const Inimigo *e)
+{
+    Vector2 p = e->pos;
+    float alfa = fminf(1.0f, e->vida / 0.6f);                // some piscando no fim
+
+    DrawRectangle((int)p.x - 6, (int)p.y - 4, 12, 8, Fade((Color){ 255, 220, 180, 255 }, alfa));
+    DrawLine((int)p.x - 6, (int)p.y - 4, (int)p.x, (int)p.y + 1, Fade(RED, alfa));
+    DrawLine((int)p.x + 6, (int)p.y - 4, (int)p.x, (int)p.y + 1, Fade(RED, alfa));
+}
+
+// Phisher: camuflado, um arquivo "GRÁTIS" (com um anzol que brilha de vez em quando);
+// revelado, o arquivo escurece, abre os olhos e mostra o anzol. A cópia falsa não tem
+// sombra e pisca (é assim que se descobre o verdadeiro).
+static void DesenharPhisher(const Inimigo *e, float escala)
+{
+    bool isca = (e->tipo == INIMIGO_ISCA);
+    bool revelado = (e->estado != 0);
+    float s = escala;
+    Vector2 p = { e->pos.x, e->pos.y + sinf(e->anim * 2.0f) * 2.0f };
+
+    if (isca && ((int)(e->anim * 12.0f)) % 5 == 0)
+        return;                                             // a cópia falha por um instante
+
+    if (!isca)
+        DrawEllipse((int)e->pos.x, (int)e->pos.y + 16, 12 * s, 4 * s, Fade(BLACK, 0.45f));
+
+    if (e->estado == 1)                                      // mirando: treme
+        p.x += (float)GetRandomValue(-2, 2);
+
+    Color papel = revelado ? (Color){ 70, 55, 80, 255 } : (Color){ 235, 228, 205, 255 };
+    Rectangle r = { p.x - 10 * s, p.y - 13 * s, 20 * s, 26 * s };
+
+    DrawRectangleRec(r, papel);
+    DesenharTrianguloB2((Vector2){ r.x + r.width - 7 * s, r.y }, (Vector2){ r.x + r.width, r.y + 7 * s },
+                        (Vector2){ r.x + r.width - 7 * s, r.y + 7 * s }, revelado ? GOLD : (Color){ 190, 180, 150, 255 });
+    DrawRectangleLinesEx(r, 1, revelado ? GOLD : (Color){ 150, 140, 120, 255 });
+
+    if (!revelado) {
+        // "Prêmio" para chamar atenção, e o anzol escondido aparecendo de vez em quando
+        DrawText("$", (int)p.x - 3, (int)p.y - 7, 14, (Color){ 40, 140, 60, 255 });
+        if (fmodf(e->anim, 2.6f) < 0.25f)
+            DrawCircleLines((int)(r.x + r.width), (int)(r.y + r.height), 3, GOLD);
+        const char *rotulo = "GRÁTIS";
+        DrawText(rotulo, (int)p.x - MeasureText(rotulo, 8) / 2, (int)(r.y + r.height) + 3, 8, GOLD);
+        return;
+    }
+
+    // Revelado: olhos e o anzol em cima
+    DrawRectangle((int)(p.x - 6 * s), (int)(p.y - 4 * s), (int)(4 * s), (int)(2 * s), RED);
+    DrawRectangle((int)(p.x + 2 * s), (int)(p.y - 4 * s), (int)(4 * s), (int)(2 * s), RED);
+    DrawLine((int)p.x, (int)(r.y - 12 * s), (int)p.x, (int)r.y, LIGHTGRAY);
+    DrawRing((Vector2){ p.x + 4 * s, r.y - 12 * s }, 3 * s, 4.5f * s, 180.0f, 360.0f, 8, LIGHTGRAY);
+
+    if (e->estado == 1) {
+        DrawText("!", (int)p.x - 2, (int)(r.y - 30), 16, GOLD);
+        // Linha do bote
+        Vector2 fim = Vector2Add(e->pos, Vector2Scale(e->alvo, PHISHER_BOTE_VEL * PHISHER_BOTE_DURACAO));
+        DrawLineEx(e->pos, fim, 6.0f, Fade(GOLD, 0.15f + 0.15f * sinf(e->anim * 25.0f)));
+        DrawLineEx(e->pos, fim, 1.5f, Fade(GOLD, 0.8f));
+    }
+}
+
+// Firewall: robô octogonal com cadeado; escudo hexagonal na frente, saída de ar
+// (ponto fraco) atrás. Barreira de energia: aviso tracejado, depois o muro.
+static void DesenharFirewall(const Inimigo *e, float escala, float t)
+{
+    float s = escala;
+    Vector2 p = e->pos;
+    float ang = atan2f(e->frente.y, e->frente.x) * RAD2DEG;
+    Vector2 tras = Vector2Subtract(p, Vector2Scale(e->frente, e->raio * 0.75f * s));
+    Vector2 lado = { -e->frente.y, e->frente.x };
+
+    DrawEllipse((int)p.x, (int)p.y + 20, 20 * s, 5 * s, Fade(BLACK, 0.4f));
+    DrawPoly(p, 8, 20 * s, 22.5f, (Color){ 30, 60, 45, 255 });
+    DrawPolyLinesEx(p, 8, 20 * s, 22.5f, 2, (Color){ 120, 220, 150, 255 });
+
+    // Cadeado
+    DrawRing((Vector2){ p.x, p.y - 3 * s }, 4 * s, 6 * s, 180.0f, 360.0f, 10, LIGHTGRAY);
+    DrawRectangle((int)(p.x - 6 * s), (int)(p.y - 3 * s), (int)(12 * s), (int)(9 * s), GOLD);
+    DrawRectangle((int)(p.x - 1 * s), (int)p.y, (int)(2 * s), (int)(3 * s), (Color){ 60, 40, 0, 255 });
+
+    // Saída de ar atrás (ponto fraco), pulsando
+    for (int k = -1; k <= 1; k++) {
+        Vector2 a = Vector2Add(tras, Vector2Scale(lado, k * 5.0f * s));
+        DrawLineEx(Vector2Add(a, Vector2Scale(e->frente, -3 * s)), Vector2Add(a, Vector2Scale(e->frente, 3 * s)), 2,
+                   Fade(ORANGE, 0.5f + 0.4f * sinf(t * 6.0f)));
+    }
+
+    // Escudo frontal (com as divisões hexagonais)
+    DrawRing(p, e->raio + 4, e->raio + 9, ang - FIREWALL_ANGULO_FRENTE, ang + FIREWALL_ANGULO_FRENTE, 16, Fade((Color){ 0, 228, 48, 255 }, 0.85f));
+    for (int k = -2; k <= 2; k++) {
+        float a = (ang + k * FIREWALL_ANGULO_FRENTE / 2.5f) * DEG2RAD;
+        DrawLineEx((Vector2){ p.x + cosf(a) * (e->raio + 4), p.y + sinf(a) * (e->raio + 4) },
+                   (Vector2){ p.x + cosf(a) * (e->raio + 9), p.y + sinf(a) * (e->raio + 9) }, 1, (Color){ 20, 60, 30, 255 });
+    }
+
+    // Barreira de energia
+    if (e->estado == 1 || e->estado == 2) {
+        Vector2 a, c;
+        RogueBarreiraFirewall(e, &a, &c);
+        if (e->estado == 1) {
+            for (int k = 0; k < 8; k += 2)
+                DrawLineEx(Vector2Lerp(a, c, k / 8.0f), Vector2Lerp(a, c, (k + 1) / 8.0f), 2, Fade((Color){ 0, 228, 48, 255 }, 0.5f + 0.5f * sinf(t * 20.0f)));
+        } else {
+            DrawLineEx(a, c, 7.0f, Fade((Color){ 0, 228, 48, 255 }, 0.35f));
+            DrawLineEx(a, c, 2.0f, (Color){ 150, 255, 170, 255 });
+            for (int k = 1; k < 6; k++)
+                DrawPolyLines(Vector2Lerp(a, c, k / 6.0f), 6, 5, 0, Fade((Color){ 150, 255, 170, 255 }, 0.8f));
+        }
+    }
+}
+
+// Overclock: engrenagem com núcleo superaquecido. Carregando, o núcleo fica branco
+// e a linha da investida cresce; superaquecido, solta fumaça e a engrenagem para.
+static void DesenharOverclock(const Inimigo *e, float escala, float t)
+{
+    float s = escala;
+    Vector2 p = e->pos;
+    float k = (e->estado == 1) ? Clamp(e->carga / OVERCLOCK_CARGA_MAX, 0.0f, 1.0f) : 0.0f;
+
+    if (e->estado == 1)
+        p.x += (float)GetRandomValue(-1, 1) * (1.0f + 2.0f * k);
+
+    // Investida: rastro de imagens
+    if (e->estado == 2)
+        for (int r = 1; r <= 3; r++)
+            DrawCircleV(Vector2Subtract(p, Vector2Scale(Vector2Normalize(e->vel), r * 14.0f)), 13 * s, Fade(ORANGE, 0.25f / r));
+
+    float giro = (e->estado == 3) ? 0.0f : e->anim * (e->estado == 1 ? 12.0f + 20.0f * k : 4.0f);
+    Color metal = (e->estado == 3) ? (Color){ 90, 90, 110, 255 } : (Color){ 150, 110, 70, 255 };
+
+    for (int d = 0; d < 8; d++) {
+        float a = giro + d * (PI / 4.0f);
+        DrawRectanglePro((Rectangle){ p.x + cosf(a) * 15 * s, p.y + sinf(a) * 15 * s, 7 * s, 7 * s }, (Vector2){ 3.5f * s, 3.5f * s }, a * RAD2DEG, metal);
+    }
+    DrawCircleV(p, 14 * s, metal);
+
+    Color nucleo = (e->estado == 3) ? (Color){ 60, 90, 140, 255 }
+                 : ColorLerp((Color){ 255, 120, 0, 255 }, WHITE, k);
+    if (e->estado != 3)
+        DrawCircleV(p, (9 + 8 * k + sinf(t * 10.0f) * 1.5f) * s, Fade(nucleo, 0.35f));
+    DrawCircleV(p, 7 * s, nucleo);
+
+    if (e->estado == 3) {
+        // Superaquecido: rachaduras (é a hora de atacar)
+        DrawLine((int)p.x - 6, (int)p.y - 6, (int)p.x + 2, (int)p.y + 1, BLACK);
+        DrawLine((int)p.x + 2, (int)p.y + 1, (int)p.x + 6, (int)p.y - 3, BLACK);
+        DrawText("!!", (int)p.x - 5, (int)p.y - 32, 12, SKYBLUE);
+    }
+
+    // Aviso da investida: a linha cresce com a carga
+    if (e->estado == 1) {
+        float alcance = (OVERCLOCK_INVESTIDA_MIN + (OVERCLOCK_INVESTIDA_MAX - OVERCLOCK_INVESTIDA_MIN) * RogueCargaOverclock(e)) * OVERCLOCK_INVESTIDA_DURACAO;
+        Vector2 fim = Vector2Add(e->pos, Vector2Scale(e->alvo, alcance));
+        DrawLineEx(e->pos, fim, 10.0f, Fade(RED, 0.10f + 0.15f * k));
+        DrawLineEx(e->pos, fim, 1.5f, Fade(RED, 0.5f + 0.5f * k));
+        DrawRing(e->pos, 20 * s, 23 * s, -90.0f, -90.0f + 360.0f * Clamp(e->carga / e->cargaAlvo, 0.0f, 1.0f), 20, ORANGE);
+    }
+}
+
+// Botnet: núcleo com três nós orbitando, ligados por fios
+static void DesenharBotnet(const Inimigo *e, float escala, float t)
+{
+    float s = escala;
+    Vector2 p = { e->pos.x, e->pos.y + sinf(t * 3.0f + e->pos.x) * 2.0f };
+    Color ciano = { 0, 228, 255, 255 };
+
+    if (e->estado == 1)
+        DrawCircleV(p, (e->raio + 6) * s, Fade(ciano, 0.25f + 0.25f * sinf(t * 25.0f)));
+
+    for (int n = 0; n < 3; n++) {
+        float a = t * 2.0f + n * (2.0f * PI / 3.0f);
+        Vector2 q = { p.x + cosf(a) * 16 * s, p.y + sinf(a) * 16 * s };
+        DrawLineEx(p, q, 1, Fade(ciano, 0.7f));
+        DrawRectangle((int)(q.x - 3 * s), (int)(q.y - 3 * s), (int)(6 * s), (int)(6 * s), (Color){ 20, 60, 80, 255 });
+        DrawRectangleLines((int)(q.x - 3 * s), (int)(q.y - 3 * s), (int)(6 * s), (int)(6 * s), ciano);
+    }
+
+    DrawPoly(p, 6, 9 * s, t * 40.0f, (Color){ 10, 40, 60, 255 });
+    DrawPolyLinesEx(p, 6, 9 * s, t * 40.0f, 2, ciano);
+    DrawCircleV(p, 3 * s, WHITE);
+}
+
+// Keylogger: corpo fino de teclado (com teclas) e o "REC" piscando
+static void DesenharKeylogger(const Inimigo *e, float escala, float t)
+{
+    float s = escala;
+    Vector2 p = { e->pos.x, e->pos.y + sinf(t * 2.5f + e->pos.y) * 2.0f };
+    Rectangle r = { p.x - 8 * s, p.y - 18 * s, 16 * s, 36 * s };
+    static const char *teclas[6] = { "Q", "W", "E", "A", "S", "D" };
+
+    DrawEllipse((int)e->pos.x, (int)e->pos.y + 20, 9 * s, 3 * s, Fade(BLACK, 0.4f));
+    DrawRectangleRec(r, (Color){ 40, 40, 48, 255 });
+    DrawRectangleLinesEx(r, 1, (e->estado >= 1) ? RED : LIGHTGRAY);
+
+    for (int k = 0; k < 6; k++) {
+        int cx = (int)(r.x + 2 * s + (k % 2) * 7 * s), cy = (int)(r.y + 3 * s + (k / 2) * 10 * s);
+        DrawRectangle(cx, cy, (int)(6 * s), (int)(7 * s), (Color){ 200, 200, 210, 255 });
+        if (s > 0.9f) DrawText(teclas[k], cx + 1, cy, 8, (Color){ 40, 40, 48, 255 });
+    }
+
+    // REC
+    if (((int)(t * 2.0f)) % 2 == 0 || e->estado >= 1) {
+        DrawCircle((int)(p.x - 9 * s), (int)(r.y - 6 * s), 2.5f * s, RED);
+        DrawText("REC", (int)(p.x - 5 * s), (int)(r.y - 10 * s), 8, RED);
+    }
+}
+
+// Mira do Keylogger no chão (onde ele acha que o jogador vai estar)
+static void DesenharMiraKeylogger(const Inimigo *e, float t)
+{
+    if (e->estado != 1 && e->estado != 2)
+        return;
+
+    Vector2 m = e->miraPrevista;
+    float travou = (e->estado == 2 || e->timer <= 0.15f) ? 1.0f : 0.0f;
+    float raio = 16.0f - 6.0f * travou;
+
+    DrawLineEx(e->pos, m, 1.0f, Fade(RED, 0.35f));
+    DrawCircleLines((int)m.x, (int)m.y, raio, Fade(RED, 0.6f + 0.4f * sinf(t * 20.0f)));
+    DrawLine((int)(m.x - raio - 4), (int)m.y, (int)(m.x - raio + 4), (int)m.y, RED);
+    DrawLine((int)(m.x + raio - 4), (int)m.y, (int)(m.x + raio + 4), (int)m.y, RED);
+    DrawLine((int)m.x, (int)(m.y - raio - 4), (int)m.x, (int)(m.y - raio + 4), RED);
+    DrawLine((int)m.x, (int)(m.y + raio - 4), (int)m.x, (int)(m.y + raio + 4), RED);
+}
+
+// Cache: pilha de pentes de memória com o núcleo mostrando a energia guardada
+static void DesenharCache(const Inimigo *e, float escala, float t)
+{
+    float s = escala;
+    Vector2 p = e->pos;
+    bool brilho = (e->estado == 1);
+
+    DrawEllipse((int)p.x, (int)p.y + 20, 18 * s, 5 * s, Fade(BLACK, 0.4f));
+
+    for (int k = 0; k < 3; k++) {
+        float y = p.y - 14 * s + k * 10 * s + sinf(t * 2.0f + k) * 1.5f;
+        Rectangle pente = { p.x - 16 * s, y, 32 * s, 8 * s };
+        DrawRectangleRec(pente, brilho ? (Color){ 120, 220, 140, 255 } : (Color){ 20, 90, 50, 255 });
+        DrawRectangleLinesEx(pente, 1, (Color){ 0, 228, 48, 255 });
+        for (int c = 0; c < 4; c++)
+            DrawRectangle((int)(pente.x + 3 * s + c * 8 * s), (int)(y + 2 * s), (int)(5 * s), (int)(4 * s), (Color){ 10, 30, 20, 255 });
+        for (int pino = 0; pino < 6; pino++)
+            DrawRectangle((int)(pente.x + 2 * s + pino * 5 * s), (int)(y + 7 * s), (int)(2 * s), (int)(2 * s), GOLD);
+    }
+
+    // Núcleo: a energia guardada
+    float k = e->energia / CACHE_ENERGIA_MAX;
+    DrawCircleV(p, 6 * s, (Color){ 10, 30, 20, 255 });
+    DrawRing(p, 6 * s, 9 * s, -90.0f, -90.0f + 360.0f * k, 16, (Color){ 0, 228, 255, 255 });
+
+    // Recuperando: um anel verde enchendo e cruzinhas subindo
+    if (e->recuperando > 0.0f) {
+        float feito = 1.0f - e->recuperando / CACHE_RECUPERAR;
+        DrawRing(p, e->raio + 6, e->raio + 9, -90.0f, -90.0f + 360.0f * feito, 24, LIME);
+        for (int c = 0; c < 3; c++) {
+            float sobe = fmodf(t * 30.0f + c * 12.0f, 30.0f);
+            DrawText("+", (int)(p.x - 14 + c * 12), (int)(p.y - 22 - sobe), 12, Fade(LIME, 1.0f - sobe / 30.0f));
+        }
+    }
+}
+
+// Por baixo dos inimigos: escudo de rede dos Firewalls e as conexões dos Botnets
+static void DesenharSinergiasChao(const Biblioteca *b, float t)
+{
+    Color verde = { 0, 228, 48, 255 }, ciano = { 0, 228, 255, 255 };
+
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+        const Inimigo *e = &b->ini[i];
+
+        if (!e->ativo || e->surgindo > 0.0f)
+            continue;
+
+        if (e->tipo == INIMIGO_FIREWALL) {
+            DrawCircleV(e->pos, FIREWALL_ZONA, Fade(verde, 0.05f));
+            for (int k = 0; k < 12; k += 2) {
+                float a1 = t * 0.3f + k * (PI / 6.0f), a2 = a1 + PI / 6.0f;
+                DrawLineEx((Vector2){ e->pos.x + cosf(a1) * FIREWALL_ZONA, e->pos.y + sinf(a1) * FIREWALL_ZONA },
+                           (Vector2){ e->pos.x + cosf(a2) * FIREWALL_ZONA, e->pos.y + sinf(a2) * FIREWALL_ZONA }, 2, Fade(verde, 0.35f));
+            }
+        }
+
+        if (e->tipo == INIMIGO_BOTNET) {
+            for (int k = 0; k < BOTNET_CONEXOES; k++) {
+                if (e->conexao[k] < 0) continue;
+                Vector2 alvo = b->ini[e->conexao[k]].pos;
+                DrawLineEx(e->pos, alvo, 1.5f, Fade(ciano, 0.45f));
+                float f = fmodf(t * 1.5f + k * 0.33f, 1.0f);         // pacote correndo pelo fio
+                DrawCircleV(Vector2Lerp(e->pos, alvo, f), 2.5f, WHITE);
+            }
+        }
+
+        if (e->tipo == INIMIGO_KEYLOGGER)
+            DesenharMiraKeylogger(e, t);
+    }
+}
+
+// Por cima: quem está protegido (hexágono) e quem está conectado (antena)
+static void DesenharSinergiasMarcas(const Biblioteca *b, float t)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+        const Inimigo *e = &b->ini[i];
+
+        if (!e->ativo || e->surgindo > 0.0f || RogueInimigoPassageiro(e->tipo) || (e->tipo == INIMIGO_PHISHER && e->estado == 0))
+            continue;           // o Phisher camuflado não ganha marca (não entrega o disfarce)
+
+        if (e->tipo != INIMIGO_FIREWALL && RogueNaZonaFirewall(b, e))
+            DrawPolyLines(e->pos, 6, e->raio + 6, t * 30.0f, Fade((Color){ 0, 228, 48, 255 }, 0.8f));
+
+        if (e->conectado) {
+            Vector2 a = { e->pos.x + e->raio, e->pos.y - e->raio };
+            DrawCircleV(a, 2, (Color){ 0, 228, 255, 255 });
+            DrawRing(a, 4, 5, -80.0f, -10.0f, 6, (Color){ 0, 228, 255, 255 });
+            DrawRing(a, 7, 8, -80.0f, -10.0f, 6, Fade((Color){ 0, 228, 255, 255 }, 0.6f + 0.4f * sinf(t * 8.0f)));
+        }
+    }
+}
+
 static void DesenharInimigo(const Inimigo *e)
 {
     float escala = (e->surgindo > 0.0f) ? 1.0f - e->surgindo / TEMPO_SURGINDO : 1.0f;
@@ -7400,9 +11801,22 @@ static void DesenharInimigo(const Inimigo *e)
         // Levou dano: desenha de novo somando a cor (fica branco)
         if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
 
-        if (e->tipo == INIMIGO_FRAGMENTO)      DesenharFragmentoAlucinado(e, escala);
-        else if (e->tipo == INIMIGO_GUARDIAO)  DesenharGuardiao(e, escala);
-        else                                   DesenharEco(e);
+        float t = (float)GetTime();
+
+        switch (e->tipo) {
+            case INIMIGO_FRAGMENTO: DesenharFragmentoAlucinado(e, escala); break;
+            case INIMIGO_GUARDIAO:  DesenharGuardiao(e, escala);           break;
+            case INIMIGO_ECO:       DesenharEco(e);                        break;
+            case INIMIGO_SPAMMER:   DesenharSpammer(e, escala);            break;
+            case INIMIGO_SPAM:      DesenharSpam(e);                       break;
+            case INIMIGO_PHISHER:
+            case INIMIGO_ISCA:      DesenharPhisher(e, escala);            break;
+            case INIMIGO_FIREWALL:  DesenharFirewall(e, escala, t);        break;
+            case INIMIGO_OVERCLOCK: DesenharOverclock(e, escala, t);       break;
+            case INIMIGO_BOTNET:    DesenharBotnet(e, escala, t);          break;
+            case INIMIGO_KEYLOGGER: DesenharKeylogger(e, escala, t);       break;
+            default:                DesenharCache(e, escala, t);           break;
+        }
     }
 
     if (e->flash > 0.0f)
@@ -7411,12 +11825,18 @@ static void DesenharInimigo(const Inimigo *e)
     if (e->selado && e->surgindo <= 0.0f)
         DesenharSelo(e, (float)GetTime());
 
-    // Barra de vida quando já levou dano
-    if (e->hp < e->hpMax && e->tipo != INIMIGO_ECO) {
+    // Barra de vida quando já levou dano (o Phisher camuflado não se entrega)
+    bool semBarra = RogueInimigoPassageiro(e->tipo) || (e->tipo == INIMIGO_PHISHER && e->estado == 0);
+
+    if (e->hp < e->hpMax && !semBarra) {
         int w = (int)(e->raio * 2.4f);
         int x = (int)e->pos.x - w / 2, y = (int)(e->pos.y - e->raio - 12);
         DrawRectangle(x, y, w, 4, (Color){ 40, 30, 55, 255 });
-        DrawRectangle(x, y, (int)(w * e->hp / e->hpMax), 4, (e->tipo == INIMIGO_GUARDIAO) ? SKYBLUE : MAGENTA);
+        DrawRectangle(x, y, (int)(w * e->hp / e->hpMax), 4, DEF_INIMIGOS[e->tipo].cor);
+
+        // Cache: a energia guardada (a cura que ele pode fazer) aparece embaixo
+        if (e->tipo == INIMIGO_CACHE && e->energia > 0.0f)
+            DrawRectangle(x, y + 5, (int)(w * e->energia / CACHE_ENERGIA_MAX), 2, (Color){ 0, 228, 255, 255 });
     }
 }
 
@@ -7507,7 +11927,7 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
     // Dica (Lente, Luci ou Manual)
     if (b->dicaDesafio[0] != '\0' && !b->respondido) {
 
-        Color corDica = b->dicaDaLuci ? (b->luciMentiu ? MAGENTA : (Color){ 0, 228, 255, 255 }) : GOLD;
+        Color corDica = b->verificouDica ? (b->luciMentiu ? RED : LIME) : (b->dicaDaLuci ? (Color){ 0, 228, 255, 255 } : GOLD);
         char dica[256];
         QuebrarTexto(b->dicaDesafio, (int)painel.width - 90, 14, dica, (int)sizeof(dica));
 
@@ -7545,7 +11965,8 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
     // Teclas de ajuda
     const char *lente = (b->j.itens[ITEM_LENTE] > 0) ? TextFormat("L: Lente da Verificação (x%d)", b->j.itens[ITEM_LENTE])
                                                       : "L: (sem Lente da Verificação)";
-    const char *luci  = b->dicaDaLuci ? "H: a Luci já deu a dica" : "H: dica da Luci (grátis... confiável?)";
+    const char *luci  = !b->dicaDaLuci ? "H: dica da Luci (-1 de estabilidade)"
+                      : ((b->verificouDica || b->opcaoDica < 0) ? "H: a Luci já deu a dica" : "V: verificar a dica (Lente ou 1 FC)");
     const char *manual = (b->j.itens[ITEM_MANUAL] > 0) ? TextFormat("Manual: segunda chance (x%d)", b->j.itens[ITEM_MANUAL]) : "";
 
     int yb = (int)(painel.y + painel.height) - 46;
@@ -7561,7 +11982,7 @@ static void DesenharEnciclopediaRogue(const Biblioteca *b)
 {
     DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.6f));
 
-    Rectangle painel = { 110, 90, 580, 400 };
+    Rectangle painel = { 110, 50, 580, 490 };       // cabem os 4 conceitos
     DrawRectangleRec(painel, (Color){ 18, 15, 30, 255 });
     DrawRectangleLinesEx(painel, 4, (Color){ 0, 228, 255, 255 });
 
@@ -7607,16 +12028,16 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
     DrawText(fc, (int)(painel.x + painel.width) - 24 - MeasureText(fc, 14), (int)painel.y + 24, 14, (Color){ 0, 228, 255, 255 });
 
     // Abas
-    static const char *abas[2] = { "ITENS (esta tentativa)", "MELHORIAS (para sempre)" };
-    for (int a = 0; a < 2; a++) {
-        Rectangle r = { painel.x + 24 + a * 230, painel.y + 52, 220, 24 };
+    static const char *abas[3] = { "ITENS", "MELHORIAS (sempre)", "ARMAS" };
+    for (int a = 0; a < 3; a++) {
+        Rectangle r = { painel.x + 24 + a * 152, painel.y + 52, 146, 24 };
         bool ativa = (b->abaLoja == a);
         DrawRectangleRec(r, ativa ? Fade(GOLD, 0.25f) : Fade(GRAY, 0.1f));
         DrawRectangleLinesEx(r, 2, ativa ? GOLD : Fade(GRAY, 0.5f));
         DrawText(abas[a], (int)(r.x + r.width / 2) - MeasureText(abas[a], 12) / 2, (int)r.y + 6, 12, ativa ? GOLD : GRAY);
     }
 
-    int linhas = (b->abaLoja == 0) ? NUM_ITENS : NUM_MELHORIAS;
+    int linhas = (b->abaLoja == 0) ? NUM_ITENS_LOJA : ((b->abaLoja == 1) ? NUM_MELHORIAS : ARMAS_NA_LOJA);
 
     for (int i = 0; i <= linhas; i++) {
 
@@ -7648,6 +12069,23 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
 
             if (b->j.itens[i] > 0)
                 DrawText(TextFormat("tem %d", b->j.itens[i]), (int)(painel.x + painel.width) - 92, y + 22, 10, GRAY);
+
+        } else if (b->abaLoja == 2) {
+
+            // Armas desta volta ao átrio (a comprada vira a arma extra desta tentativa)
+            TipoArma arma = b->estoqueArmas[i];
+            const DefArma *a = &DEF_ARMAS[arma];
+            bool sua = (b->j.armaExtra == arma);
+            bool podePagar = b->perm->fragmentos >= a->preco;
+
+            DesenharIconeArma(arma, (Vector2){ painel.x + 60, (float)y + 16 }, 1.0f, tempo);
+            DrawText(a->nome, (int)painel.x + 84, y, 16, marcado ? YELLOW : WHITE);
+            DrawText(TextFormat("%s - %s", NOMES_ALCANCE[a->alcanceTipo], a->efeito), (int)painel.x + 84, y + 19, 10, LIGHTGRAY);
+            DrawText(NOMES_RARIDADE[a->raridade], (int)painel.x + 94 + MeasureText(a->nome, 16), y + 4, 10, CORES_RARIDADE[a->raridade]);
+
+            const char *preco = sua ? "SUA" : TextFormat("%d FC", a->preco);
+            DrawText(preco, (int)(painel.x + painel.width) - 30 - MeasureText(preco, 16), y + 4, 16,
+                     sua ? GOLD : (podePagar ? (Color){ 0, 228, 255, 255 } : RED));
 
         } else {
 
@@ -7795,7 +12233,7 @@ static void DesenharFaixaAfirmacao(const Biblioteca *b, float tempo)
     y += nl * 19 + 2;
 
     if (c->dicaAfirm[0] != '\0') {
-        Color cor = c->dicaAfirmLuci ? (c->luciMentiuAfirm ? MAGENTA : (Color){ 0, 228, 255, 255 }) : GOLD;
+        Color cor = c->verificouAfirm ? (c->luciMentiuAfirm ? RED : LIME) : (c->dicaAfirmLuci ? (Color){ 0, 228, 255, 255 } : GOLD);
         DrawText(c->dicaAfirm, x, y, 10, cor);
     }
 
@@ -7803,9 +12241,1056 @@ static void DesenharFaixaAfirmacao(const Biblioteca *b, float tempo)
     float resta = Clamp(c->tempoAfirm / TEMPO_AFIRMACAO, 0.0f, 1.0f);
     DrawRectangle((int)faixa.x, (int)(faixa.y + faixa.height) - 4, (int)(faixa.width * resta), 4, (resta > 0.3f) ? GOLD : RED);
 
-    const char *teclas = "C = CONFIÁVEL     F = PROBLEMÁTICA     L = Lente     H = Luci";
+    const char *teclas = "C = CONFIÁVEL    F = PROBLEMÁTICA    L = Lente    H = Luci    V = verificar";
     DrawText(teclas, (int)(faixa.x + faixa.width / 2) - MeasureText(teclas, 12) / 2, (int)(faixa.y + faixa.height) - 20, 12,
              Fade(GOLD, 0.75f + 0.25f * sinf(tempo * 5.0f)));
+}
+
+// ---------- Desenho da Câmara da Inferência ----------
+
+// Escreve uma fórmula lógica. A fonte padrão não tem os conectivos, então eles são
+// desenhados com linhas:  & = ∧ (E)   | = ∨ (OU)   ~ = ¬ (NÃO)   > = → (SE...ENTÃO)   # = ↔ (SE E SÓ SE)
+// Com desenhar = false, só mede. Devolve a largura em pixels.
+static int DesenharLogica(const char *f, int x, int y, int tam, Color cor, bool desenhar)
+{
+    char trecho[128];
+    int n = 0, cx = x;
+    float g = fmaxf(1.0f, tam / 9.0f);
+
+    for (const char *c = f; ; c++) {
+
+        bool simbolo = (*c == '&' || *c == '|' || *c == '~' || *c == '>' || *c == '#');
+
+        if (!simbolo && *c != '\0') {
+            if (n < (int)sizeof(trecho) - 1) trecho[n++] = *c;
+            continue;
+        }
+
+        if (n > 0) {
+            trecho[n] = '\0';
+            if (desenhar) DrawText(trecho, cx, y, tam, cor);
+            cx += MeasureText(trecho, tam) + tam / 10;
+            n = 0;
+        }
+
+        if (*c == '\0')
+            break;
+
+        float w = tam * 0.7f;
+        float x0 = (float)cx, x1 = cx + w, xm = cx + w / 2.0f;
+        float yt = y + tam * 0.15f, ym = y + tam * 0.5f, yb = y + tam * 0.85f, ponta = tam * 0.28f;
+
+        if (desenhar) switch (*c) {
+            case '&':
+                DrawLineEx((Vector2){ x0, yb }, (Vector2){ xm, yt }, g, cor);
+                DrawLineEx((Vector2){ xm, yt }, (Vector2){ x1, yb }, g, cor);
+                break;
+            case '|':
+                DrawLineEx((Vector2){ x0, yt }, (Vector2){ xm, yb }, g, cor);
+                DrawLineEx((Vector2){ xm, yb }, (Vector2){ x1, yt }, g, cor);
+                break;
+            case '~':
+                DrawLineEx((Vector2){ x0, ym }, (Vector2){ x1, ym }, g, cor);
+                DrawLineEx((Vector2){ x1, ym - g / 2 }, (Vector2){ x1, ym + tam * 0.3f }, g, cor);
+                break;
+            case '>':
+                DrawLineEx((Vector2){ x0, ym }, (Vector2){ x1, ym }, g, cor);
+                DrawLineEx((Vector2){ x1, ym }, (Vector2){ x1 - ponta, ym - ponta }, g, cor);
+                DrawLineEx((Vector2){ x1, ym }, (Vector2){ x1 - ponta, ym + ponta }, g, cor);
+                break;
+            default:    // '#'
+                DrawLineEx((Vector2){ x0, ym }, (Vector2){ x1, ym }, g, cor);
+                DrawLineEx((Vector2){ x1, ym }, (Vector2){ x1 - ponta, ym - ponta }, g, cor);
+                DrawLineEx((Vector2){ x1, ym }, (Vector2){ x1 - ponta, ym + ponta }, g, cor);
+                DrawLineEx((Vector2){ x0, ym }, (Vector2){ x0 + ponta, ym - ponta }, g, cor);
+                DrawLineEx((Vector2){ x0, ym }, (Vector2){ x0 + ponta, ym + ponta }, g, cor);
+                break;
+        }
+
+        cx += (int)w + tam / 4;
+    }
+
+    return cx - x;
+}
+
+static void DesenharLogicaCentro(const char *f, int cx, int y, int tam, Color cor)
+{
+    DesenharLogica(f, cx - DesenharLogica(f, 0, 0, tam, cor, false) / 2, y, tam, cor, true);
+}
+
+// Disparo Dedutivo: P → Q depois do 1º acerto; P → Q e P depois do 2º
+static void DesenharMarcaDedutiva(int marca, Vector2 pos, float raio)
+{
+    if (marca == 0)
+        return;
+
+    int y = (int)(pos.y - raio - 34);
+    int w = DesenharLogica("P > Q", 0, 0, 12, GOLD, false);
+
+    DrawRectangle((int)pos.x - w / 2 - 4, y - 2, w + 8, (marca == 2) ? 30 : 16, Fade(BLACK, 0.6f));
+    DesenharLogicaCentro("P > Q", (int)pos.x, y, 12, GOLD);
+
+    if (marca == 2)
+        DrawText("P", (int)pos.x - MeasureText("P", 12) / 2, y + 14, 12, GOLD);
+}
+
+// Um fragmento de afirmação: um pergaminho holográfico com a letra
+static void DesenharPecaSilogismo(Vector2 c, char letra, Color cor, float t)
+{
+    Vector2 p = { c.x, c.y + sinf(t * 3.0f + c.x) * 2.0f };
+
+    DrawCircleV(p, 20, Fade(cor, 0.15f));
+    DrawRectangle((int)p.x - 11, (int)p.y - 14, 22, 28, Fade((Color){ 20, 30, 60, 255 }, 0.9f));
+    DrawRectangleLinesEx((Rectangle){ p.x - 11, p.y - 14, 22, 28 }, 2, cor);
+    DrawRectangle((int)p.x - 13, (int)p.y - 16, 26, 4, cor);           // as pontas do pergaminho
+    DrawRectangle((int)p.x - 13, (int)p.y + 12, 26, 4, cor);
+
+    char txt[2] = { letra, '\0' };
+    DrawText(txt, (int)p.x - MeasureText(txt, 18) / 2, (int)p.y - 9, 18, WHITE);
+}
+
+// Um fio do circuito em L (apagado, ou aceso com o valor V/F escrito)
+static void DesenharFioLogico(Vector2 de, Vector2 ate, bool aceso, bool valor, float t)
+{
+    float mx = (de.x + ate.x) / 2.0f;
+    Vector2 pts[4] = { de, { mx, de.y }, { mx, ate.y }, ate };
+    Color cor = aceso ? (valor ? SKYBLUE : PURPLE) : Fade(GRAY, 0.35f);
+
+    for (int i = 0; i < 3; i++)
+        DrawLineEx(pts[i], pts[i + 1], aceso ? 3.0f : 2.0f, cor);
+
+    if (!aceso)
+        return;
+
+    // Pulso de energia correndo no fio e o valor escrito no meio
+    float k = fmodf(t * 0.8f, 1.0f);
+    Vector2 q = (k < 0.5f) ? Vector2Lerp(pts[0], pts[1], k * 2.0f) : Vector2Lerp(pts[2], pts[3], (k - 0.5f) * 2.0f);
+    DrawCircleV(q, 3, WHITE);
+    DrawText(valor ? "V" : "F", (int)mx + 5, (int)((de.y + ate.y) / 2) - 5, 10, cor);
+}
+
+// O chão da câmara: diagramas geométricos girando devagar
+static void DesenharChaoCamara(float t)
+{
+    Vector2 c = { 400, 330 };
+    Color ciano = { 0, 228, 255, 255 };
+
+    DrawCircleLines((int)c.x, (int)c.y, 190, Fade(ciano, 0.07f));
+    DrawCircleLines((int)c.x, (int)c.y, 130, Fade(PURPLE, 0.08f));
+
+    for (int i = 0; i < 3; i++) {
+        float a1 = t * 0.1f + i * (2.0f * PI / 3.0f), a2 = a1 + 2.0f * PI / 3.0f;
+        DrawLineEx((Vector2){ c.x + cosf(a1) * 190, c.y + sinf(a1) * 190 }, (Vector2){ c.x + cosf(a2) * 190, c.y + sinf(a2) * 190 },
+                   1.0f, Fade(ciano, 0.07f));
+    }
+}
+
+// Mecanismo da montagem / do sofisma: P1 → P2 → C ligados à armadura do Silogista
+static void DesenharMecanismoSilogismo(const Silogista *s, float t)
+{
+    Color ciano = { 0, 228, 255, 255 };
+    bool sofisma = (s->etapa == SIL_SOFISMA);
+    Color linha = sofisma ? MAGENTA : ciano;
+
+    for (int e = 0; e + 1 < NUM_ENCAIXES; e++) {
+        Vector2 a = POS_ENCAIXES[e], b = POS_ENCAIXES[e + 1];
+        Vector2 d = Vector2Normalize(Vector2Subtract(b, a));
+        Vector2 ini = Vector2Add(a, Vector2Scale(d, 40)), fim = Vector2Subtract(b, Vector2Scale(d, 40));
+        DrawLineEx(ini, fim, 2, Fade(linha, 0.5f));
+        DrawLineEx(fim, Vector2Add(fim, Vector2Rotate(Vector2Scale(d, -8), 0.6f)), 2, Fade(linha, 0.5f));
+        DrawLineEx(fim, Vector2Add(fim, Vector2Rotate(Vector2Scale(d, -8), -0.6f)), 2, Fade(linha, 0.5f));
+    }
+
+    // Energia do C até a armadura
+    for (int i = 0; i < 10; i++) {
+        float k = (i + fmodf(t * 2.0f, 1.0f)) / 10.0f;
+        Vector2 q = Vector2Lerp(POS_ENCAIXES[ENCAIXE_C], s->pos, k);
+        DrawCircleV(q, 2, Fade(linha, 0.4f));
+    }
+
+    for (int e = 0; e < NUM_ENCAIXES; e++) {
+
+        Vector2 c = POS_ENCAIXES[e];
+        bool erro = s->erro > 0.0f && ((int)(s->erro * 10.0f)) % 2 == 0;
+        bool cheio = sofisma || s->encaixe[e] >= 0;
+        Color cor = erro ? RED : (sofisma ? MAGENTA : (cheio ? ciano : Fade(ciano, 0.45f)));
+        Rectangle r = { c.x - 36, c.y - 24, 72, 48 };
+
+        if (sofisma && s->tremePeca[e] > 0.0f)
+            r.x += (float)GetRandomValue(-2, 2);
+
+        DrawRectangleRec(r, (Color){ 16, 20, 42, 255 });
+        DrawRectangleLinesEx(r, 2, cor);
+        DrawText(NOMES_ENCAIXES[e], (int)r.x + 5, (int)r.y + 4, 12, cor);
+
+        const char *papel = PAPEIS_ENCAIXES[e];
+        DrawText(papel, (int)c.x - MeasureText(papel, 10) / 2, (int)(r.y + r.height) + 4, 10, Fade(cor, 0.8f));
+
+        if (sofisma) {
+            // A peça do argumento corrompido, com a vida (some e volta se ninguém insistir)
+            float k = s->hpPeca[e] / SIL_HP_PECA;
+            DrawRing(c, 15, 19, -90.0f, -90.0f + 360.0f * k, 24, Fade(MAGENTA, 0.9f));
+            DrawText("?", (int)c.x - 4, (int)c.y - 8, 16, WHITE);
+            if (s->blindagem > 0.0f)
+                DrawPolyLinesEx(c, 6, 30, t * 40.0f, 2, Fade(ciano, 0.8f));
+        }
+        else if (s->encaixe[e] >= 0) {
+            char txt[2] = { s->letraPeca[s->encaixe[e]], '\0' };
+            DrawText(txt, (int)c.x - MeasureText(txt, 22) / 2, (int)c.y - 10, 22, WHITE);
+        }
+        else {
+            DrawCircleLines((int)c.x, (int)c.y + 2, 9 + sinf(t * 4.0f + e) * 2.0f, Fade(cor, 0.6f));
+        }
+    }
+}
+
+// Circuito proposicional no chão: terminais p e q, portas e núcleo
+static void DesenharCircuito(const Silogista *s, float t)
+{
+    const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+    Color ciano = { 0, 228, 255, 255 };
+    bool final = (s->etapa == SIL_VULNERAVEL);
+
+    // Fios: cada entrada de cada porta, e a última porta até o núcleo
+    for (int k = 0; k < c->numPortas; k++) {
+        const PortaLogica *p = &c->porta[k];
+        int n = EntradasPorta(p);
+        for (int i = 0; i < n; i++) {
+            bool valor = false;
+            bool aceso = SinalCircuito(s, p->entrada[i], &valor) || final;
+            Vector2 de = SilPosElemento(p->entrada[i]);
+            de.x += 24;
+            Vector2 ate = { p->pos.x - 24, p->pos.y + ((n == 2) ? (i == 0 ? -10.0f : 10.0f) : 0.0f) };
+            DesenharFioLogico(de, ate, aceso, valor, t);
+        }
+    }
+
+    const PortaLogica *ultima = &c->porta[c->numPortas - 1];
+    bool saiu = s->ativada[c->numPortas - 1] || final;
+    DesenharFioLogico((Vector2){ ultima->pos.x + 24, ultima->pos.y }, (Vector2){ c->posNucleo.x - 34, c->posNucleo.y },
+                      saiu, s->saida[c->numPortas - 1], t);
+
+    // Terminais p e q (a letra V/F acompanha a cor)
+    for (int e = 0; e < 2; e++) {
+        Vector2 pos = c->posTerminal[e];
+        bool v = s->valor[e];
+        Color cor = v ? SKYBLUE : PURPLE;
+        bool erro = s->erroElemento[e] > 0.0f;
+        Rectangle r = { pos.x - 22, pos.y - 22, 44, 44 };
+
+        DrawRectangleRec(r, v ? (Color){ 20, 50, 100, 255 } : (Color){ 55, 20, 70, 255 });
+        DrawRectangleLinesEx(r, 3, erro ? RED : cor);
+        DrawText(v ? "V" : "F", (int)pos.x - MeasureText(v ? "V" : "F", 22) / 2, (int)pos.y - 10, 22, WHITE);
+        DrawText((e == 0) ? "p" : "q", (int)r.x - 14, (int)pos.y - 10, 20, cor);
+        if (s->rodada == 1 && !final)
+            DrawText("FIXO", (int)pos.x - MeasureText("FIXO", 10) / 2, (int)(r.y + r.height) + 4, 10, GRAY);
+        else if (!final)
+            DrawText("ATIRE: V/F", (int)pos.x - MeasureText("ATIRE: V/F", 10) / 2, (int)(r.y + r.height) + 4, 10, Fade(cor, 0.8f));
+    }
+
+    // Portas lógicas
+    for (int k = 0; k < c->numPortas; k++) {
+        const PortaLogica *p = &c->porta[k];
+        bool ativa = s->ativada[k] || final;
+        bool erro = s->erroElemento[2 + k] > 0.0f;
+        Color cor = erro ? RED : (ativa ? (s->saida[k] ? SKYBLUE : PURPLE) : Fade(LIGHTGRAY, 0.7f));
+
+        DrawCircleV(p->pos, 24, (Color){ 16, 20, 42, 255 });
+        if (ativa) DrawCircleV(p->pos, 24, Fade(cor, 0.2f));
+        DrawCircleLines((int)p->pos.x, (int)p->pos.y, 24, cor);
+        DrawCircleLines((int)p->pos.x, (int)p->pos.y, 22, cor);
+        DesenharLogicaCentro(SIMBOLOS_OPERADORES[p->op], (int)p->pos.x, (int)p->pos.y - 11, 22, WHITE);
+
+        const char *nome = NOMES_OPERADORES[p->op];
+        DrawText(nome, (int)p->pos.x - MeasureText(nome, 10) / 2, (int)p->pos.y + 28, 10, cor);
+
+        // Saída: ? até a porta ser ativada
+        const char *saida = ativa ? (s->saida[k] ? "V" : "F") : "?";
+        DrawText(saida, (int)p->pos.x + 28, (int)p->pos.y - 22, 14, ativa ? cor : GRAY);
+    }
+
+    // Núcleo de saída
+    Vector2 n = c->posNucleo;
+    bool energia = s->nucleo > 0.0f || final;
+    float pulso = 0.5f + 0.5f * sinf(t * 6.0f);
+
+    if (energia) DrawCircleV(n, 40 + pulso * 6, Fade(ciano, 0.15f));
+    DrawCircleV(n, 32, (Color){ 16, 20, 42, 255 });
+    DrawPolyLinesEx(n, 8, 32, t * 20.0f, 3, (s->erro > 0.0f && !final) ? RED : (energia ? ciano : Fade(ciano, 0.4f)));
+
+    const char *dentro = energia ? (s->saida[c->numPortas - 1] ? "V" : "F") : "?";
+    DrawText(dentro, (int)n.x - MeasureText(dentro, 26) / 2, (int)n.y - 12, 26, energia ? WHITE : GRAY);
+    DrawText("NÚCLEO", (int)n.x - MeasureText("NÚCLEO", 10) / 2, (int)n.y + 38, 10, ciano);
+
+    if (!final) {
+        const char *exige = TextFormat("EXIGE: %s", s->exigido ? "V" : "F");
+        DrawText(exige, (int)n.x - MeasureText(exige, 12) / 2, (int)n.y - 52, 12, GOLD);
+    }
+
+    // Corte do Silogista: o elemento fica travado (X e o tempo que falta)
+    for (int e = 0; e < SilNumElementos(); e++) {
+        if (s->travado[e] <= 0.0f) continue;
+        Vector2 q = SilPosElemento(e);
+        DrawLineEx((Vector2){ q.x - 18, q.y - 18 }, (Vector2){ q.x + 18, q.y + 18 }, 4, Fade(RED, 0.85f));
+        DrawLineEx((Vector2){ q.x + 18, q.y - 18 }, (Vector2){ q.x - 18, q.y + 18 }, 4, Fade(RED, 0.85f));
+        DrawRing(q, 28, 31, -90.0f, -90.0f + 360.0f * s->travado[e] / SIL_CORTE_DURACAO, 24, Fade(PURPLE, 0.9f));
+    }
+}
+
+// Avisos dos ataques (desenhados antes, embaixo de tudo) e as zonas ativas
+static void DesenharAtaquesSilogista(const Silogista *s, float t)
+{
+    for (int i = 0; i < MAX_ATAQUES_SIL; i++) {
+
+        const AtaqueSil *a = &s->atq[i];
+
+        if (!a->ativo)
+            continue;
+
+        float k = (a->aviso > 0.0f) ? 1.0f - a->aviso / SIL_AVISO : 1.0f;     // 0 = começou a avisar, 1 = vai disparar
+        float pisca = 0.5f + 0.5f * sinf(t * 18.0f);
+
+        switch (a->tipo) {
+
+            case ATQ_LINHAS: {
+                if (a->aviso <= 0.0f) break;
+                // As balas que vão sair e o corredor verde da brecha
+                for (int b = 0; b < SilBalasLinha(a); b++)
+                    if (b < a->brecha || b >= a->brecha + SIL_LINHA_BRECHA) {
+                        Vector2 q = SilPontoLinha(a, b);
+                        DrawCircleLines((int)q.x, (int)q.y, 6, Fade(ORANGE, 0.4f + 0.5f * k));
+                        DrawLineEx(q, Vector2Add(q, Vector2Scale(a->dir, 14)), 2, Fade(ORANGE, 0.5f * k));
+                    }
+                Vector2 b0 = SilPontoLinha(a, a->brecha), b1 = SilPontoLinha(a, a->brecha + SIL_LINHA_BRECHA - 1);
+                float meia = SIL_LINHA_ESPACO / 2.0f;
+                Rectangle brecha = (a->dir.y != 0.0f)
+                    ? (Rectangle){ b0.x - meia, ARENA_ROGUE.y, b1.x - b0.x + 2 * meia, ARENA_ROGUE.height }
+                    : (Rectangle){ ARENA_ROGUE.x, b0.y - meia, ARENA_ROGUE.width, b1.y - b0.y + 2 * meia };
+                DrawRectangleRec(brecha, Fade(GREEN, 0.08f + 0.06f * pisca));
+            } break;
+
+            case ATQ_ZONA:
+                if (a->aviso > 0.0f) {
+                    DrawCircleV(a->pos, SIL_ZONA_RAIO * k, Fade(RED, 0.18f));
+                    DrawCircleLines((int)a->pos.x, (int)a->pos.y, SIL_ZONA_RAIO, Fade(RED, 0.5f + 0.4f * pisca));
+                } else {
+                    DrawCircleV(a->pos, SIL_ZONA_RAIO, Fade(RED, 0.30f + 0.1f * pisca));
+                    DrawPolyLinesEx(a->pos, 6, SIL_ZONA_RAIO, t * 60.0f, 3, Fade(MAGENTA, 0.9f));
+                    DrawText("BLOQUEIO", (int)a->pos.x - MeasureText("BLOQUEIO", 10) / 2, (int)a->pos.y - 5, 10, WHITE);
+                }
+                break;
+
+            case ATQ_REFUTACAO:
+                if (a->aviso > 0.0f) {
+                    Vector2 fim = Vector2Add(s->pos, Vector2Scale(a->dir, 800.0f));
+                    DrawLineEx(s->pos, fim, 12.0f, Fade(RED, 0.10f + 0.12f * pisca));
+                    DrawLineEx(s->pos, fim, 1.5f, Fade(RED, 0.8f));
+                }
+                break;
+
+            case ATQ_CORTE: {
+                Vector2 alvo = SilPosElemento(a->alvo);
+                DrawLineEx(s->pos, alvo, 2.0f + 3.0f * k, Fade(PURPLE, 0.3f + 0.5f * pisca));
+                DrawCircleLines((int)alvo.x, (int)alvo.y, 34 - 8 * k, Fade(RED, 0.8f));
+            } break;
+
+            default:    // ATQ_ANEL: um anel se fechando no Silogista
+                if (a->aviso > 0.0f)
+                    DrawCircleLines((int)s->pos.x, (int)s->pos.y, SIL_RAIO + 70.0f * (a->aviso / 0.7f), Fade(ORANGE, 0.9f));
+                break;
+        }
+    }
+}
+
+// O Silogista: um sábio mecânico (cabeça hexagonal com visor, manto, livro holográfico)
+// com os conectivos lógicos orbitando e a armadura lógica (uma camada por puzzle que falta)
+static void DesenharSilogista(const Silogista *s, Vector2 jogador, float t)
+{
+    float k = (s->morrendo > 0.0f) ? s->morrendo / 1.6f : 1.0f;
+    Vector2 p = { s->pos.x, s->pos.y + sinf(t * 1.6f) * 4.0f };
+    Color ciano = { 0, 228, 255, 255 }, lilas = { 170, 140, 255, 255 };
+
+    DrawEllipse((int)s->pos.x, (int)s->pos.y + (int)SIL_RAIO + 10, 30 * k, 8, Fade(BLACK, 0.4f));
+
+    // Diagrama atrás: triângulo dentro de um círculo
+    DrawCircleLines((int)p.x, (int)p.y, 50, Fade(ciano, 0.25f * k));
+    for (int i = 0; i < 3; i++) {
+        float a1 = -t * 0.5f + i * (2.0f * PI / 3.0f), a2 = a1 + 2.0f * PI / 3.0f;
+        DrawLineEx((Vector2){ p.x + cosf(a1) * 50, p.y + sinf(a1) * 50 }, (Vector2){ p.x + cosf(a2) * 50, p.y + sinf(a2) * 50 },
+                   1.5f, Fade(lilas, 0.35f * k));
+    }
+
+    for (int vez = 0; vez < ((s->flash > 0.0f) ? 3 : 1); vez++) {
+
+        if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
+
+        // Manto
+        Color manto = Fade((Color){ 40, 40, 110, 255 }, k);
+        DesenharTrianguloB2((Vector2){ p.x - 14, p.y - 6 }, (Vector2){ p.x + 14, p.y - 6 }, (Vector2){ p.x - 28, p.y + 34 }, manto);
+        DesenharTrianguloB2((Vector2){ p.x + 14, p.y - 6 }, (Vector2){ p.x + 28, p.y + 34 }, (Vector2){ p.x - 28, p.y + 34 }, manto);
+        DrawLineEx((Vector2){ p.x - 28, p.y + 34 }, (Vector2){ p.x + 28, p.y + 34 }, 2, Fade(ciano, k));
+        DrawLineEx((Vector2){ p.x, p.y - 6 }, (Vector2){ p.x, p.y + 34 }, 1, Fade(lilas, 0.7f * k));
+
+        // Livro holográfico aberto na frente
+        Color pagina = Fade(ciano, 0.45f * k);
+        DesenharTrianguloB2((Vector2){ p.x, p.y + 14 }, (Vector2){ p.x - 18, p.y + 8 }, (Vector2){ p.x - 18, p.y + 20 }, pagina);
+        DesenharTrianguloB2((Vector2){ p.x, p.y + 14 }, (Vector2){ p.x + 18, p.y + 8 }, (Vector2){ p.x + 18, p.y + 20 }, pagina);
+        DrawRectangle((int)p.x - 18, (int)p.y + 14, 36, 8, pagina);
+
+        // Cabeça: hexágono com um visor que segue o jogador
+        Vector2 cab = { p.x, p.y - 22 };
+        Vector2 olhar = Vector2Normalize(Vector2Subtract(jogador, cab));
+        DrawPoly(cab, 6, 17, 0, Fade((Color){ 25, 25, 60, 255 }, k));
+        DrawPolyLinesEx(cab, 6, 17, 0, 2, Fade(ciano, k));
+        DrawRectangle((int)(cab.x - 10 + olhar.x * 2), (int)(cab.y - 4 + olhar.y * 2), 20, 6, Fade(ciano, k));
+
+        // Barba de circuitos
+        for (int i = 0; i < 3; i++) {
+            float bx = cab.x - 6 + i * 6;
+            DrawLine((int)bx, (int)cab.y + 8, (int)bx, (int)cab.y + 14 + (i % 2) * 5, Fade(lilas, k));
+            DrawCircle((int)bx, (int)cab.y + 15 + (i % 2) * 5, 1.5f, Fade(lilas, k));
+        }
+
+        // Conectivos orbitando
+        static const char *simbolos[5] = { "~", "&", "|", ">", "#" };
+        for (int i = 0; i < 5; i++) {
+            float a = t * 0.9f + i * (2.0f * PI / 5.0f);
+            Vector2 q = { p.x + cosf(a) * 56, p.y - 6 + sinf(a) * 32 };
+            DesenharLogicaCentro(simbolos[i], (int)q.x, (int)q.y - 7, 14, Fade((i % 2) ? ciano : lilas, k));
+        }
+    }
+
+    if (s->flash > 0.0f)
+        EndBlendMode();
+
+    // Armadura lógica
+    static const Color camadas[3] = { { 0, 228, 255, 255 }, { 102, 191, 255, 255 }, { 170, 140, 255, 255 } };
+    int restam = 3 - (int)s->etapa;
+
+    for (int c = 0; c < restam && s->morrendo <= 0.0f; c++)
+        DrawPolyLinesEx(p, 6, SIL_RAIO + 12 + c * 8, t * ((c % 2) ? -35.0f : 35.0f), 2, Fade(camadas[c], 0.75f));
+}
+
+// Barra de vida e as camadas da armadura lógica
+static void DesenharBarraSilogista(const Silogista *s)
+{
+    int x = 200, y = 44, w = 400;
+    int camadas = 3 - (int)s->etapa;
+
+    DrawRectangle(x - 4, y - 2, w + 8, 16, Fade(BLACK, 0.8f));
+    DrawRectangle(x, y + 2, w, 8, (Color){ 30, 25, 60, 255 });
+    DrawRectangle(x, y + 2, (int)(w * s->hp / SIL_HP), 8, (camadas > 0) ? Fade((Color){ 120, 110, 255, 255 }, 0.45f) : (Color){ 120, 110, 255, 255 });
+    DrawRectangleLines(x, y + 2, w, 8, GRAY);
+
+    int wNome = MeasureText("O SILOGISTA", 10);
+    DrawRectangle(x - wNome - 18, y - 2, wNome + 12, 16, Fade(BLACK, 0.8f));
+    DrawText("O SILOGISTA", x - wNome - 12, y + 1, 10, (Color){ 170, 140, 255, 255 });
+
+    // Uma casinha por camada da armadura (cheia = ainda protege)
+    int wArm = MeasureText("ARMADURA", 10);
+    DrawRectangle(x + w + 8, y - 2, wArm + 38, 16, Fade(BLACK, 0.8f));
+    DrawText("ARMADURA", x + w + 12, y + 1, 10, LIGHTGRAY);
+    for (int c = 0; c < 3; c++) {
+        Rectangle r = { (float)(x + w + 18 + wArm + c * 8), (float)y + 1, 6, 10 };
+        if (c < camadas) DrawRectangleRec(r, (Color){ 0, 228, 255, 255 });
+        DrawRectangleLinesEx(r, 1, (Color){ 0, 228, 255, 255 });
+    }
+}
+
+// Faixa no alto: o que está em jogo em cada puzzle (os textos não cabem na arena)
+static void DesenharFaixaSilogista(const Biblioteca *b, float tempo)
+{
+    const Silogista *s = &b->silogista;
+    Color ciano = { 0, 228, 255, 255 };
+
+    if (s->etapa == SIL_VULNERAVEL || s->morrendo > 0.0f)
+        return;
+
+    Rectangle faixa = { 60, 64, 680, 64 };
+    DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.88f));
+    DrawRectangleLinesEx(faixa, 2, (s->etapa == SIL_SOFISMA) ? MAGENTA : ciano);
+
+    int x = (int)faixa.x + 10, y = (int)faixa.y + 6;
+
+    if (s->etapa == SIL_MONTAGEM) {
+
+        DrawText("MONTE O SILOGISMO:   P1 = regra geral    P2 = caso particular    C = a conclusão que decorre das duas", x, y, 10, ciano);
+
+        // Em ordem de letra (as letras foram sorteadas)
+        for (char letra = 'X'; letra <= 'Z'; letra++) {
+            int k = 0;
+            while (k < NUM_ENCAIXES - 1 && s->letraPeca[k] != letra) k++;
+
+            int onde = -1;
+            for (int e = 0; e < NUM_ENCAIXES; e++)
+                if (s->encaixe[e] == k) onde = e;
+
+            int yy = y + 14 + (letra - 'X') * 15;
+            Color cor = (s->carregando == k) ? YELLOW : ((onde >= 0) ? Fade(LIGHTGRAY, 0.6f) : WHITE);
+            const char *txt = TextFormat("%c:  %s", letra, SILOGISMO_VALIDO.frase[k]);
+            DrawText(txt, x, yy, 12, cor);
+
+            int xr = x + MeasureText(txt, 12) + 10;
+            if (s->carregando == k) DrawText("(na sua mão)", xr, yy, 12, YELLOW);
+            else if (onde >= 0)     DrawText(TextFormat("(em %s)", NOMES_ENCAIXES[onde]), xr, yy, 12, ciano);
+        }
+    }
+    else if (s->etapa == SIL_SOFISMA) {
+
+        DrawText("ARGUMENTO DO SILOGISTA (ele jura que é válido). Destrua a tiros a peça que não se sustenta:", x, y, 10, MAGENTA);
+
+        for (int e = 0; e < NUM_ENCAIXES; e++)
+            DrawText(TextFormat("%s:  %s", NOMES_ENCAIXES[e], SOFISMA_SILOGISTA.frase[e]), x, y + 14 + e * 15, 12, WHITE);
+
+        if (s->blindagem > 0.0f)
+            DrawText("BLINDADO", (int)(faixa.x + faixa.width) - 70, y, 10, ciano);
+    }
+    else {
+
+        const CircuitoDef *c = &CIRCUITO_SILOGISTA;
+
+        DrawText(TextFormat("CIRCUITO PROPOSICIONAL  //  RODADA %d DE 2", s->rodada), x, y, 10, ciano);
+        DesenharLogicaCentro(c->expressao, (int)(faixa.x + faixa.width / 2), y + 12, 22, WHITE);
+
+        const char *exige = TextFormat("NÚCLEO EXIGE: %s", s->exigido ? "V" : "F");
+        DrawText(exige, (int)(faixa.x + faixa.width) - 16 - MeasureText(exige, 14), y + 16, 14,
+                 Fade(GOLD, 0.75f + 0.25f * sinf(tempo * 5.0f)));
+
+        DesenharLogica("& = E     | = OU     ~ = NÃO", x, y + 40, 12, LIGHTGRAY, true);
+
+        const char *nota = (s->rodada == 1) ? "p e q fixos: ative as portas na ordem certa (tiros)"
+                                            : "atire em p e q para trocar V/F; depois ative as portas";
+        DrawText(nota, (int)(faixa.x + faixa.width) - 16 - MeasureText(nota, 10), y + 42, 10, ciano);
+    }
+}
+
+// Ícone de cada arma (pedestal, loja e HUD)
+static void DesenharIconeArma(TipoArma arma, Vector2 c, float e, float tempo)
+{
+    Color cor = DEF_ARMAS[arma].cor;
+    Color metal = { 60, 70, 100, 255 };
+
+    switch (arma) {
+
+        case ARMA_VETOR:            // fuzil comprido com luneta
+            DrawRectangle((int)(c.x - 13 * e), (int)(c.y - 1 * e), (int)(26 * e), (int)(3 * e), metal);
+            DrawRectangle((int)(c.x - 13 * e), (int)(c.y + 1 * e), (int)(6 * e), (int)(6 * e), metal);
+            DrawRectangle((int)(c.x - 4 * e), (int)(c.y - 5 * e), (int)(9 * e), (int)(3 * e), cor);
+            DrawLineEx((Vector2){ c.x + 13 * e, c.y }, (Vector2){ c.x + 16 * e, c.y }, 2, Fade(cor, 0.5f + 0.5f * sinf(tempo * 6.0f)));
+            break;
+
+        case ARMA_ROTEADOR:         // roteador com antenas e um pacote fazendo curva
+            DrawRectangle((int)(c.x - 10 * e), (int)(c.y + 1 * e), (int)(20 * e), (int)(7 * e), metal);
+            DrawLineEx((Vector2){ c.x - 6 * e, c.y + 1 * e }, (Vector2){ c.x - 9 * e, c.y - 8 * e }, 2, LIGHTGRAY);
+            DrawLineEx((Vector2){ c.x + 6 * e, c.y + 1 * e }, (Vector2){ c.x + 9 * e, c.y - 8 * e }, 2, LIGHTGRAY);
+            DrawRing((Vector2){ c.x, c.y - 2 * e }, 6 * e, 7.5f * e, 200.0f, 340.0f, 8, cor);
+            break;
+
+        case ARMA_FLUXO:            // três canos e a rajada
+            for (int k = -1; k <= 1; k++)
+                DrawRectangle((int)(c.x - 10 * e), (int)(c.y + k * 4 * e - 1), (int)(16 * e), (int)(2 * e), metal);
+            for (int k = 0; k < 3; k++)
+                DrawCircle((int)(c.x + 9 * e + k * 4 * e), (int)c.y, 1.5f * e, cor);
+            break;
+
+        case ARMA_ORBE:             // esfera com um anel
+            DrawCircleV(c, 7 * e, Fade(cor, 0.5f));
+            DrawCircleV(c, 4 * e, cor);
+            DrawRing(c, 9 * e, 10.5f * e, tempo * 90.0f, tempo * 90.0f + 270.0f, 12, cor);
+            break;
+
+        case ARMA_FRAGMENTADORA:    // cone de estilhaços
+            DrawRectangle((int)(c.x - 12 * e), (int)(c.y - 3 * e), (int)(10 * e), (int)(6 * e), metal);
+            for (int k = -2; k <= 2; k++)
+                DrawLineEx((Vector2){ c.x, c.y }, (Vector2){ c.x + 13 * e, c.y + k * 4 * e }, 1.5f, cor);
+            break;
+
+        case ARMA_PULSO_FW:         // hexágonos concêntricos
+            DrawPolyLinesEx(c, 6, 10 * e, tempo * 30.0f, 2, cor);
+            DrawPolyLinesEx(c, 6, 5 * e, -tempo * 30.0f, 2, cor);
+            break;
+
+        default:                    // Disparador de Dados
+            DrawRectangle((int)(c.x - 9 * e), (int)(c.y - 2 * e), (int)(16 * e), (int)(4 * e), (Color){ 30, 60, 120, 255 });
+            DrawRectangle((int)(c.x - 9 * e), (int)(c.y + 1 * e), (int)(5 * e), (int)(6 * e), (Color){ 30, 60, 120, 255 });
+            DrawCircleV((Vector2){ c.x + 9 * e, c.y }, 2 * e, cor);
+            break;
+    }
+}
+
+// Projétil do jogador conforme a arma (cada um com a sua forma)
+static void DesenharProjetilJogador(const Projetil *p, float tempo)
+{
+    Vector2 d = (Vector2Length(p->vel) > 0.01f) ? Vector2Normalize(p->vel) : (Vector2){ 1, 0 };
+
+    if (p->secundario) {
+        // Fragmento ou pacote do Botnet Reverso: losango verde-limão
+        DrawPoly(p->pos, 4, p->raio + 2, tempo * 400.0f, Fade(LIME, 0.5f));
+        DrawPoly(p->pos, 4, p->raio, tempo * 400.0f, LIME);
+        return;
+    }
+
+    Color cor = DEF_ARMAS[p->arma].cor;
+
+    switch (p->arma) {
+        case ARMA_VETOR:            // feixe comprido
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 26)), p->pos, 6, Fade(SKYBLUE, 0.4f));
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 22)), p->pos, 2.5f, WHITE);
+            break;
+        case ARMA_ROTEADOR:         // pacote (losango) com rastro
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 12)), p->pos, 2, Fade(cor, 0.4f));
+            DrawPoly(p->pos, 4, p->raio + 1, atan2f(d.y, d.x) * RAD2DEG, cor);
+            break;
+        case ARMA_FLUXO:            // gotinhas amarelas
+            DrawCircleV(p->pos, p->raio, cor);
+            break;
+        case ARMA_ORBE:             // esfera pulsando
+            DrawCircleV(p->pos, p->raio + 4 + sinf(tempo * 20.0f) * 1.5f, Fade(cor, 0.3f));
+            DrawCircleV(p->pos, p->raio, cor);
+            DrawCircleLines((int)p->pos.x, (int)p->pos.y, p->raio + 2, WHITE);
+            break;
+        case ARMA_FRAGMENTADORA:    // estilhaço curto
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 6)), Vector2Add(p->pos, Vector2Scale(d, 3)), 3, cor);
+            break;
+        default:
+            DrawCircleV(p->pos, p->raio + 3, Fade(SKYBLUE, 0.3f));
+            DrawCircleV(p->pos, p->raio, (Color){ 180, 240, 255, 255 });
+            break;
+    }
+}
+
+// Efeitos em volta do jogador: escudo, campo de latência, Overclock, carga do Vetor e calor do Fluxo
+static void DesenharEfeitosJogador(const Biblioteca *b, float tempo)
+{
+    const JogadorRogue *j = &b->j;
+
+    if (j->efeito[EFEITO_LATENCIA] > 0.0f) {
+        DrawCircleV(j->pos, LATENCIA_RAIO, Fade(PURPLE, 0.06f));
+        for (int k = 0; k < 12; k++) {                 // marcas de relógio girando devagar
+            float a = tempo * 0.5f + k * (PI / 6.0f);
+            DrawLineEx((Vector2){ j->pos.x + cosf(a) * (LATENCIA_RAIO - 8), j->pos.y + sinf(a) * (LATENCIA_RAIO - 8) },
+                       (Vector2){ j->pos.x + cosf(a) * LATENCIA_RAIO, j->pos.y + sinf(a) * LATENCIA_RAIO }, 2, Fade(PURPLE, 0.6f));
+        }
+    }
+
+    if (j->efeito[EFEITO_ESCUDO] > 0.0f) {
+        float pisca = (j->efeito[EFEITO_ESCUDO] < 2.0f && ((int)(tempo * 8.0f)) % 2 == 0) ? 0.3f : 0.9f;   // acabando: pisca
+        DrawPolyLinesEx(j->pos, 6, 24, tempo * 60.0f, 3, Fade((Color){ 0, 228, 48, 255 }, pisca));
+        DrawCircleV(j->pos, 24, Fade((Color){ 0, 228, 48, 255 }, 0.08f));
+    }
+
+    if (j->efeito[EFEITO_OVERCLOCK] > 0.0f)
+        DrawRing(j->pos, 17, 19, tempo * 400.0f, tempo * 400.0f + 120.0f, 10, ORANGE);
+
+    if (j->carga > 0.0f) {
+        // Vetor: o anel enche e a mira laser cresce com a carga
+        float k = j->carga / VETOR_CARGA_MAX;
+        DrawRing(j->pos, 20, 23, -90.0f, -90.0f + 360.0f * k, 24, (k >= 1.0f) ? WHITE : SKYBLUE);
+        DrawLineEx(j->pos, Vector2Add(j->pos, Vector2Scale(j->mira, 120.0f + 380.0f * k)), 1.0f, Fade(SKYBLUE, 0.3f + 0.4f * k));
+    }
+
+    if (j->calor > 0.0f) {
+        // Fluxo: barrinha de calor embaixo do jogador
+        int x = (int)j->pos.x - 16, y = (int)j->pos.y + 24;
+        DrawRectangle(x, y, 32, 4, (Color){ 40, 30, 20, 255 });
+        DrawRectangle(x, y, (int)(32 * j->calor), 4, j->superaquecida ? RED : ColorLerp(YELLOW, ORANGE, j->calor));
+        if (j->superaquecida && ((int)(tempo * 6.0f)) % 2 == 0)
+            DrawText("QUENTE", (int)j->pos.x - MeasureText("QUENTE", 8) / 2, y + 6, 8, RED);
+    }
+}
+
+// Proxy-Isca: um holograma em arame (bem diferente do jogador)
+static void DesenharProxy(const JogadorRogue *j, float tempo)
+{
+    if (j->efeito[EFEITO_PROXY] <= 0.0f || ((int)(tempo * 15.0f)) % 7 == 0)
+        return;
+
+    Vector2 p = j->proxyPos;
+    Color ciano = Fade(SKYBLUE, 0.75f);
+
+    DrawCircleLines((int)p.x, (int)p.y - 14, 7, ciano);
+    DrawRectangleLines((int)p.x - 8, (int)p.y - 6, 16, 18, ciano);
+    DrawLine((int)p.x - 5, (int)p.y + 12, (int)p.x - 5, (int)p.y + 20, ciano);
+    DrawLine((int)p.x + 5, (int)p.y + 12, (int)p.x + 5, (int)p.y + 20, ciano);
+    for (int k = 0; k < 4; k++)                          // linhas de varredura
+        DrawLine((int)p.x - 8, (int)p.y - 4 + k * 4 + ((int)(tempo * 20.0f) % 4), (int)p.x + 8, (int)p.y - 4 + k * 4 + ((int)(tempo * 20.0f) % 4), Fade(SKYBLUE, 0.3f));
+    DrawText("PROXY", (int)p.x - MeasureText("PROXY", 8) / 2, (int)p.y + 22, 8, ciano);
+    DrawRectangle((int)p.x - 12, (int)p.y - 26, (int)(24 * j->proxyHp / PROXY_HP), 2, ciano);
+}
+
+// Analisador Heurístico: losangos sobre o alvo (um por marca)
+static void DesenharMarcasAnalise(const Biblioteca *b)
+{
+    const JogadorRogue *j = &b->j;
+    Vector2 pos;
+    float raio;
+
+    if (j->alvoAnalise == 0 || j->marcasAnalise == 0)
+        return;
+
+    if (j->alvoAnalise > 0) { pos = b->ini[j->alvoAnalise - 1].pos; raio = b->ini[j->alvoAnalise - 1].raio; }
+    else if (b->chefe.ativo) { pos = b->chefe.pos; raio = CHEFE_RAIO; }
+    else if (b->silogista.ativo) { pos = b->silogista.pos; raio = SIL_RAIO; }
+    else return;
+
+    for (int k = 0; k < ANALISADOR_MARCAS; k++) {
+        Vector2 q = { pos.x - 10 + k * 10, pos.y + raio + 10 };
+        if (k < j->marcasAnalise) DrawPoly(q, 4, 4, 0, (j->marcasAnalise >= ANALISADOR_MARCAS) ? RED : ORANGE);
+        else                      DrawPolyLines(q, 4, 4, 0, Fade(ORANGE, 0.5f));
+    }
+}
+
+// HUD da expansão: arma equipada, efeitos com tempo e upgrades passivos
+static void DesenharHudArmas(const Biblioteca *b, float tempo)
+{
+    const JogadorRogue *j = &b->j;
+    TipoArma arma = RogueArmaAtual(j);
+
+    // Arma (canto de baixo, à esquerda). Com duas, mostra a outra e a tecla de troca.
+    Rectangle r = { 44, 506, 214, 22 };
+    DrawRectangleRec(r, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
+    DrawRectangleLinesEx(r, 1, Fade(DEF_ARMAS[arma].cor, 0.7f));
+    DesenharIconeArma(arma, (Vector2){ r.x + 16, r.y + 11 }, 0.8f, tempo);
+    DrawText(DEF_ARMAS[arma].nome, (int)r.x + 34, (int)r.y + 6, 10, DEF_ARMAS[arma].cor);
+
+    if (j->armaExtra != ARMA_DISPARADOR) {
+        TipoArma outra = j->usandoExtra ? ARMA_DISPARADOR : j->armaExtra;
+        DesenharIconeArma(outra, (Vector2){ r.x + r.width - 34, r.y + 11 }, 0.6f, tempo);
+        DrawText("TAB", (int)(r.x + r.width) - 22, (int)r.y + 7, 8, GRAY);
+    }
+
+    // Efeitos com tempo (canto de baixo, à direita): ícone e uma barra com o que falta
+    static const TipoItem itemDoEfeito[NUM_EFEITOS] = { ITEM_OVERCLOCK, ITEM_FIREWALL_PORTATIL, ITEM_PROXY, ITEM_CAMPO_LATENCIA };
+    static const float duracao[NUM_EFEITOS] = { EFEITO_OVERCLOCK_DURACAO, ESCUDO_PORTATIL_DURACAO, PROXY_DURACAO, LATENCIA_DURACAO };
+    int x = 734;
+
+    for (int e = 0; e < NUM_EFEITOS; e++) {
+        if (j->efeito[e] <= 0.0f) continue;
+        DrawRectangle(x - 12, 506, 24, 22, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
+        DesenharIconeItem(itemDoEfeito[e], (Vector2){ (float)x, 515 }, 0.6f, tempo);
+        DrawRectangle(x - 11, 525, (int)(22 * fminf(1.0f, j->efeito[e] / duracao[e])), 2, GOLD);
+        x -= 28;
+    }
+
+    // Upgrades passivos da expansão (coluna na margem direita), com a quantidade
+    int uy = 76;
+    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS; i++) {
+        if (j->itens[i] <= 0) continue;
+        DrawRectangle(770, uy - 11, 22, 22, Fade(BLACK, 0.6f));
+        DrawRectangleLines(770, uy - 11, 22, 22, Fade(CORES_RARIDADE[ITENS[i].raridade], 0.8f));
+        DesenharIconeItem((TipoItem)i, (Vector2){ 781, (float)uy }, 0.55f, tempo);
+        if (ITENS[i].maxPilha > 1)
+            DrawText(TextFormat("%d", RogueQtd(j, (TipoItem)i)), 785, uy + 2, 8, WHITE);
+        uy += 26;
+    }
+}
+
+// Anéis de explosão, de onda e de limpeza
+static void DesenharAneis(const Biblioteca *b)
+{
+    for (int i = 0; i < MAX_ANEIS; i++) {
+        const AnelEfeito *a = &b->aneis[i];
+        if (a->tempo <= 0.0f) continue;
+        float k = 1.0f - a->tempo / 0.35f;
+        DrawCircleV(a->pos, a->raio * k, Fade(a->cor, 0.15f * (1.0f - k)));
+        DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio * k, Fade(a->cor, 1.0f - k));
+    }
+}
+
+// Marcas do Scanner de Ecos (as de uma varredura alucinada tremem) e a pista "ECO?" na Luci
+static void DesenharScannerLuci(const Biblioteca *b, float tempo)
+{
+    if (b->scanner > 0.0f) {
+        for (int i = 0; i < MAX_INIMIGOS; i++) {
+
+            const Inimigo *e = &b->ini[i];
+            const char *marca = NULL;
+
+            if (!e->ativo) continue;
+            if (e->tipo == INIMIGO_PHISHER)   marca = b->scannerErrou ? "FALSO" : "PHISHER";
+            else if (e->tipo == INIMIGO_ISCA) marca = b->scannerErrou ? "REAL" : "FALSO";
+            else if (e->tipo == INIMIGO_ECO)  marca = "ECO";
+            if (marca == NULL) continue;
+
+            float dx = b->scannerErrou ? (float)GetRandomValue(-2, 2) : 0.0f;
+            int w = MeasureText(marca, 10);
+            int x = (int)(e->pos.x + dx) - w / 2 - 4, y = (int)(e->pos.y - e->raio - 30);
+            DrawRectangle(x, y, w + 8, 14, Fade(BLACK, 0.7f));
+            DrawRectangleLines(x, y, w + 8, 14, (Color){ 0, 228, 255, 255 });
+            DrawText(marca, x + 4, y + 2, 10, (Color){ 0, 228, 255, 255 });
+
+            // Cantoneiras em volta do alvo
+            float r = e->raio + 6;
+            for (int c = 0; c < 4; c++) {
+                float sx = (c % 2) ? 1.0f : -1.0f, sy = (c / 2) ? 1.0f : -1.0f;
+                Vector2 q = { e->pos.x + dx + sx * r, e->pos.y + sy * r };
+                DrawLineEx(q, (Vector2){ q.x - sx * 6, q.y }, 2, (Color){ 0, 228, 255, 255 });
+                DrawLineEx(q, (Vector2){ q.x, q.y - sy * 6 }, 2, (Color){ 0, 228, 255, 255 });
+            }
+        }
+    }
+
+    if (b->luciEco > 0.0f && ((int)(tempo * 20.0f)) % 3 != 0) {
+        Vector2 p = { b->j.pos.x + 22, b->j.pos.y - 46 };
+        DrawRectangle((int)p.x - 16, (int)p.y, 32, 14, Fade(BLACK, 0.7f));
+        DrawText("ECO?", (int)p.x - MeasureText("ECO?", 10) / 2, (int)p.y + 2, 10, MAGENTA);
+    }
+}
+
+// Estado da Luci (estabilidade, nome do estado e scanner) acima da arma
+static void DesenharHudLuci(const Biblioteca *b, float tempo)
+{
+    int e = RogueEstab(b);
+    const char *estado = (e >= 4) ? "ESTÁVEL" : ((e == 3) ? "INSTÁVEL" : ((e >= 1) ? "GLITCHANDO" : "ECOANDO"));
+    Color cor = (e >= 4) ? (Color){ 0, 228, 255, 255 } : ((e == 3) ? GOLD : ((e >= 1) ? ORANGE : MAGENTA));
+    Rectangle r = { 44, 484, 214, 18 };
+    int dx = (e <= 2 && ((int)(tempo * 9.0f)) % 7 == 0) ? GetRandomValue(-2, 2) : 0;     // glitchando: treme
+
+    DrawRectangleRec(r, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
+    DrawRectangleLinesEx(r, 1, Fade(cor, 0.7f));
+    DrawText("LUCI", (int)r.x + 6 + dx, (int)r.y + 4, 10, cor);
+
+    for (int k = 0; k < ESTABILIDADE_MAX_LUCI; k++) {
+        Rectangle pip = { r.x + 38 + k * 10, r.y + 5, 7, 8 };
+        if (k < e) DrawRectangleRec(pip, cor);
+        DrawRectangleLinesEx(pip, 1, cor);
+    }
+    DrawText(estado, (int)r.x + 94 + dx, (int)r.y + 4, 10, cor);
+
+    // Scanner (H): pronto ou recarregando
+    Vector2 c = { r.x + r.width - 12, r.y + 9 };
+    if (b->recargaScanner > 0.0f)
+        DrawCircleSector(c, 7, -90.0f, -90.0f + 360.0f * (1.0f - b->recargaScanner / SCANNER_RECARGA), 16, Fade(SKYBLUE, 0.5f));
+    else
+        DrawCircleV(c, 7, Fade(SKYBLUE, 0.6f));
+    DrawCircleLines((int)c.x, (int)c.y, 7, SKYBLUE);
+    DrawText("H", (int)c.x - 3, (int)c.y - 4, 8, WHITE);
+
+    // Recado curto da Luci (reparo, custo, recusa)
+    if (b->luciMsgTempo > 0.0f) {
+        float k = fminf(1.0f, b->luciMsgTempo / 0.4f);
+        int w = MeasureText(b->luciMsg, 10);
+        DrawRectangle((int)r.x, (int)r.y - 18, w + 12, 16, Fade(BLACK, 0.7f * k));
+        DrawText(b->luciMsg, (int)r.x + 6, (int)r.y - 15, 10, Fade(cor, k));
+    }
+}
+
+// ---------- Desenho do Bloco 3 ----------
+
+static bool RogueNoBloco3(const Biblioteca *b)
+{
+    return b->tipoSala == SALA_TRANSICAO || b->tipoSala == SALA_LUCI;
+}
+
+// Chão do núcleo: linhas de texto correndo (o mundo é feito de respostas geradas)
+static void DesenharChaoNucleo(const Biblioteca *b, float t)
+{
+    for (int i = 0; i < 12; i++) {
+        float y = ARENA_ROGUE.y + fmodf(i * 40.0f + t * 18.0f, ARENA_ROGUE.height);
+        int largura = 120 + (int)(Ruido((unsigned int)i * 7u) % 400);
+        int x = (int)ARENA_ROGUE.x + 10 + (int)(Ruido((unsigned int)i * 13u) % 200);
+        DrawRectangle(x, (int)y, largura, 2, Fade(MAGENTA, 0.07f));
+    }
+    if (b->tipoSala == SALA_LUCI) {
+        DrawCircleLines(400, 300, 200, Fade(MAGENTA, 0.08f));
+        DrawCircleLines(400, 300, 120, Fade((Color){ 0, 228, 255, 255 }, 0.08f));
+    }
+}
+
+// A Luci grande (NPC no corredor ou chefe na arena), com a falha que cresce com a instabilidade
+static void DesenharLuciGrande(Vector2 p, float altura, float instabilidade, bool sombra)
+{
+    float guardada = instabilidadeLuci;
+
+    if (sombra)
+        DrawEllipse((int)p.x, (int)(p.y + altura * 0.6f), altura * 0.35f, 6, Fade(BLACK, 0.5f));
+
+    instabilidadeLuci = instabilidade;
+    DesenharLuciTamanho(p, altura);
+    instabilidadeLuci = guardada;
+}
+
+static void DesenharLuciChefe(const Biblioteca *b, float t)
+{
+    const LuciChefe *l = &b->luci;
+    float inst = l->boa ? 0.7f : 1.0f;
+    float k = (l->morrendo > 0.0f) ? l->morrendo / 2.0f : 1.0f;
+
+    if (l->morrendo > 0.0f && b->finalBom)
+        inst *= k;                                      // salva: o magenta vai embora
+
+    // Fase 2: as cópias (sem sombra e falhando de vez em quando); a verdadeira tem sombra
+    if (l->fase == 2 && l->morrendo <= 0.0f)
+        for (int c = 0; c < 3; c++)
+            if (c != l->real && ((int)(t * 13.0f + c * 5)) % 9 != 0)
+                DesenharLuciGrande((Vector2){ l->copia[c].x, l->copia[c].y + sinf(t * 2.0f + c) * 4.0f }, 70.0f, inst, false);
+
+    Vector2 p = { l->pos.x, l->pos.y + sinf(t * 2.0f) * 4.0f };
+    float altura = 70.0f * ((l->morrendo > 0.0f && !b->finalBom) ? (0.4f + 0.6f * k) : 1.0f);
+
+    for (int vez = 0; vez < ((l->flash > 0.0f) ? 2 : 1); vez++) {
+        if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
+        DesenharLuciGrande(p, altura, inst, true);
+    }
+    if (l->flash > 0.0f) EndBlendMode();
+
+    if (l->morrendo > 0.0f)
+        return;
+
+    // Armadura de dados (hexágonos) ou a janela aberta (anel dourado com o tempo)
+    if (!RogueLuciVulneravel(l)) {
+        DrawPolyLinesEx(p, 6, LUCI_RAIO + 12, t * 40.0f, 3, Fade(MAGENTA, 0.8f));
+        DrawPolyLinesEx(p, 6, LUCI_RAIO + 20, -t * 30.0f, 2, Fade(MAGENTA, 0.5f));
+    } else if (l->janela > 0.0f) {
+        DrawRing(p, LUCI_RAIO + 12, LUCI_RAIO + 16, -90.0f, -90.0f + 360.0f * l->janela / LUCI_JANELA, 32, GOLD);
+    }
+}
+
+// Ataque numa metade da arena: o aviso vermelho nunca mente
+static void DesenharAvisoMetade(const Biblioteca *b, float t)
+{
+    const LuciChefe *l = &b->luci;
+
+    if (!l->ativo || !l->avisando || l->morrendo > 0.0f)
+        return;
+
+    float k = 1.0f - l->tempoDica / LUCI_DICA_AVISO;
+    Rectangle metade = { (l->ladoAtaque == 0) ? ARENA_ROGUE.x : 400.0f, ARENA_ROGUE.y, ARENA_ROGUE.width / 2.0f, ARENA_ROGUE.height };
+    bool nitido = RogueTemConceito(b, CONCEITO_FUNDAMENTOS);
+
+    DrawRectangleRec(metade, Fade(RED, (nitido ? 0.12f : 0.06f) + 0.18f * k));
+    DrawRectangleLinesEx(metade, 2, Fade(RED, 0.5f + 0.4f * sinf(t * 15.0f)));
+
+    // Conceito FUNDAMENTOS: o aviso fica mais claro (listras e a palavra PERIGO)
+    if (nitido) {
+        for (int i = 0; i < 10; i++) {
+            float x = metade.x + fmodf(i * 40.0f + t * 60.0f, metade.width);
+            DrawLineEx((Vector2){ x, metade.y }, (Vector2){ x - 40, metade.y + metade.height }, 2, Fade(RED, 0.15f));
+        }
+        const char *perigo = "PERIGO";
+        DrawText(perigo, (int)(metade.x + metade.width / 2) - MeasureText(perigo, 30) / 2, 290, 30, Fade(RED, 0.5f));
+    }
+}
+
+// Fase 3: os pedaços de contexto e o núcleo
+static void DesenharContextoLuci(const Biblioteca *b, float t)
+{
+    const LuciChefe *l = &b->luci;
+
+    if (!l->ativo || l->fase != 3 || l->morrendo > 0.0f)
+        return;
+
+    float pulso = 0.5f + 0.5f * sinf(t * 4.0f);
+    DrawCircleV(NUCLEO_LUCI, 34 + pulso * 4, Fade((Color){ 0, 228, 255, 255 }, l->contextoPronto ? 0.3f : 0.12f));
+    DrawPolyLinesEx(NUCLEO_LUCI, 8, 30, t * 20.0f, 3, (Color){ 0, 228, 255, 255 });
+    DrawText(TextFormat("%d/%d", l->entregues, CONTEXTO_CERTOS), (int)NUCLEO_LUCI.x - 12, (int)NUCLEO_LUCI.y - 8, 16, WHITE);
+    DrawText("NÚCLEO", (int)NUCLEO_LUCI.x - MeasureText("NÚCLEO", 10) / 2, (int)NUCLEO_LUCI.y + 36, 10, (Color){ 0, 228, 255, 255 });
+
+    if (l->contextoPronto)
+        return;
+
+    for (int c = 0; c < NUM_CONTEXTO_LUCI; c++) {
+        if (l->entregue[c]) continue;
+        Vector2 p = (c == l->carregando) ? (Vector2){ b->j.pos.x, b->j.pos.y - 40 } : l->posContexto[c];
+        DesenharPecaSilogismo(p, '?', (c == l->carregando) ? YELLOW : (Color){ 0, 228, 255, 255 }, t);
+        int w = MeasureText(CONTEXTO_LUCI[c], 10);
+        DrawRectangle((int)p.x - w / 2 - 3, (int)p.y + 18, w + 6, 13, Fade(BLACK, 0.7f));
+        DrawText(CONTEXTO_LUCI[c], (int)p.x - w / 2, (int)p.y + 20, 10, WHITE);
+    }
+}
+
+// Faixa no alto: o "lado seguro" (fase 1), a frase para contestar (fase 2) ou o pedido (fase 3)
+static void DesenharFaixaLuci(const Biblioteca *b, float t)
+{
+    const LuciChefe *l = &b->luci;
+    char texto[160] = "";
+    const char *ajuda = "";
+    Color borda = MAGENTA;
+
+    if (!l->ativo || !l->apresentado || l->morrendo > 0.0f)
+        return;
+
+    if (l->fase == 1 && l->avisando) {
+        int seguro = l->dicaFalsa ? l->ladoAtaque : 1 - l->ladoAtaque;
+        snprintf(texto, sizeof(texto), "LUCI: \"O lado %s está seguro! Pode confiar.\"", seguro == 0 ? "ESQUERDO" : "DIREITO");
+        ajuda = "O aviso vermelho mostra onde o ataque cai de verdade.";
+    } else if (l->fase == 2 && l->frase >= 0) {
+        snprintf(texto, sizeof(texto), "LUCI: \"%s\"", FRASES_LUCI_CHEFE[l->frase]);
+        ajuda = "C = CONTESTAR (só se contradiz o que você vê)";
+        borda = l->contestada ? GRAY : MAGENTA;
+    } else if (l->fase == 3 && !l->contextoPronto) {
+        snprintf(texto, sizeof(texto), "PEDIDO CLARO: leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E)");
+        ajuda = "Pedido vago faz a Luci inventar uma resposta.";
+        borda = (Color){ 0, 228, 255, 255 };
+    } else {
+        return;
+    }
+
+    Rectangle faixa = { 100, 66, 600, 48 };
+    DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.9f));
+    DrawRectangleLinesEx(faixa, 2, borda);
+    DrawText(texto, (int)(faixa.x + faixa.width / 2) - MeasureText(texto, 14) / 2, (int)faixa.y + 8, 14, WHITE);
+    DrawText(ajuda, (int)(faixa.x + faixa.width / 2) - MeasureText(ajuda, 10) / 2, (int)faixa.y + 30, 10, Fade(GOLD, 0.75f + 0.25f * sinf(t * 5.0f)));
+
+    if (l->fase == 2 && l->frase >= 0 && l->tempoFraseMax > 0.0f)
+        DrawRectangle((int)faixa.x, (int)(faixa.y + faixa.height) - 3, (int)(faixa.width * l->tempoFrase / l->tempoFraseMax), 3, GOLD);
+}
+
+static void DesenharBarraLuci(const LuciChefe *l)
+{
+    int x = 200, y = 44, w = 400;
+
+    DrawRectangle(x - 4, y - 2, w + 8, 16, Fade(BLACK, 0.8f));
+    DrawRectangle(x, y + 2, w, 8, (Color){ 40, 20, 50, 255 });
+    DrawRectangle(x, y + 2, (int)(w * l->hp / l->hpMax), 8, RogueLuciVulneravel(l) ? (Color){ 0, 228, 255, 255 } : MAGENTA);
+    DrawRectangle(x + (int)(w * LUCI_FASE2) - 1, y, 2, 12, WHITE);
+    if (!l->boa) DrawRectangle(x + (int)(w * LUCI_FASE3) - 1, y, 2, 12, WHITE);
+    DrawRectangleLines(x, y + 2, w, 8, GRAY);
+
+    const char *nome = TextFormat("LUCI  -  FASE %d", l->fase);
+    int wNome = MeasureText(nome, 10);
+    DrawRectangle(x - wNome - 18, y - 2, wNome + 12, 16, Fade(BLACK, 0.8f));
+    DrawText(nome, x - wNome - 12, y + 1, 10, MAGENTA);
+}
+
+// Resultado final: o índice, parte por parte, e o final alcançado
+static void DesenharResultadoFinal(const Biblioteca *b, float t)
+{
+    const IndiceFinal *r = &b->indice;
+    Color cor = b->finalBom ? (Color){ 0, 228, 255, 255 } : MAGENTA;
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.85f));
+    Rectangle painel = { 130, 60, 540, 470 };
+    DrawRectangleRec(painel, (Color){ 18, 15, 30, 255 });
+    DrawRectangleLinesEx(painel, 4, cor);
+
+    const char *titulo = b->finalBom ? "FINAL BOM: A LUCI FOI SALVA" : "FINAL RUIM: A IA NÃO PÔDE SER SALVA";
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 22) / 2, (int)painel.y + 20, 22, cor);
+    const char *sub = b->finalBom ? "UtopIA estabilizada. Você volta para casa." : "UtopIA foi desligada. Confira antes de confiar.";
+    DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 12) / 2, (int)painel.y + 50, 12, LIGHTGRAY);
+
+    const char *nomes[7] = { "Estabilidade da Luci", "Acertos (desafios, afirmações, puzzles)", "Alucinações pegas x confiança cega",
+                             "Contradições flagradas", "Conceitos aprendidos", "Poucas derrotas", "Pontuação" };
+    const int valores[7] = { r->estabilidade, r->acertos, r->verificacao, r->contradicoes, r->conceitos, r->sobrevivencia, r->pontos };
+    const int maximos[7] = { 20, 25, 15, 15, 12, 8, 5 };
+
+    for (int i = 0; i < 7; i++) {
+        int y = (int)painel.y + 92 + i * 34;
+        DrawText(nomes[i], (int)painel.x + 30, y, 12, WHITE);
+        DrawRectangle((int)painel.x + 30, y + 16, 380, 6, (Color){ 40, 30, 55, 255 });
+        DrawRectangle((int)painel.x + 30, y + 16, 380 * valores[i] / maximos[i], 6, cor);
+        DrawText(TextFormat("%d/%d", valores[i], maximos[i]), (int)painel.x + 425, y + 10, 14, LIGHTGRAY);
+    }
+
+    const char *total = TextFormat("ÍNDICE: %d/100   (final bom: %d ou mais)", r->total, INDICE_FINAL_BOM);
+    DrawText(total, LARGURA_TELA / 2 - MeasureText(total, 18) / 2, (int)painel.y + 340, 18, GOLD);
+    DrawText(TextFormat("Pontos: %d", b->pontosFinais), LARGURA_TELA / 2 - MeasureText(TextFormat("Pontos: %d", b->pontosFinais), 14) / 2,
+             (int)painel.y + 370, 14, WHITE);
+
+    if (b->tempoResultado > 1.0f && ((int)(t * 2.0f)) % 2 == 0) {
+        const char *ok = "ENTER - ranking e menu";
+        DrawText(ok, LARGURA_TELA / 2 - MeasureText(ok, 14) / 2, (int)(painel.y + painel.height) - 34, 14, GOLD);
+    }
 }
 
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
@@ -7835,6 +13320,12 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (atrio)
         DrawRectangle(370, 74, 60, 456, Fade(PURPLE, 0.18f));
 
+    if (b->tipoSala == SALA_SILOGISTA)
+        DesenharChaoCamara(tempo);
+
+    if (RogueNoBloco3(b))
+        DesenharChaoNucleo(b, tempo);
+
     // Prateleira decorativa na parede de cima
     DesenharEstante((Rectangle){ ARENA_ROGUE.x, 42, 320, 16 }, tempo);
     DesenharEstante((Rectangle){ 440, 42, 320, 16 }, tempo);
@@ -7850,6 +13341,21 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (atrio) {
         DesenharPortaRogue(PORTA_PROXIMA_ROGUE, true, "BIBLIOTECA (MISSÃO)", tempo);
         DesenharPortaRogue(PORTA_SAIDA_ROGUE, true, "CORREDOR", tempo);
+        if (b->perm->bloco3Liberado) {
+            DesenharPortaRogue(PORTA_BLOCO3_ROGUE, true, "", tempo);
+            DrawText("BLOCO 3", (int)PORTA_BLOCO3_ROGUE.x - MeasureText("BLOCO 3", 10) - 4, (int)PORTA_BLOCO3_ROGUE.y + 30, 10, MAGENTA);
+        }
+    } else if (b->tipoSala == SALA_TRANSICAO) {
+        DesenharPortaRogue(PORTA_PROXIMA_ROGUE, b->limpa, "NÚCLEO", tempo);
+        for (int i = 0; i < 3; i++) {
+            DesenharTerminal(POS_REGISTROS[i], (b->registrosLidos & (1 << i)) != 0, tempo);
+            const char *nome = TextFormat("REGISTRO %d", i + 1);
+            DrawText(nome, (int)POS_REGISTROS[i].x - MeasureText(nome, 10) / 2, (int)POS_REGISTROS[i].y + 26, 10, MAGENTA);
+        }
+        DesenharLuciGrande((Vector2){ POS_LUCI_NUCLEO.x, POS_LUCI_NUCLEO.y + sinf(tempo * 2.0f) * 4.0f }, 44.0f, 0.85f, true);
+    } else if (b->tipoSala == SALA_LUCI) {
+        DesenharAvisoMetade(b, tempo);
+        DesenharContextoLuci(b, tempo);
     } else if (b->tipoSala != SALA_CHEFE) {
         int proxima = b->indiceRota + 1;
         const char *nome = (proxima < SALAS_POR_MISSAO) ? TextFormat("PRÓXIMA: %s", NOMES_SALAS_ROGUE[b->rota[proxima]])
@@ -7866,7 +13372,31 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DesenharTerminal(POS_TERMINAL, b->terminalLido, tempo);
     } else if (b->tipoSala == SALA_RECOMPENSA) {
         for (int i = 0; i < NUM_PEDESTAIS; i++)
-            DesenharPedestal(POS_PEDESTAIS[i], b->pedestal[i], !b->recompensaPega, tempo);
+        {
+            bool arma = b->armaPedestal[i] != ARMA_DISPARADOR;
+            DesenharPedestal(POS_PEDESTAIS[i], b->pedestal[i], !b->recompensaPega && !arma, tempo);
+            if (arma && !b->recompensaPega) {
+                Vector2 icone = { POS_PEDESTAIS[i].x, POS_PEDESTAIS[i].y - 10 + sinf(tempo * 3.0f) * 3.0f };
+                DrawCircleV(icone, 18, Fade(DEF_ARMAS[b->armaPedestal[i]].cor, 0.15f));
+                DesenharIconeArma(b->armaPedestal[i], icone, 1.2f, tempo);
+            }
+        }
+    } else if (b->tipoSala == SALA_SILOGISTA) {
+        // Câmara da Inferência: o mecanismo (montagem e sofisma) ou o circuito, que fica aceso depois
+        const Silogista *s = &b->silogista;
+
+        if (s->etapa >= SIL_CIRCUITO)
+            DesenharCircuito(s, tempo);
+        else if (s->ativo)
+            DesenharMecanismoSilogismo(s, tempo);
+
+        if (s->ativo && s->etapa == SIL_MONTAGEM)
+            for (int k = 0; k < NUM_ENCAIXES; k++)
+                if (SilPecaNoChao(s, k))
+                    DesenharPecaSilogismo(s->posPeca[k], s->letraPeca[k], (Color){ 0, 228, 255, 255 }, tempo);
+
+        if (s->ativo)
+            DesenharAtaquesSilogista(s, tempo);
     }
 
     // Coisas no chão
@@ -7874,7 +13404,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         const Coletavel *c = &b->col[i];
         if (!c->ativo) continue;
         if (c->fragmento) DesenharFragmentoConhecimento(c->pos, c->anim);
-        else              DesenharIconeItem(c->item, c->pos, 0.8f, tempo);
+        else {
+            if (c->item >= NUM_ITENS_LOJA)
+                DrawRing(c->pos, 13, 15, tempo * 200.0f, tempo * 200.0f + 240.0f, 12, CORES_RARIDADE[ITENS[c->item].raridade]);
+            DesenharIconeItem(c->item, c->pos, 0.8f, tempo);
+        }
     }
 
     // Pulso de Integridade: anel se abrindo
@@ -7884,12 +13418,35 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DrawCircleLines((int)j->pos.x, (int)j->pos.y, PULSO_RAIO * k, Fade(SKYBLUE, 1.0f - k));
     }
 
+    DesenharSinergiasChao(b, tempo);
+
     for (int i = 0; i < MAX_INIMIGOS; i++)
         if (b->ini[i].ativo)
             DesenharInimigo(&b->ini[i]);
 
+    DesenharSinergiasMarcas(b, tempo);
+    DesenharScannerLuci(b, tempo);
+    DesenharMarcasAnalise(b);
+    DesenharAneis(b);
+    DesenharProxy(j, tempo);
+
     if (b->chefe.ativo)
         DesenharAlucinador(&b->chefe, j->pos, tempo);
+
+    if (b->silogista.ativo)
+        DesenharSilogista(&b->silogista, j->pos, tempo);
+
+    if (b->luci.ativo)
+        DesenharLuciChefe(b, tempo);
+
+    // Disparo Dedutivo: P → Q e P sobre quem foi marcado
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        if (b->ini[i].ativo)
+            DesenharMarcaDedutiva(b->ini[i].marca, b->ini[i].pos, b->ini[i].raio);
+    if (b->chefe.ativo)
+        DesenharMarcaDedutiva(b->chefe.marca, b->chefe.pos, CHEFE_RAIO);
+    if (b->silogista.ativo)
+        DesenharMarcaDedutiva(b->silogista.marca, b->silogista.pos, SIL_RAIO + 20);
 
     // Protagonista (pisca enquanto está invulnerável depois do dano)
     if (!b->morreu) {
@@ -7897,7 +13454,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         bool pisca = j->invulneravel > 0.0f && j->tempoEsquiva <= 0.0f && ((int)(j->invulneravel * 12.0f)) % 2 == 0;
 
         if (!pisca) {
-            DesenharJogadorComLuci(sprites, j->pos, j->direcao, j->anim.quadro, true, anguloLuci);
+            DesenharJogadorComLuci(sprites, j->pos, j->direcao, j->anim.quadro, !RogueNoBloco3(b), anguloLuci);   // no Bloco 3 ela se solta
 
             // Disparador de Dados na mão, apontado para a mira (guardado no átrio)
             if (!atrio) {
@@ -7908,6 +13465,12 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
                 DrawCircleV(ponta, 2.5f, WHITE);
             }
         }
+
+        DesenharEfeitosJogador(b, tempo);
+
+        // Fragmento do silogismo na mão: flutua sobre a cabeça
+        if (b->silogista.ativo && b->silogista.carregando >= 0)
+            DesenharPecaSilogismo((Vector2){ j->pos.x, j->pos.y - 40 }, b->silogista.letraPeca[b->silogista.carregando], YELLOW, tempo);
     }
 
     // Projéteis: os do jogador em ciano, os inimigos em laranja com contorno (fácil de ver)
@@ -7918,9 +13481,13 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         if (!p->ativo)
             continue;
 
-        if (p->doJogador) {
-            DrawCircleV(p->pos, p->raio + 3, Fade(SKYBLUE, 0.3f));
-            DrawCircleV(p->pos, p->raio, (Color){ 180, 240, 255, 255 });
+        if (p->alvoDedutivo != 0) {
+            // Conclusão Q do Disparo Dedutivo
+            DrawCircleV(p->pos, p->raio + 5, Fade(GOLD, 0.35f));
+            DrawCircleV(p->pos, p->raio + 1, GOLD);
+            DrawText("Q", (int)p->pos.x - MeasureText("Q", 10) / 2, (int)p->pos.y - 5, 10, (Color){ 60, 40, 0, 255 });
+        } else if (p->doJogador) {
+            DesenharProjetilJogador(p, tempo);
         } else {
             DrawCircleV(p->pos, p->raio + 2, (Color){ 30, 0, 20, 255 });
             DrawCircleV(p->pos, p->raio, ORANGE);
@@ -7944,12 +13511,24 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         else if (alvo == ALVO_BYTE)          DesenharTeclaE((Vector2){ POS_BYTE.x, POS_BYTE.y - 48 }, tempo);
         else if (alvo == ALVO_BYTECO)   DesenharTeclaE((Vector2){ POS_BYTECO.x, POS_BYTECO.y - 42 }, tempo);
         else if (alvo == ALVO_TERMINAL) DesenharTeclaE((Vector2){ POS_TERMINAL.x, POS_TERMINAL.y - 36 }, tempo);
+        else if (alvo == ALVO_PECA)     DesenharTeclaE((Vector2){ b->silogista.posPeca[pedestal].x, b->silogista.posPeca[pedestal].y - 32 }, tempo);
+        else if (alvo == ALVO_ENCAIXE)  DesenharTeclaE((Vector2){ POS_ENCAIXES[pedestal].x + 44, POS_ENCAIXES[pedestal].y - 20 }, tempo);
+        else if (alvo == ALVO_REGISTRO) DesenharTeclaE((Vector2){ POS_REGISTROS[pedestal].x, POS_REGISTROS[pedestal].y - 36 }, tempo);
+        else if (alvo == ALVO_CONTEXTO) {
+            Vector2 c = (pedestal < 0) ? NUCLEO_LUCI : b->luci.posContexto[pedestal];
+            DesenharTeclaE((Vector2){ c.x, c.y - 34 }, tempo);
+        }
         else if (alvo == ALVO_PEDESTAL) {
             Vector2 c = POS_PEDESTAIS[pedestal];
             DesenharTeclaE((Vector2){ c.x, c.y - 42 }, tempo);
-            const DefItem *it = &ITENS[b->pedestal[pedestal]];
-            DrawText(it->nome, (int)c.x - MeasureText(it->nome, 12) / 2, (int)c.y + 26, 12, GOLD);
-            DrawText(it->efeito, (int)c.x - MeasureText(it->efeito, 10) / 2, (int)c.y + 42, 10, LIGHTGRAY);
+            TipoArma arma = b->armaPedestal[pedestal];
+            const char *nome = (arma != ARMA_DISPARADOR) ? DEF_ARMAS[arma].nome : ITENS[b->pedestal[pedestal]].nome;
+            const char *efeito = (arma != ARMA_DISPARADOR) ? TextFormat("%s: %s", NOMES_ALCANCE[DEF_ARMAS[arma].alcanceTipo], DEF_ARMAS[arma].efeito)
+                                                           : ITENS[b->pedestal[pedestal]].efeito;
+            Raridade rar = (arma != ARMA_DISPARADOR) ? DEF_ARMAS[arma].raridade : ITENS[b->pedestal[pedestal]].raridade;
+            DrawText(nome, (int)c.x - MeasureText(nome, 12) / 2, (int)c.y + 26, 12, GOLD);
+            DrawText(efeito, (int)c.x - MeasureText(efeito, 10) / 2, (int)c.y + 42, 10, LIGHTGRAY);
+            DrawText(NOMES_RARIDADE[rar], (int)c.x - MeasureText(NOMES_RARIDADE[rar], 10) / 2, (int)c.y + 56, 10, CORES_RARIDADE[rar]);
         }
     }
 
@@ -7970,8 +13549,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     switch (b->tipoSala) {
         case SALA_ATRIO:
-            snprintf(o.texto, sizeof(o.texto), "%s", b->perm->byteVisto ? "Entre na Biblioteca pela porta de cima (Byteco: loja)"
-                                                                         : "Fale com o Professor Byte");
+            snprintf(o.texto, sizeof(o.texto), "%s", !b->perm->byteVisto     ? "Fale com o Professor Byte"
+                                                   : b->perm->bloco3Liberado ? "Uma porta nova se abriu à direita: BLOCO 3"
+                                                                             : "Entre na Biblioteca pela porta de cima (Byteco: loja)");
             break;
         case SALA_COMBATE: {
             bool selado = false;
@@ -7988,6 +13568,31 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         case SALA_RECOMPENSA:
             snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaPega ? "Siga pela porta de cima" : "Escolha 1 recompensa (E) ou siga em frente");
             break;
+        case SALA_TRANSICAO: {
+            int lidos = ((b->registrosLidos & 1) != 0) + ((b->registrosLidos & 2) != 0) + ((b->registrosLidos & 4) != 0);
+            if (lidos < 3) snprintf(o.texto, sizeof(o.texto), "Leia os registros de memória (E): %d/3", lidos);
+            else           snprintf(o.texto, sizeof(o.texto), "Entre no núcleo (porta de cima)");
+        } break;
+        case SALA_LUCI: {
+            const LuciChefe *l = &b->luci;
+            if (!l->ativo || !l->apresentado)  snprintf(o.texto, sizeof(o.texto), "A LUCI");
+            else if (l->fase == 1)             snprintf(o.texto, sizeof(o.texto), "Confira o aviso vermelho antes de acreditar no lado seguro");
+            else if (l->fase == 2)             snprintf(o.texto, sizeof(o.texto), "%s", (l->janela > 0.0f) ? "ARMADURA ABERTA! Acerte a Luci verdadeira (a que tem sombra)"
+                                                                                                          : "Conteste (C) o que contradiz a sala para abrir a armadura");
+            else                               snprintf(o.texto, sizeof(o.texto), "%s", l->contextoPronto ? "Pedido claro! Derrote a Luci"
+                                                                                                          : "Leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E)");
+        } break;
+        case SALA_SILOGISTA: {
+            const Silogista *s = &b->silogista;
+            if (b->limpa)                          snprintf(o.texto, sizeof(o.texto), "Câmara vencida! Siga pela porta de cima");
+            else if (!s->ativo || !s->apresentado) snprintf(o.texto, sizeof(o.texto), "O SILOGISTA");
+            else if (s->etapa == SIL_MONTAGEM)     snprintf(o.texto, sizeof(o.texto), "%s", (s->carregando >= 0) ? "Leve o fragmento até P1, P2 ou C (E encaixa)"
+                                                                                                               : "Pegue os fragmentos (E) e monte o silogismo");
+            else if (s->etapa == SIL_SOFISMA)      snprintf(o.texto, sizeof(o.texto), "Destrua a tiros a peça do argumento que não se sustenta");
+            else if (s->etapa == SIL_CIRCUITO)     snprintf(o.texto, sizeof(o.texto), "%s", (s->rodada == 1) ? "Ative as portas lógicas com tiros, na ordem certa"
+                                                                                                          : TextFormat("Escolha p e q (tiros) para o núcleo receber %s", s->exigido ? "V" : "F"));
+            else                                   snprintf(o.texto, sizeof(o.texto), "Armadura lógica desativada! Derrote o Silogista");
+        } break;
         default:
             if (!b->chefe.ativo || !b->chefe.apresentado) snprintf(o.texto, sizeof(o.texto), "O ALUCINADOR");
             else if (b->chefe.fase == 1)              snprintf(o.texto, sizeof(o.texto), "Derrote o ALUCINADOR: desvie e atire!");
@@ -7996,18 +13601,37 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             break;
     }
 
+    // Contradição da Luci: o objetivo é reescrito com algo que não bate com a sala (com uma falha de vez em quando)
+    if (b->contradicao > 0.0f)
+        snprintf(o.texto, sizeof(o.texto), "%s", CONTRADICOES_LUCI[b->textoContradicao]);
+
     DesenharObjetivoHUD(&o);
+
+    if (b->contradicao > 0.0f && ((int)(tempo * 12.0f)) % 9 == 0) {
+        const char *t = TextFormat("OBJETIVO:  %s", o.texto);
+        DrawText(t, LARGURA_TELA / 2 - MeasureText(t, 14) / 2 + 2, 18, 14, Fade(MAGENTA, 0.7f));
+    }
 
     if (b->chefe.ativo && b->chefe.apresentado) {
         DesenharBarraChefe(&b->chefe);
         DesenharFaixaAfirmacao(b, tempo);
     }
 
+    if (b->silogista.ativo && b->silogista.apresentado) {
+        DesenharBarraSilogista(&b->silogista);
+        DesenharFaixaSilogista(b, tempo);
+    }
+
+    if (b->luci.ativo && b->luci.apresentado) {
+        DesenharBarraLuci(&b->luci);
+        DesenharFaixaLuci(b, tempo);
+    }
+
     // Caminho da missão (canto de cima): uma casinha por sala
-    if (!atrio) {
+    if (!atrio && b->indiceRota >= 0) {
         for (int i = 0; i <= SALAS_POR_MISSAO; i++) {
             TipoSalaRogue t = (i < SALAS_POR_MISSAO) ? b->rota[i] : SALA_CHEFE;
-            Rectangle r = { 14.0f + i * 15.0f, 18, 11, 11 };
+            Rectangle r = { 14.0f + i * 13.0f, 18, 10, 10 };
             Color cor = CORES_SALAS_ROGUE[t];
 
             if (i < b->indiceRota)       DrawRectangleRec(r, Fade(cor, 0.35f));
@@ -8045,8 +13669,23 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     DesenharFragmentoConhecimento((Vector2){ 366, (float)yHud + 26 }, tempo);
     DrawText(TextFormat("%d FRAGMENTOS", b->perm->fragmentos), 378, yHud + 21, 10, (Color){ 0, 228, 255, 255 });
 
+    // Selo da Inferência (Disparo Dedutivo), com a recarga
+    if (j->seloInferencia) {
+        Vector2 c = { 466, (float)yHud + 10 };
+        DrawCircleV(c, 9, GOLD);
+        if (j->recargaDedutivo > 0.0f)
+            DrawCircleSector(c, 9, -90.0f, -90.0f + 360.0f * j->recargaDedutivo / DEDUTIVO_RECARGA, 20, Fade(BLACK, 0.5f));
+        DrawCircleLines((int)c.x, (int)c.y, 9, ORANGE);
+        DrawText("Q", (int)c.x - MeasureText("Q", 10) / 2, (int)c.y - 5, 10, (Color){ 60, 40, 0, 255 });
+        DrawText("SELO", (int)c.x - MeasureText("SELO", 8) / 2, yHud + 22, 8, GOLD);
+    }
+
+    DesenharHudArmas(b, tempo);
+    if (!atrio)
+        DesenharHudLuci(b, tempo);
+
     // Mochila: as teclas dos itens de usar e os passivos
-    for (int i = 0; i < NUM_ITENS; i++) {
+    for (int i = 0; i < NUM_ITENS_LOJA; i++) {
 
         int x = 500 + i * 48;
         bool tem = j->itens[i] > 0;
@@ -8064,14 +13703,14 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     const char *controles = atrio ? "WASD andar    E falar, comprar e ler a enciclopédia    porta de cima: missão    porta da esquerda: corredor"
-                                  : "WASD andar   MOUSE/SETAS mirar e atirar   ESPAÇO esquivar   Q/BOTÃO DIR. pulso   1/2 itens   E usar";
+                                  : "WASD andar  MOUSE mirar/atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar a Luci  E usar";
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, 10) / 2, ALTURA_TELA - 14, 10, GRAY);
 
     // Mensagem curta no meio da tela
     if (b->tempoAviso > 0.0f) {
         float k = fminf(b->tempoAviso / 0.4f, 1.0f);
         int w = MeasureText(b->aviso, 18);
-        int ya = (b->tipoSala == SALA_CHEFE) ? 176 : 92;        // na sala do chefe, abaixo da faixa das afirmações
+        int ya = (b->tipoSala == SALA_CHEFE) ? 176 : ((b->tipoSala == SALA_SILOGISTA) ? 134 : ((b->tipoSala == SALA_LUCI) ? 122 : 92));    // abaixo das faixas dos chefes
         DrawRectangle(LARGURA_TELA / 2 - w / 2 - 12, ya, w + 24, 30, Fade(BLACK, 0.7f * k));
         DrawText(b->aviso, LARGURA_TELA / 2 - w / 2, ya + 6, 18, Fade(GOLD, k));
     }
@@ -8085,6 +13724,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (b->desafioAberto)
         DesenharDesafioRogue(b, tempo);
 
+    if (b->resultadoAberto)
+        DesenharResultadoFinal(b, tempo);
+
     // Entrando numa sala nova
     if (b->fadeEntrada > 0.0f)
         DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, b->fadeEntrada / 0.35f));
@@ -8095,17 +13737,22 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         float k = fminf(b->tempoMorte / 0.6f, 1.0f);
         DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.7f * k));
 
-        const char *titulo = "VOCÊ FOI CORROMPIDO";
+        bool bloco3 = RogueNoBloco3(b);
+        const char *titulo = bloco3 ? "A LUCI VENCEU ESTA" : "VOCÊ FOI CORROMPIDO";
         DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 36) / 2, 230, 36, Fade(MAGENTA, k));
 
         const char *sub = TextFormat("Os ecos falsos venceram desta vez.  -%d pontos", PENALIDADE_HP_ZERO);
         DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 16) / 2, 282, 16, Fade(WHITE, k));
 
-        const char *perda = "Você volta ao átrio sem os itens. Os Fragmentos de Conhecimento ficam com você.";
+        const char *perda = bloco3 ? "Você volta ao corredor do núcleo, sem perder nada. Tente de novo."
+                                   : "Você volta ao átrio sem os itens. Os Fragmentos de Conhecimento ficam com você.";
         DrawText(perda, LARGURA_TELA / 2 - MeasureText(perda, 12) / 2, 308, 12, Fade((Color){ 0, 228, 255, 255 }, k));
 
         if (b->tempoMorte > 1.0f && ((int)(GetTime() * 2.0)) % 2 == 0)
-            DrawText("ENTER - voltar ao átrio", LARGURA_TELA / 2 - MeasureText("ENTER - voltar ao átrio", 14) / 2, 340, 14, GOLD);
+        {
+            const char *volta = bloco3 ? "ENTER - voltar ao corredor" : "ENTER - voltar ao átrio";
+            DrawText(volta, LARGURA_TELA / 2 - MeasureText(volta, 14) / 2, 340, 14, GOLD);
+        }
     }
 }
 
@@ -9307,6 +14954,7 @@ int main(void) {
     bool chefeAnunciado = false;             // a Luci já chamou o chefe nesta sessão (depois, só pela porta)
     static Biblioteca biblioteca;            // Bloco 2: Biblioteca dos Ecos (static: é grande para a pilha)
     ProgressoBiblioteca progBiblioteca = {0};   // o que não se perde na Biblioteca (vai para o save)
+    bool voltarAoMenuDepoisDoRanking = false;   // fim do jogo: depois do ranking, o menu
     int idPartida = NovoIdPartida();         // esta partida no ranking (vai para o save)
     SessaoDialogo dlg = {0};
     Transicao transicao = {0};
@@ -9468,6 +15116,7 @@ int main(void) {
 
                         // Biblioteca dos Ecos: começa no átrio
                         RogueIniciar(&biblioteca, &progBiblioteca);
+                        biblioteca.estabilidade = &estabilidadeLuci;
                         playerPos = SPAWN_CORREDOR_VOLTA;
                         direcaoAtual = DIR_ESQUERDA;
                         pedirAutoSave = true;     // AUTO SAVE: entrou na Biblioteca dos Ecos
@@ -9564,8 +15213,16 @@ int main(void) {
 
         else if (telaRanking.aberto) {
 
+            bool fechou = AtualizarTelaRanking(&telaRanking);
+
+            // Fechou o ranking do fim do jogo: volta ao menu
+            if (fechou && voltarAoMenuDepoisDoRanking) {
+                voltarAoMenuDepoisDoRanking = false;
+                IniciarTransicao(&transicao, MENU, DURACAO_FADE);
+            }
+
             // Fechou o ranking do fim do Bloco 1: a Luci avisa que a saída abriu
-            if (AtualizarTelaRanking(&telaRanking) && tela == CORREDOR && chefeVencido && !progresso.fimAnunciado) {
+            if (fechou && tela == CORREDOR && chefeVencido && !progresso.fimAnunciado) {
 
                 progresso.fimAnunciado = true;
                 pedirAutoSave = true;
@@ -9608,6 +15265,7 @@ int main(void) {
 
                         if (tela == BIBLIOTECA) {
                             RogueIniciar(&biblioteca, &progBiblioteca);
+                            biblioteca.estabilidade = &estabilidadeLuci;
                             playerPos = SPAWN_CORREDOR_VOLTA;      // se sair, volta pela porta da direita do corredor
                         }
 
@@ -10119,6 +15777,13 @@ int main(void) {
             if (evento == ROGUE_VITORIA) {
                 pedirAutoSave = true;
                 AbrirTelaRanking(&telaRanking, &ranking, "FIM DA BIBLIOTECA DOS ECOS", nickname, progresso.pontos, idPartida);
+            }
+
+            // Fim de UtopIA (Bloco 3): ranking e, ao fechar, o menu
+            if (evento == ROGUE_FIM_JOGO) {
+                pedirAutoSave = true;
+                AbrirTelaRanking(&telaRanking, &ranking, "FIM DE UTOPIA", nickname, progresso.pontos, idPartida);
+                voltarAoMenuDepoisDoRanking = true;
             }
         }
 

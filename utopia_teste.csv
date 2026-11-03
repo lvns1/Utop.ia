@@ -1,0 +1,358 @@
+tempo_jogo_s;evento;detalhe;valor;quantidade
+14.9;sessao_inicio;;0.0;0
+60.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;3.2;3
+68.7;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;5.2;3
+79.6;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;54.0;2
+85.9;ajuda_luci;dica;4.0;1
+94.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;37.8;1
+97.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;28.3;2
+98.6;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;28.9;0
+99.4;cartao;ALUCINAÇÃO;0.8;0
+100.1;cartao;ALUCINAÇÃO;0.5;0
+114.4;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+118.8;ajuda_luci;dica;4.0;1
+132.8;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;37.8;1
+135.6;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;34.5;2
+137.8;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;36.7;0
+138.5;cartao;INTRÍNSECA x EXTRÍNSECA;0.7;0
+152.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;38.0;1
+160.8;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;99.0;3
+163.8;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;24.1;2
+164.6;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;24.9;0
+165.4;cartao;COMO EVITAR;0.8;0
+167.6;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;2.2;3
+172.1;ajuda_luci;dica;4.0;0
+176.8;chefe_debate;certo;1.0;7
+183.4;ajuda_luci;dica;3.0;1
+185.1;chefe_debate;certo;1.0;8
+187.3;ajuda_luci;dica;2.0;2
+191.7;chefe_debate;certo;1.0;9
+193.4;ajuda_luci;dica;1.0;3
+200.0;chefe_debate;certo;1.0;2
+203.6;golpe_final;FIM DO BLOCO 1 // DEBATE COM FONTES;35.9;4
+204.5;batalha_vitoria;FIM DO BLOCO 1 // DEBATE COM FONTES;36.9;0
+205.3;cartao;ALUCINAÇÃO MESTRE;0.8;0
+205.4;ranking;MAN;84.0;1
+207.1;dialogo;Luci: Os 3 monitores estão limpos! A porta da direita abriu;1.0;1
+228.0;dialogo;Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens;3.7;1
+268.1;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;17.8;5
+269.5;rogue_missao;inicio;0.0;1
+269.5;rogue_encontro;ENXAME DIGITAL;1.0;1
+277.8;rogue_temporario;OVERCLOCK;0.0;0
+281.8;rogue_sala_limpa;sala 1;12.3;13
+288.0;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;1
+289.9;luci_scanner;alucinou;0.0;1
+297.6;luci_scanner;alucinou;0.0;1
+306.2;dialogo;Luci: Eu nunca alucino. Eu nunca... Thomas, confira tudo o q;7.3;0
+318.5;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;11.1;4
+318.5;rogue_terminal;conceito 1;0.0;5
+332.4;rogue_recompensa;NÚCLEO DE INTEGRIDADE;0.0;0
+340.1;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;6.5;6
+340.2;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+372.7;rogue_silogista_erro;montagem_conclusao;103.2;1
+377.9;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;5.2;1
+380.5;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+402.5;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+409.5;rogue_silogista_erro;montagem_conclusao;140.0;1
+412.4;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;2.9;0
+427.3;rogue_silogista_erro;montagem_conclusao;157.9;1
+428.8;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;1.5;1
+439.2;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+460.2;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+468.0;rogue_silogista;etapa 1;198.5;1
+472.8;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;4.7;4
+486.4;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+488.3;rogue_silogista;etapa 2;218.8;1
+496.4;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;8.1;6
+503.8;rogue_silogista;rodada 1;234.3;1
+506.2;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;2.4;3
+516.1;rogue_silogista_erro;circuito;246.6;3
+517.9;dialogo;Luci: O núcleo recebeu o valor errado. Um OU só dá F quan;1.8;1
+526.3;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+527.5;rogue_silogista;etapa 3;258.0;1
+531.4;dialogo;* O núcleo se energiza. A última camada da armadura lógic;3.8;4
+550.1;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;5.9;5
+550.1;rogue_silogista_vitoria;;280.6;1
+552.2;rogue_encontro;SOBRECARGA;2.0;2
+570.8;rogue_desafio;certo;0.0;4
+571.9;luci_contradicao;Sala limpa! Pode seguir pela porta de cima;0.0;3
+578.6;rogue_sala_limpa;sala 5;309.1;20
+587.8;dialogo;Luci: Mais um terminal! Pode pular: resposta confiante é re;0.9;1
+591.9;dialogo;* TERMINAL // BOAS PRÁTICAS;2.7;3
+591.9;rogue_terminal;conceito 2;0.0;17
+593.6;rogue_encontro;DADOS PERSISTENTES;3.0;3
+602.0;rogue_desafio;certo;0.0;7
+624.9;rogue_sala_limpa;sala 7;355.4;34
+632.6;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;3.7;4
+636.6;rogue_chefe_fase2;;367.1;0
+639.2;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;2.6;2
+644.1;rogue_chefe_afirmacao;certo;6.0;5
+659.4;rogue_morte;sala 8;389.9;37
+5.8;sessao_inicio;;0.0;0
+14.3;rogue_missao;inicio;0.0;2
+14.3;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+28.0;rogue_sala_limpa;sala 1;13.7;6
+41.3;rogue_recompensa;VETOR DE COMPILAÇÃO;0.0;1
+50.4;rogue_encontro;ENXAME DIGITAL;2.0;2
+70.8;rogue_desafio;certo;0.0;2
+80.8;rogue_temporario;OVERCLOCK;0.0;0
+85.6;rogue_temporario;OVERCLOCK;0.0;0
+89.1;rogue_sala_limpa;sala 3;74.8;22
+97.2;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;4.6;6
+129.8;rogue_silogista_erro;montagem_conclusao;115.5;1
+131.1;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;1.3;1
+146.9;rogue_silogista;etapa 1;132.6;2
+150.2;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;3.3;5
+152.5;rogue_silogista;etapa 2;138.2;2
+155.7;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;3.2;6
+159.0;rogue_silogista;rodada 1;144.7;2
+160.8;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;1.8;3
+166.1;rogue_silogista_erro;circuito;151.8;3
+167.6;dialogo;Luci: O núcleo recebeu o valor errado. Um OU só dá F quan;1.5;1
+181.1;rogue_silogista_erro;circuito;166.8;3
+182.3;dialogo;Luci: O núcleo recebeu o valor errado. Um OU só dá F quan;1.1;1
+201.6;rogue_silogista;etapa 3;187.4;2
+204.3;dialogo;* O núcleo se energiza. A última camada da armadura lógic;2.6;4
+231.7;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;2.9;5
+231.7;rogue_silogista_vitoria;;217.5;2
+233.0;rogue_encontro;DADOS PERSISTENTES;3.0;3
+252.9;rogue_desafio;certo;0.0;5
+264.8;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+268.3;rogue_sala_limpa;sala 5;254.0;36
+274.3;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;1.7;4
+274.3;rogue_terminal;conceito 1;0.0;40
+278.8;dialogo;* TERMINAL // BOAS PRÁTICAS;1.7;4
+278.8;rogue_terminal;conceito 2;0.0;43
+282.8;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.1;4
+301.8;rogue_chefe_fase2;;287.6;0
+303.3;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.5;2
+307.8;rogue_chefe_afirmacao;certo;6.0;5
+325.0;rogue_chefe_afirmacao;certo;6.0;7
+347.1;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;14.9;7
+347.1;rogue_chefe_vitoria;;332.8;2
+347.1;ranking;MAN;356.0;1
+353.3;rogue_missao;inicio;0.0;3
+353.3;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+362.5;rogue_sala_limpa;sala 1;9.1;7
+363.8;rogue_temporario;PROXY-ISCA;0.0;0
+368.4;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;1.6;4
+368.4;rogue_terminal;conceito 1;0.0;59
+372.6;dialogo;* TERMINAL // BOAS PRÁTICAS;1.6;4
+372.6;rogue_terminal;conceito 2;0.0;62
+377.5;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;3.0;6
+388.4;rogue_silogista_erro;montagem_conclusao;35.1;1
+389.2;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;0.8;1
+405.8;rogue_silogista_erro;montagem_conclusao;52.4;1
+406.7;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;0.9;1
+433.8;rogue_silogista_erro;montagem_conclusao;80.5;1
+434.6;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;0.8;1
+451.3;rogue_silogista_erro;montagem_conclusao;97.9;1
+452.0;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;0.7;1
+475.7;rogue_silogista;etapa 1;122.4;3
+478.9;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;3.2;5
+484.0;rogue_silogista;etapa 2;130.7;3
+487.3;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;3.3;6
+490.1;rogue_silogista;rodada 1;136.8;3
+491.9;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;1.7;3
+499.3;rogue_silogista;etapa 3;146.0;3
+501.4;dialogo;* O núcleo se energiza. A última camada da armadura lógic;2.0;4
+519.2;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;2.5;5
+519.2;rogue_silogista_vitoria;;165.8;3
+526.5;rogue_recompensa;NÚCLEO DE INTEGRIDADE;0.0;0
+527.3;rogue_encontro;SOBRECARGA;2.0;2
+534.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+543.2;rogue_desafio;certo;0.0;5
+544.5;rogue_sala_limpa;sala 6;191.2;16
+547.3;rogue_encontro;REDE PROTEGIDA;3.0;3
+558.4;rogue_desafio;certo;0.0;6
+560.2;rogue_temporario;OVERCLOCK;0.0;0
+567.9;rogue_sala_limpa;sala 7;214.6;26
+572.9;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.2;4
+578.4;rogue_chefe_fase2;;225.1;0
+579.6;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.2;2
+584.4;rogue_chefe_afirmacao;certo;6.0;8
+596.3;rogue_chefe_afirmacao;certo;6.0;3
+601.8;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;2.7;7
+601.8;rogue_chefe_vitoria;;248.4;3
+601.8;ranking;MAN;517.0;1
+605.6;bloco3_entrada;boa;75.0;517
+617.0;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;11.1;3
+632.4;dialogo;* REGISTRO 1 // CONFIANÇA. Você seguiu minhas dicas sem co;11.8;2
+643.1;dialogo;* REGISTRO 2 // CONTRADIÇÕES. Eu contradisse o que você v;8.2;2
+656.5;dialogo;* REGISTRO 3 // ORIGEM. Arquivo LUCI.exe, criado antes de Ut;11.6;2
+660.1;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;3.6;1
+678.2;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;14.1;2
+683.3;luci_scanner;certo;0.0;5
+692.4;luci_scanner;certo;0.0;5
+693.1;bloco3_dica;verificou;0.0;0
+697.9;bloco3_fase;;344.6;2
+710.0;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;12.1;3
+715.7;bloco3_contestar;certo;0.0;-1
+721.6;bloco3_contestar;certo;0.0;-1
+727.1;bloco3_contestar;certo;0.0;-1
+732.3;bloco3_contestar;errado;0.0;5
+753.8;luci_scanner;certo;0.0;5
+760.1;luci_scanner;certo;0.0;5
+762.7;bloco3_contestar;certo;0.0;-1
+768.9;bloco3_contestar;certo;0.0;-1
+774.1;bloco3_contestar;certo;0.0;-1
+788.6;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;11.6;4
+788.6;fim_do_jogo;bom;80.0;647
+797.5;ranking;MAN;647.0;1
+8.6;sessao_inicio;;0.0;0
+21.3;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.5;3
+30.4;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;6.9;3
+36.6;ajuda_luci;dica;4.0;0
+49.4;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;39.6;3
+51.6;ajuda_luci;dica;3.0;1
+62.2;ajuda_luci;dica;2.0;2
+73.5;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;25.2;1
+76.4;ajuda_luci;dica;1.0;3
+85.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;37.8;1
+88.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;57.3;3
+89.7;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;58.1;1
+90.7;cartao;ALUCINAÇÃO;1.0;0
+95.3;ajuda_luci;alucinou;0.0;0
+106.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;25.2;1
+120.4;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;105.0;4
+123.9;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;32.1;2
+124.6;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;32.8;0
+125.5;cartao;INTRÍNSECA x EXTRÍNSECA;0.9;0
+129.1;ajuda_luci;dica;0.0;0
+137.4;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;22.8;1
+148.4;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;81.0;2
+151.1;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;24.8;2
+152.0;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;25.7;0
+152.9;cartao;COMO EVITAR;0.9;0
+155.8;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;2.8;3
+157.6;ajuda_luci;alucinou;0.0;0
+167.3;chefe_debate;certo;1.0;5
+178.8;chefe_debate;certo;0.0;1
+184.3;chefe_debate;certo;0.0;9
+185.9;ajuda_luci;alucinou;1.0;3
+189.1;chefe_debate;certo;1.0;2
+192.4;chefe_debate;certo;0.0;3
+196.5;ajuda_luci;alucinou;1.0;5
+197.1;chefe_debate;certo;1.0;7
+201.7;golpe_final;FIM DO BLOCO 1 // DEBATE COM FONTES;45.9;6
+205.5;batalha_vitoria;FIM DO BLOCO 1 // DEBATE COM FONTES;49.7;0
+207.7;cartao;ALUCINAÇÃO MESTRE;2.3;0
+207.8;ranking;MAE;85.0;2
+209.8;dialogo;Luci: Os 3 monitores estão limpos! A porta da direita abriu;1.1;1
+239.7;dialogo;Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens;3.0;2
+255.4;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.9;5
+260.7;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;5.0;2
+262.6;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.4;2
+263.8;rogue_missao;inicio;0.0;1
+263.8;rogue_sala;COMBATE;0.0;0
+263.8;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+274.9;rogue_sala_limpa;sala 1 ELIMINAR;11.1;11
+277.9;rogue_recompensa_sala;MELHORIA;0.0;0
+292.0;rogue_build;RESÍDUO DE DADOS;1.0;1
+295.5;rogue_sala;COMBATE;1.0;1
+295.5;rogue_encontro;ENXAME DIGITAL;1.0;2
+296.3;luci_contradicao;Sala limpa! Pode escolher uma porta;0.0;1
+306.0;rogue_desafio;certo;0.0;0
+310.8;rogue_sala_limpa;sala 2 ELIMINAR;47.1;27
+312.7;rogue_recompensa_sala;MELHORIA;1.0;1
+317.2;rogue_build;ROTULAGEM DE DADOS;1.0;1
+327.0;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;2
+327.2;rogue_sala;ELITE;2.0;2
+327.2;rogue_encontro;GUARDA DE ELITE;3.0;3
+334.4;rogue_desafio;certo;0.0;9
+341.0;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+358.4;luci_contradicao;Sala limpa! Pode escolher uma porta;0.0;3
+358.7;rogue_sala_limpa;sala 3 ELIMINAR;94.9;42
+361.0;rogue_recompensa_sala;MELHORIA RARA;2.0;2
+368.0;rogue_build;SAÍDA GENERATIVA;1.0;1
+370.9;rogue_sala;SILOGISTA;3.0;3
+374.8;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;3.5;6
+389.9;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;3
+397.9;rogue_silogista_erro;montagem_conclusao;134.1;1
+398.9;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;1.0;1
+427.6;rogue_silogista;etapa 1;163.8;1
+431.2;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;3.5;5
+431.9;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;3
+432.8;rogue_silogista;etapa 2;169.0;1
+436.5;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;3.7;6
+438.9;rogue_silogista;rodada 1;175.2;1
+440.5;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;1.5;3
+444.7;rogue_silogista;etapa 3;180.9;1
+446.9;dialogo;* O núcleo se energiza. A última camada da armadura lógic;2.2;4
+465.7;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;5.0;5
+465.7;rogue_silogista_vitoria;;201.9;1
+473.4;rogue_sala;EDUCATIVA;4.0;4
+476.7;dialogo;Luci: Mais um terminal! Pode pular: resposta confiante é re;3.0;1
+485.5;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;7.7;4
+485.5;rogue_terminal;conceito 1;0.0;21
+495.6;dialogo;* ARQUIVO DE AMEAÇA // KEYLOGGER;8.7;3
+495.6;rogue_registro_sala;1;0.0;4
+498.3;rogue_sala;EVENTO;5.0;5
+506.8;rogue_evento;3;0.0;5
+518.4;dialogo;* REGISTRO RECUPERADO // ARQUIVO DE RESPOSTAS;11.5;4
+522.7;rogue_sala;COMBATE;6.0;6
+522.7;rogue_encontro;CAOS SISTÊMICO;3.0;4
+568.6;rogue_sala_limpa;sala 7 SOBREVIVER;304.8;82
+571.6;rogue_recompensa_sala;ARSENAL;6.0;6
+581.0;rogue_build;ROTEADOR DE PACOTES;1.0;1
+583.0;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+585.4;rogue_sala;ALUCINADOR;7.0;7
+588.2;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.5;4
+610.1;rogue_chefe_fase2;;346.3;0
+612.8;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;2.7;2
+619.2;rogue_chefe_afirmacao;certo;6.0;4
+630.4;rogue_chefe_afirmacao;certo;6.0;2
+641.7;rogue_chefe_afirmacao;certo;6.0;7
+647.3;rogue_temporario;OVERCLOCK;0.0;0
+653.4;rogue_morte;sala 8;389.6;92
+656.9;rogue_missao;inicio;0.0;2
+656.9;rogue_sala;COMBATE;0.0;0
+656.9;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+671.3;rogue_sala_limpa;sala 1 ELIMINAR;14.5;19
+673.9;rogue_recompensa_sala;MELHORIA;0.0;0
+704.2;rogue_build;JANELA DE CONTEXTO;0.0;1
+706.5;rogue_sala;RECOMPENSA;1.0;1
+714.2;rogue_recompensa;FRAGMENTADORA;0.0;1
+719.7;rogue_sala;EDUCATIVA;2.0;2
+724.2;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;1.7;4
+724.2;rogue_terminal;conceito 1;0.0;35
+726.9;dialogo;* ARQUIVO DE AMEAÇA // SPAMMER;1.2;3
+726.9;rogue_registro_sala;3;0.0;2
+729.0;rogue_sala;SILOGISTA;3.0;3
+732.1;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;2.8;6
+760.4;rogue_silogista;etapa 1;103.6;2
+763.3;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;2.9;5
+765.3;rogue_silogista;etapa 2;108.5;2
+768.3;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;2.9;6
+771.5;rogue_silogista;rodada 1;114.6;2
+773.1;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;1.6;3
+785.8;rogue_silogista_erro;circuito;128.9;3
+786.6;dialogo;Luci: O núcleo recebeu o valor errado. Um OU só dá F quan;0.8;1
+795.8;rogue_silogista;etapa 3;139.0;2
+798.0;dialogo;* O núcleo se energiza. A última camada da armadura lógic;2.1;4
+816.7;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;2.8;5
+816.7;rogue_silogista_vitoria;;159.8;2
+819.4;rogue_sala;ELITE;4.0;4
+819.4;rogue_encontro;GUARDA DE ELITE;3.0;2
+835.5;rogue_desafio;certo;0.0;9
+852.3;rogue_sala_limpa;sala 5 ELIMINAR;195.4;36
+855.1;rogue_recompensa_sala;MELHORIA RARA;4.0;4
+862.7;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+869.1;rogue_sala;DESAFIO;5.0;5
+875.2;rogue_evento;9;0.0;5
+900.2;rogue_desafio_sala;integridade;1.0;0
+901.7;rogue_recompensa_sala;MELHORIA RARA;5.0;5
+903.9;rogue_build;VERIFICAÇÃO CRUZADA;1.0;1
+907.3;rogue_sala;DESCANSO;6.0;6
+913.7;rogue_evento;8;0.0;6
+915.5;rogue_sala;ALUCINADOR;7.0;7
+917.7;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;1.9;4
+922.5;rogue_chefe_fase2;;265.6;0
+923.6;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.1;2
+928.0;rogue_chefe_afirmacao;certo;6.0;0
+941.5;rogue_chefe_afirmacao;certo;6.0;1
+954.5;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;6.5;7
+954.5;rogue_chefe_vitoria;;297.6;2
+954.5;ranking;MAE;433.0;2
+958.9;bloco3_entrada;boa;80.0;433
+961.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;2.3;3

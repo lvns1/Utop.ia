@@ -4882,12 +4882,23 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 // BLOCO 2 - BIBLIOTECA DOS ECOS (roguelite de tiro, visão de cima)
 //   ÁTRIO (a base): o PROFESSOR BYTE explica os fundamentos da IA generativa,
 //   o BYTECO troca Fragmentos de Conhecimento por itens e a porta de cima
-//   começa a MISSÃO: uma sequência sorteada de salas
-//     COMBATE    - elimine todos os inimigos para abrir a porta
+//   começa a MISSÃO: um MAPA PROCEDURAL RAMIFICADO, sorteado a cada tentativa
+//   (ver RogueGerarMapa). Vencida a sala, as portas (em cima, à esquerda e/ou à
+//   direita) mostram o tipo da próxima sala e a recompensa; o jogador escolhe
+//   o caminho andando até uma delas. Tipos de sala:
+//     COMBATE    - objetivos variados (eliminar em ondas, sobreviver, núcleos,
+//                  alvo prioritário, mecanismo), com armadilhas
+//     ELITE      - inimigos de aura dourada; recompensa rara
 //     EDUCATIVA  - um terminal de conhecimento (dá Fragmentos de Conhecimento)
-//     RECOMPENSA - escolha 1 entre 3 itens
-//   com a CÂMARA DA INFERÊNCIA (mini-chefe O SILOGISTA) sempre no meio,
-//   e que termina na sala do ALUCINADOR.
+//     RECOMPENSA - escolha 1 entre 3 itens (pedestais)
+//     EVENTO     - uma escolha com custo ou risco (alguns são educativos)
+//     DESCANSO   - sala de leitura: vida, estabilidade da Luci ou estudo
+//     DESAFIO    - prova opcional por uma melhoria rara
+//     SECRETA    - atrás de uma parede corrompida (atirar nela abre a passagem)
+//   Melhorias são escolhidas 1 de 3 (NÚCLEO DE MELHORIA) e formam a build da
+//   tentativa, com sinergias. A CÂMARA DA INFERÊNCIA (mini-chefe O SILOGISTA)
+//   fica no meio do mapa (todos os caminhos passam por ela), que termina na
+//   sala do ALUCINADOR. M abre o mapa grande.
 //   Morreu: volta ao átrio, perde 15 pontos e os itens da tentativa.
 //   Os Fragmentos de Conhecimento nunca se perdem.
 //
@@ -5037,8 +5048,7 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 #define CACHE_TIRO_DANO          7.0f
 
 // ---------- Missão, recompensas e itens (AJUSTE AQUI) ----------
-#define SALAS_POR_MISSAO         7        // 3 de combate, 2 educativas, 1 de recompensa e o Silogista (+ a do chefe)
-#define POSICAO_SILOGISTA        3        // a Câmara da Inferência é sempre a 4ª sala
+// (Reformulação: a rota linear SALAS_POR_MISSAO/POSICAO_SILOGISTA virou o mapa procedural; ver MAPA_PROFUNDIDADES)
 #define FC_POR_TERMINAL          3        // Fragmentos de Conhecimento por terminal lido
 #define CHANCE_FC_FRAGMENTO      40       // % de soltar um fragmento ao derrotar um Fragmento Alucinado
 #define CHANCE_FC_GUARDIAO       70       // ... e um Guardião de Dados
@@ -5066,7 +5076,7 @@ static const Color CORES_RARIDADE[NUM_RARIDADES] = { { 200, 200, 200, 255 }, { 0
 // Onde aparecem: os temporários caem dos inimigos; os upgrades passivos ficam
 // nos pedestais e às vezes no fim de um combate; as armas nos pedestais e na loja.
 #define CHANCE_TEMPORARIO        7        // % de um inimigo derrotado soltar um item temporário
-#define CHANCE_UPGRADE_SALA      40       // % de um combate vencido deixar um upgrade passivo
+#define CHANCE_UPGRADE_SALA      20       // % de um combate vencido deixar um upgrade passivo (era 40: agora há a escolha 1 de 3)
 #define CHANCE_ARMA_PEDESTAL     45       // % de um dos pedestais trazer uma arma
 #define ARMAS_NA_LOJA            2        // armas à venda no Byteco (sorteadas a cada volta ao átrio)
 
@@ -5162,7 +5172,7 @@ static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 
 #define MAX_PROJETEIS            160
 #define MAX_INIMIGOS             48       // enxames de Spammers + fragmentos de spam
 #define MAX_PARTICULAS_ROGUE     200
-#define MAX_OBSTACULOS           6
+#define MAX_OBSTACULOS           14       // até 10 estantes da sala + as barreiras das armadilhas
 #define MAX_COLETAVEIS           32
 #define NUM_PEDESTAIS            3
 
@@ -5179,6 +5189,7 @@ static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 
 #define OBJ_LUCI_INTRO           -19      // Bloco 3: a revelação
 #define OBJ_LUCI_FINAL           -20
 #define OBJ_REGISTRO             -21      // registros de memória do corredor do núcleo
+#define OBJ_REGISTRO_SALA        -22      // reformulação: arquivo de ameaça ou memória numa sala da missão
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
 static const Rectangle ARENA_ROGUE         = { 40, 60, 720, 470 };
@@ -5195,12 +5206,15 @@ static const Vector2 POS_TERMINAL  = { 400, 270 };
 static const Vector2 POS_ENCICLOPEDIA = { 180, 432 };
 static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }, { 530, 290 } };
 
-typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE, SALA_SILOGISTA, SALA_TRANSICAO, SALA_LUCI } TipoSalaRogue;
+// Os tipos novos (reformulação do Bloco 2) ficam no FINAL: os valores antigos não mudam
+typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE, SALA_SILOGISTA, SALA_TRANSICAO, SALA_LUCI,
+               SALA_ELITE, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_SECRETA, NUM_TIPOS_SALA } TipoSalaRogue;
 
 typedef enum {
     INIMIGO_FRAGMENTO, INIMIGO_GUARDIAO, INIMIGO_ECO,
     INIMIGO_SPAMMER, INIMIGO_SPAM, INIMIGO_PHISHER, INIMIGO_ISCA, INIMIGO_FIREWALL,
     INIMIGO_OVERCLOCK, INIMIGO_BOTNET, INIMIGO_KEYLOGGER, INIMIGO_CACHE,
+    INIMIGO_NUCLEO,             // reformulação: núcleo de corrupção (objetivo "destrua os núcleos")
     NUM_TIPOS_INIMIGO
 } TipoInimigo;
 
@@ -5230,6 +5244,7 @@ static const DefInimigo DEF_INIMIGOS[NUM_TIPOS_INIMIGO] = {
     { "BOTNET",                35.0f, 13.0f,  90.0f,  0.0f,  1.0f,    4,  70, { 0, 228, 255, 255 },   1.4f },
     { "KEYLOGGER",             30.0f, 14.0f,  95.0f,  0.0f,  1.0f,    3,  60, { 200, 200, 200, 255 }, 1.1f },
     { "CACHE",                 70.0f, 18.0f,  50.0f,  8.0f,  0.5f,    3,  70, { 0, 228, 48, 255 },    0.7f },
+    { "NÚCLEO DE CORRUPÇÃO",  130.0f, 22.0f,   0.0f,  0.0f,  0.0f,    4, 100, { 230, 41, 255, 255 },  0.5f },
 };
 
 typedef enum {
@@ -5320,6 +5335,297 @@ static const DefArma DEF_ARMAS[NUM_ARMAS] = {
       RARIDADE_RARA, 14, { 0, 228, 48, 255 } },
 };
 
+// =============================================================
+// REFORMULAÇÃO DO BLOCO 2: BUILD (melhorias escolhidas 1 de 3)
+//   Ao vencer certas salas aparece um NÚCLEO DE MELHORIA: tocar nele (E)
+//   mostra 3 opções sorteadas pela raridade e pela build atual; o jogador
+//   escolhe UMA. As melhorias valem até o fim da tentativa (somem ao morrer,
+//   como a mochila). Cada efeito é aplicado nas funções de atributo
+//   (RogueFatorDano, RogueHpMax...) ou no ponto exato da mecânica.
+//   SINERGIAS só aparecem quando as duas melhorias que elas combinam já estão
+//   na build. APRIMORAMENTOS de arma só aparecem com a arma equipada.
+// =============================================================
+typedef enum {
+    // Atributos
+    UP_DANO, UP_VELOCIDADE, UP_ESQUIVA, UP_VIDA, UP_CADENCIA, UP_ALCANCE,
+    // Disparos (valem para qualquer arma)
+    UP_RICOCHETE, UP_PERFURAR, UP_EXPLOSAO, UP_RAJADA, UP_RASTRO, UP_POS_ESQUIVA,
+    // Habilidades
+    UP_PULSO, UP_ESQUIVA_EXPLOSIVA, UP_ENERGIA_ABATE, UP_ESCUDO_ELITE, UP_DUPLICAR, UP_ROTULAR, UP_VERIFICACAO, UP_CRITICO,
+    // Especiais (raras: mudam uma mecânica)
+    UP_ESQUIVA_DUPLA, UP_PULSO_REFLEXIVO,
+    // Aprimoramentos de arma (só aparecem com a arma)
+    UP_ARMA_DISPARADOR, UP_ARMA_VETOR, UP_ARMA_ROTEADOR, UP_ARMA_FLUXO, UP_ARMA_ORBE, UP_ARMA_FRAGMENTADORA, UP_ARMA_PULSO_FW,
+    // Sinergias (precisam de duas melhorias anteriores)
+    UP_SIN_TEMPESTADE, UP_SIN_CIRCUITO, UP_SIN_FANTASMA, UP_SIN_ROTULO, UP_SIN_CONFIANCA,
+    NUM_UPGRADES
+} TipoUpgrade;
+
+#define BIT_UP(u) (1ull << (unsigned)(u))
+
+typedef enum { CAT_ATRIBUTO, CAT_DISPARO, CAT_HABILIDADE, CAT_ESPECIAL, CAT_APRIMORAMENTO, CAT_SINERGIA, NUM_CATEGORIAS_UP } CategoriaUpgrade;
+
+static const char *NOMES_CATEGORIA_UP[NUM_CATEGORIAS_UP] = { "ATRIBUTO", "DISPARO", "HABILIDADE", "ESPECIAL", "APRIMORAMENTO DE ARMA", "SINERGIA" };
+static const Color CORES_CATEGORIA_UP[NUM_CATEGORIAS_UP] = {
+    { 102, 191, 255, 255 }, { 255, 161, 0, 255 }, { 0, 228, 48, 255 }, { 255, 0, 255, 255 }, { 253, 249, 0, 255 }, { 255, 109, 194, 255 }
+};
+
+typedef struct {
+    const char *nome;
+    const char *efeito;
+    CategoriaUpgrade categoria;
+    Raridade raridade;
+    int maxNivel;
+    unsigned long long requer;  // melhorias que precisam estar na build (todas)
+    int arma;                   // arma necessária (-1 = qualquer)
+} DefUpgrade;
+
+static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
+    { "SOBRECARGA DE TENSORES",  "+12% de dano em todas as armas por nível.",                        CAT_ATRIBUTO,   RARIDADE_COMUM,   3, 0, -1 },
+    { "PROPAGAÇÃO RÁPIDA",       "+8% de velocidade de movimento por nível.",                        CAT_ATRIBUTO,   RARIDADE_COMUM,   3, 0, -1 },
+    { "REDE NEURAL ÁGIL",        "A esquiva recarrega 12% mais rápido por nível.",                   CAT_ATRIBUTO,   RARIDADE_COMUM,   3, 0, -1 },
+    { "REDUNDÂNCIA DE DADOS",    "+20 de vida máxima por nível (e recupera 20 agora).",              CAT_ATRIBUTO,   RARIDADE_COMUM,   3, 0, -1 },
+    { "PROCESSAMENTO PARALELO",  "+10% de cadência em todas as armas por nível.",                    CAT_ATRIBUTO,   RARIDADE_COMUM,   3, 0, -1 },
+    { "JANELA DE CONTEXTO",      "+20% de alcance e +15% de velocidade dos projéteis por nível.",    CAT_ATRIBUTO,   RARIDADE_COMUM,   2, 0, -1 },
+
+    { "TOKENS SALTITANTES",      "Seus disparos ricocheteiam para +1 inimigo por nível.",            CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
+    { "ATENÇÃO MULTICABEÇA",     "Seus disparos atravessam +1 inimigo por nível.",                   CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
+    { "SAÍDA GENERATIVA",        "Cada acerto explode em área (35% do dano). Nível 2: raio maior.",  CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
+    { "AMOSTRAGEM MÚLTIPLA",     "+1 projétil extra em leque por nível (60% do dano).",              CAT_DISPARO,    RARIDADE_RARA,    2, 0, -1 },
+    { "RESÍDUO DE DADOS",        "Acertos deixam uma poça de dados que fere quem pisa (1,5 s).",     CAT_DISPARO,    RARIDADE_INCOMUM, 1, 0, -1 },
+    { "CONTRA-ATAQUE HEURÍSTICO","Depois de esquivar: +40% de dano por 1,5 s (+30% por nível).",     CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
+
+    { "PULSO AMPLIFICADO",       "Pulso de Integridade: +35% de raio e +40% de dano por nível.",     CAT_HABILIDADE, RARIDADE_COMUM,   2, 0, -1 },
+    { "ESQUIVA FRAGMENTADA",     "A esquiva deixa uma explosão de dados onde você estava.",          CAT_HABILIDADE, RARIDADE_INCOMUM, 2, 0, -1 },
+    { "RECICLAGEM DE ENERGIA",   "+6 de EP por inimigo derrotado (por nível).",                      CAT_HABILIDADE, RARIDADE_COMUM,   2, 0, -1 },
+    { "PROTOCOLO DE BLINDAGEM",  "Derrotar um elite (ou 12 inimigos) gera um escudo por 8 s.",       CAT_HABILIDADE, RARIDADE_INCOMUM, 1, 0, -1 },
+    { "ECO BENIGNO",             "15% de chance por nível de duplicar um disparo.",                  CAT_HABILIDADE, RARIDADE_INCOMUM, 2, 0, -1 },
+    { "ROTULAGEM DE DADOS",      "Alvos atingidos ficam ROTULADOS por 4 s e levam +25% de dano.",    CAT_HABILIDADE, RARIDADE_INCOMUM, 1, 0, -1 },
+    { "VERIFICAÇÃO CRUZADA",     "Recupera 2 de vida por inimigo derrotado (por nível).",            CAT_HABILIDADE, RARIDADE_INCOMUM, 2, 0, -1 },
+    { "ALTA CONFIANÇA",          "10% de chance por nível de acerto crítico (dano x2).",             CAT_HABILIDADE, RARIDADE_COMUM,   3, 0, -1 },
+
+    { "BUFFER DE ESQUIVA",       "A esquiva ganha uma segunda carga.",                               CAT_ESPECIAL,   RARIDADE_RARA,    1, 0, -1 },
+    { "PULSO REFLEXIVO",         "O Pulso devolve as balas que apaga como disparos seus.",           CAT_ESPECIAL,   RARIDADE_RARA,    1, 0, -1 },
+
+    { "DISPARADOR CALIBRADO",    "Disparador de Dados: +25% de dano e projétil maior por nível.",    CAT_APRIMORAMENTO, RARIDADE_COMUM,   2, 0, ARMA_DISPARADOR },
+    { "COMPILAÇÃO OTIMIZADA",    "Vetor de Compilação: carrega 40% mais rápido e atravessa +2.",     CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_VETOR },
+    { "TABELA DE ROTAS",         "Roteador de Pacotes: +2 ricochetes e perde menos dano.",           CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_ROTEADOR },
+    { "RESFRIAMENTO LÍQUIDO",    "Fluxo Contínuo: esquenta 40% menos.",                              CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_FLUXO },
+    { "BUFFER EXPANDIDO",        "Orbe de Buffer: explosão com +50% de raio e de dano.",             CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_ORBE },
+    { "CONE DENSO",              "Fragmentadora: +3 fragmentos e um cone mais fechado.",             CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_FRAGMENTADORA },
+    { "MURALHA ATIVA",           "Pulso de Firewall: +35% de raio e dispara 20% mais rápido.",       CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_PULSO_FW },
+
+    { "TEMPESTADE DE PACOTES",   "Ricochetes não perdem dano e ganham +1 salto.",                    CAT_SINERGIA, RARIDADE_RARA, 1, BIT_UP(UP_RICOCHETE) | BIT_UP(UP_RAJADA), -1 },
+    { "CIRCUITO FECHADO",        "Cada inimigo derrotado pelo Pulso devolve 12 EP e 1 s de recarga.", CAT_SINERGIA, RARIDADE_RARA, 1, BIT_UP(UP_PULSO) | BIT_UP(UP_ENERGIA_ABATE), -1 },
+    { "PASSO FANTASMA",          "Esquivar através de inimigos fere (25) e o bônus pós-esquiva dobra.", CAT_SINERGIA, RARIDADE_RARA, 1, BIT_UP(UP_POS_ESQUIVA) | BIT_UP(UP_ESQUIVA), -1 },
+    { "RÓTULO VOLÁTIL",          "Inimigos rotulados explodem ao serem derrotados.",                 CAT_SINERGIA, RARIDADE_RARA, 1, BIT_UP(UP_ROTULAR) | BIT_UP(UP_EXPLOSAO), -1 },
+    { "CONFIANÇA CALIBRADA",     "Acertos críticos disparam um pacote extra no inimigo mais perto.", CAT_SINERGIA, RARIDADE_RARA, 1, BIT_UP(UP_CRITICO) | BIT_UP(UP_DUPLICAR), -1 },
+};
+
+// Números das melhorias (AJUSTE AQUI)
+#define UP_DANO_NIVEL            0.12f
+#define UP_VELOCIDADE_NIVEL      0.08f
+#define UP_ESQUIVA_NIVEL         0.12f
+#define UP_VIDA_NIVEL            20.0f
+#define UP_CADENCIA_NIVEL        0.10f
+#define UP_ALCANCE_NIVEL         0.20f
+#define UP_VEL_PROJETIL_NIVEL    0.15f
+#define UP_EXPLOSAO_DANO         0.35f
+#define UP_EXPLOSAO_RAIO         42.0f    // +14 por nível acima do 1
+#define UP_EXPLOSAO_RECARGA      0.12f    // explosões seguidas não acontecem no mesmo instante
+#define UP_RAJADA_DANO           0.60f
+#define UP_RASTRO_RAIO           30.0f
+#define UP_RASTRO_DPS            12.0f
+#define UP_RASTRO_RECARGA        0.35f
+#define UP_POS_ESQUIVA_TEMPO     1.5f
+#define UP_PULSO_RAIO            0.35f
+#define UP_PULSO_DANO            0.40f
+#define UP_ESQUIVA_EXP_RAIO      70.0f
+#define UP_ESQUIVA_EXP_DANO      20.0f    // +12 por nível acima do 1
+#define UP_ENERGIA_ABATE_EP      6.0f
+#define UP_ESCUDO_TEMPO          8.0f
+#define UP_ESCUDO_ABATES         12
+#define UP_DUPLICAR_CHANCE       15
+#define UP_ROTULO_TEMPO          4.0f
+#define UP_ROTULO_BONUS          0.25f
+#define UP_VERIFICACAO_CURA      2.0f
+#define UP_CRITICO_CHANCE        10
+#define UP_FANTASMA_DANO         25.0f
+#define UP_ROTULO_EXP_RAIO       70.0f
+#define UP_ROTULO_EXP_DANO       30.0f
+
+// Penalidades do evento MODELO EXPERIMENTAL (valem até o fim da tentativa)
+enum { PEN_FRAGIL = 1, PEN_LENTO = 2, PEN_VIDA = 4 };
+#define PEN_FRAGIL_FATOR         1.20f    // +20% de dano recebido
+#define PEN_LENTO_FATOR          0.90f    // -10% de velocidade
+#define PEN_VIDA_FATOR           0.85f    // -15% de vida máxima
+
+// =============================================================
+// REFORMULAÇÃO DO BLOCO 2: MAPA PROCEDURAL RAMIFICADO
+//   Cada tentativa sorteia um grafo em camadas (profundidades):
+//     0        : 1 sala de combate (sempre)
+//     1, 2     : 2 ou 3 salas por camada (escolha de caminho)
+//     3        : CÂMARA DA INFERÊNCIA (todos os caminhos se reencontram)
+//     4, 5, 6  : 2 ou 3 salas por camada
+//     7        : ALUCINADOR
+//   Cada sala liga a 1 ou 2 salas da camada seguinte (vizinhas no mapa), e
+//   toda sala da camada seguinte recebe pelo menos uma ligação: não existe
+//   caminho sem saída e sempre se chega à Câmara e ao chefe. Algumas salas
+//   escondem uma SALA SECRETA (parede corrompida): ela é um desvio opcional
+//   que sai para os mesmos destinos da sala onde estava escondida.
+// =============================================================
+typedef enum { LADO_CIMA, LADO_ESQUERDA, LADO_DIREITA, LADO_BAIXO, NUM_LADOS } LadoPorta;
+
+typedef enum { RECOMPENSA_NENHUMA, RECOMPENSA_MELHORIA, RECOMPENSA_RARA, RECOMPENSA_FRAGMENTOS, RECOMPENSA_ARMA, RECOMPENSA_VIDA,
+               NUM_TIPOS_RECOMPENSA } TipoRecompensa;
+
+static const char *NOMES_RECOMPENSA[NUM_TIPOS_RECOMPENSA] = { "", "MELHORIA", "MELHORIA RARA", "FRAGMENTOS", "ARSENAL", "RESTAURAÇÃO" };
+
+#define MAPA_PROFUNDIDADES       8
+#define PROF_SILOGISTA           3
+#define PROF_CHEFE               7
+#define MAPA_LARGURA_MAX         3
+#define MAPA_MAX_NOS             26
+#define MAX_SAIDAS               3        // 3 só quando a sala é a única origem da camada seguinte (ex.: a Câmara)
+#define MAX_SECRETAS             2
+
+typedef struct {
+    TipoSalaRogue tipo;
+    TipoRecompensa recompensa;  // o que a porta anuncia (combate, elite, desafio e secreta)
+    int prof, coluna;
+    float x;                    // 0 a 1: posição horizontal no mapa (decide qual porta fica à esquerda)
+    int saida[MAX_SAIDAS];
+    int numSaidas;
+    bool visitado;
+    bool escondida;             // sala secreta ainda não descoberta (não aparece no mapa)
+    int secreta;                // sala secreta escondida nesta sala (-1 = nenhuma)
+    int pai;                    // sala secreta: a sala onde ela estava escondida
+} NoMapa;
+
+typedef struct {
+    NoMapa no[MAPA_MAX_NOS];
+    int numNos;
+    int largura[MAPA_PROFUNDIDADES];
+    int primeiro[MAPA_PROFUNDIDADES];   // índice do primeiro nó de cada camada
+} MapaRogue;
+
+typedef struct {
+    LadoPorta lado;
+    int destino;                // nó do mapa
+    Rectangle r;
+} PortaMissao;
+
+// Portas físicas (a de cima é a mesma do átrio; a da esquerda fica onde o átrio tem a do corredor)
+static const Rectangle PORTA_LADO_ROGUE[3] = { { 370, 60, 60, 14 }, { 40, 260, 14, 70 }, { 746, 260, 14, 70 } };
+static const Vector2   ENTRADA_LADO_ROGUE[NUM_LADOS] = { { 400, 110 }, { 84, 295 }, { 716, 295 }, { 400, 480 } };
+// Onde a parede corrompida (passagem secreta) pode aparecer: longe das portas normais
+static const Rectangle PAREDE_SECRETA_ROGUE[4] = { { 140, 60, 70, 12 }, { 590, 60, 70, 12 }, { 40, 420, 12, 70 }, { 748, 420, 12, 70 } };
+#define PAREDE_SECRETA_HP        45.0f
+
+// =============================================================
+// REFORMULAÇÃO DO BLOCO 2: OBJETIVOS, ONDAS, ARMADILHAS E ELITES
+// =============================================================
+typedef enum { OBJC_ELIMINAR, OBJC_SOBREVIVER, OBJC_NUCLEOS, OBJC_PRIORITARIO, OBJC_MECANISMO, NUM_OBJC } ObjetivoCombate;
+
+static const char *NOMES_OBJC[NUM_OBJC] = { "ELIMINAR", "SOBREVIVER", "NÚCLEOS DE CORRUPÇÃO", "ALVO PRIORITÁRIO", "MECANISMO CORROMPIDO" };
+
+#define SOBREVIVER_TEMPO_BASE    30.0f    // + 2,5 s por profundidade
+#define REFORCO_INTERVALO        6.5f
+#define REFORCO_LIMITE_VIVOS     9        // reforços não passam disso (inimigos vivos)
+#define NUM_NUCLEOS              3
+#define NUM_MECANISMOS           3
+#define MECANISMO_TEMPO          1.6f     // segurando E perto do console
+#define MECANISMO_RAIO           42.0f
+#define NUCLEO_INTERVALO         4.2f
+#define NUCLEO_PREPARO           0.8f
+#define NUCLEO_BALAS             8
+#define ONDA_AVISO               1.2f     // "ONDA 2/3" antes de a próxima onda surgir
+
+// Elites: inimigos com aura dourada (mais vida, mais rápidos e com ataques reforçados)
+#define ELITE_HP                 2.4f
+#define ELITE_RAIO               1.2f
+#define ELITE_RITMO              1.30f
+#define ELITE_CONTATO            1.30f
+#define PRIORITARIO_HP           2.0f     // por cima do bônus de elite
+
+// Dificuldade que cresce com a profundidade (mais do que só vida: ritmo e dano também)
+#define DIFICULDADE_VIDA_PROF    0.07f
+#define DIFICULDADE_RITMO_PROF   0.04f
+#define DIFICULDADE_DANO_PROF    0.05f
+
+typedef enum { ARM_FEIXE, ARM_ZONA, ARM_TORRE, ARM_EXPLOSAO, ARM_BARREIRA, ARM_BLOQUEIO, NUM_TIPOS_ARMADILHA } TipoArmadilha;
+
+typedef struct {
+    bool ativo;
+    TipoArmadilha tipo;
+    int fase;                   // 0 = descansando, 1 = avisando, 2 = ativa
+    float timer;
+    Vector2 pos;                // zona, torre e explosão
+    float raio;
+    Rectangle r;                // feixe, barreira e bloqueio
+    bool vertical;
+    float limiteA, limiteB, vel;    // barreira: vai e volta entre os limites
+    float tick;                 // zona: próximo dano
+} Armadilha;
+
+#define MAX_ARMADILHAS           4
+#define FEIXE_DESCANSO           2.6f
+#define FEIXE_AVISO              1.0f
+#define FEIXE_ATIVO              0.7f
+#define FEIXE_LARGURA            18.0f
+#define FEIXE_DANO               14.0f
+#define ZONA_RAIO                58.0f
+#define ZONA_DANO                6.0f
+#define ZONA_TICK                0.6f
+#define ZONA_LIGADA              4.0f
+#define ZONA_DESLIGADA           2.5f
+#define TORRE_INTERVALO          2.4f
+#define TORRE_PREPARO            0.7f
+#define TORRE_TIRO_VEL           230.0f
+#define TORRE_TIRO_DANO          8.0f
+#define EXPLOSAO_INTERVALO       3.2f
+#define EXPLOSAO_AVISO           1.2f
+#define EXPLOSAO_RAIO            62.0f
+#define EXPLOSAO_DANO            16.0f
+#define BARREIRA_VEL             55.0f
+#define BLOQUEIO_LIVRE           4.5f
+#define BLOQUEIO_AVISO           1.2f
+#define BLOQUEIO_SOLIDO          4.0f
+
+// Poças e explosões do jogador (Resíduo de Dados, Esquiva Fragmentada...)
+typedef struct {
+    bool ativo;
+    Vector2 pos;
+    float raio, atraso, vida, vidaMax;
+    float dps, tick;
+    float danoInstantaneo;      // explode uma vez quando o atraso acaba
+    Color cor;
+} AreaDano;
+
+#define MAX_AREAS                10
+
+// Tela de escolha (1 de 3)
+typedef enum { OPC_UPGRADE, OPC_ITEM, OPC_ARMA, OPC_FRAGMENTOS } TipoOpcao;
+typedef struct { TipoOpcao tipo; int id; } OpcaoEscolha;
+typedef enum { ESCOLHA_NORMAL, ESCOLHA_RARA, ESCOLHA_ARMA } ModoEscolha;
+#define FC_RECUSAR_ESCOLHA       3
+#define FC_OPCAO_RESERVA         5
+
+// Eventos (salas de evento, de descanso e de desafio usam a mesma janela de escolhas)
+typedef enum {
+    EVT_ARQUIVO_CORROMPIDO, EVT_BANCO_INSTAVEL, EVT_MODELO_EXPERIMENTAL, EVT_MEMORIA, EVT_PROTOCOLO,
+    EVT_FONTE_FALSA, EVT_CONFIANCA_LUCI, EVT_RESPOSTA_IA,
+    NUM_EVENTOS_SORTEAVEIS,
+    EVT_DESCANSO = NUM_EVENTOS_SORTEAVEIS, EVT_DESAFIO
+} TipoEvento;
+
+typedef enum { DESAFIO_SALA_ECOS, DESAFIO_SALA_INTEGRIDADE, NUM_DESAFIOS_SALA } TipoDesafioSala;
+#define DESAFIO_ECOS_META        14
+#define DESAFIO_ECOS_TEMPO       32.0f
+#define DESAFIO_ECO_TEMPO        1.9f     // os ecos do desafio demoram mais para explodir
+#define DESAFIO_INTEG_TEMPO      25.0f
+#define DESAFIO_INTEG_GOLPES     3        // pode levar até 3 golpes
+
 // Efeitos com tempo (itens temporários)
 enum { EFEITO_OVERCLOCK, EFEITO_ESCUDO, EFEITO_PROXY, EFEITO_LATENCIA, NUM_EFEITOS };
 
@@ -5332,11 +5638,16 @@ typedef struct {
 
 #define MAX_ANEIS 8
 
-static const char *NOMES_SALAS_ROGUE[] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI" };
-static const Color CORES_SALAS_ROGUE[] = {
+static const char *NOMES_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI",
+                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA" };
+static const Color CORES_SALAS_ROGUE[NUM_TIPOS_SALA] = {
     { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 },
-    { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 }
+    { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 },
+    { 255, 120, 20, 255 }, { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 190, 33, 255, 255 }
 };
+// Nome que aparece na porta (o que o jogador vai encontrar)
+static const char *PLACAS_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "TERMINAL", "TESOURO", "ALUCINADOR", "CÂMARA DA INFERÊNCIA", "NÚCLEO", "LUCI",
+                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO" };
 
 typedef struct {
     bool ativo;
@@ -5380,6 +5691,13 @@ typedef struct {
     int conexao[BOTNET_CONEXOES];   // Botnet: os inimigos conectados (-1 = nenhum)
     Vector2 miraPrevista;       // Keylogger: onde ele acha que o jogador vai estar
     int tiros;                  // Keylogger: tiros que faltam na rajada
+
+    // Reformulação do Bloco 2
+    bool elite;                 // aura dourada: mais vida, ritmo e ataques reforçados
+    bool prioritario;           // ALVO PRIORITÁRIO: enquanto vive, chegam reforços
+    bool desafio;               // eco da sala de desafio (conta para a meta, não repara a Luci)
+    float rotulo;               // Rotulagem de Dados: > 0 = leva mais dano
+    bool atingidoEsquiva;       // Passo Fantasma: já foi ferido nesta esquiva
 } Inimigo;
 
 typedef struct {
@@ -5430,6 +5748,17 @@ typedef struct {
     float tempoAnalise;
     float recargaBotnet;        // Botnet Reverso
     int salasConcluidas;        // Cache Persistente (nesta tentativa)
+
+    // Reformulação do Bloco 2: a build desta tentativa (perde ao morrer)
+    int up[NUM_UPGRADES];       // nível de cada melhoria (0 = não tem)
+    int ultimoUp;               // a última melhoria escolhida (-1 = nenhuma)
+    int penalidade;             // PEN_* (Modelo Experimental)
+    float bonusPosEsquiva;      // Contra-Ataque Heurístico: tempo que falta
+    float recargaEsquiva2;      // Buffer de Esquiva: a 2ª carga
+    float recargaExplosao, recargaRastro;
+    int abatesEscudo;           // Protocolo de Blindagem: abates até o próximo escudo
+    int contaFluxo;             // Amostragem Múltipla com o Fluxo Contínuo: 1 extra a cada 3 tiros
+    int golpesSofridos;         // golpes que tiraram vida nesta sala (desafio de integridade)
 } JogadorRogue;
 
 // ---------- ALUCINADOR (chefe da Biblioteca) ----------
@@ -5666,8 +5995,81 @@ typedef struct {
 
     // Sala atual e missão
     TipoSalaRogue tipoSala;
-    TipoSalaRogue rota[SALAS_POR_MISSAO];
-    int indiceRota;             // sala da missão (-1 = átrio)
+    int indiceRota;             // quantas salas da missão já foram abertas, menos 1 (-1 = átrio)
+
+    // Mapa procedural (reformulação): o grafo da tentativa e onde o jogador está
+    MapaRogue mapa;
+    int noAtual;                // nó do mapa (-1 = fora da missão: átrio ou Bloco 3)
+    int profundidade;           // camada do nó atual (decide a dificuldade)
+    LadoPorta ladoEntrada;      // por onde o jogador entrou nesta sala
+    PortaMissao portas[MAX_SAIDAS];
+    int numPortas;
+    bool mapaAberto;            // M: o mapa grande (o jogo espera)
+    float fatorVidaInimigos, fatorRitmoInimigos, fatorDanoSala;
+
+    // Parede corrompida (passagem para a sala secreta)
+    bool temParedeSecreta;
+    int paredeSecreta;          // índice em PAREDE_SECRETA_ROGUE
+    float hpParede;
+    bool passagemAberta;
+    int paredeFalsa;            // a pista alucinada (Luci ou scanner) aponta para esta (-1 = nenhuma)
+    float marcaParede;          // scanner: tempo que a marca "PASSAGEM?" fica
+
+    // Objetivo da sala de combate
+    ObjetivoCombate objetivoSala;
+    int ondaAtual, numOndas;
+    float avisoOnda;            // > 0 = a próxima onda está chegando
+    float tempoObjetivo, tempoObjetivoMax;
+    float reforco;
+    int alvoPrioritario;        // índice em ini (-1 = nenhum)
+    Vector2 posMecanismo[NUM_MECANISMOS];
+    float progressoMecanismo[NUM_MECANISMOS];
+    bool mecanismoDesligado[NUM_MECANISMOS];
+    int numMecanismos;
+
+    // Armadilhas e áreas
+    Armadilha arm[MAX_ARMADILHAS];
+    int numObstFixos;           // as estantes da sala (o resto do vetor obst são barreiras das armadilhas)
+    AreaDano areas[MAX_AREAS];
+
+    // Recompensa no chão (núcleo de melhoria, arsenal, restauração)
+    bool recompensaAtiva;
+    TipoRecompensa recompensaTipo;
+    Vector2 recompensaPos;
+
+    // Escolha 1 de 3
+    bool escolhaAberta;
+    OpcaoEscolha opcoes[3];
+    int numOpcoes, selecaoEscolha;
+    ModoEscolha modoEscolha;
+    float animEscolha;
+    bool escolhaGratis;         // a escolha veio de um evento (não conta como recompensa da sala)
+
+    // Eventos, descanso e desafio
+    bool eventoAberto;
+    TipoEvento evento;
+    int varianteEvento;         // fonte falsa, resposta da IA, memória...
+    int selecaoEvento;
+    bool eventoResolvido;       // mostrando o resultado
+    bool eventoUsado;           // a sala já deu o que tinha
+    char resultadoEvento[260];
+    bool eventoCombate;         // Banco de Dados Instável: aceitou a onda extra
+    Vector2 posObjetoSala;      // altar do evento, poltrona, console do desafio
+    TipoDesafioSala desafioSala;
+    int estadoDesafio;          // 0 = esperando, 1 = em andamento, 2 = vencido, 3 = falhou
+    int contadorDesafio;
+    float tempoDesafioSala, cronoDesafio;
+    unsigned int memoriasVistas;    // nesta sessão (registros de memória da Luci)
+    float mensagemSistema;      // mensagem de sistema corrompido no começo da sala
+    char textoSistema[96];
+    bool registroSala;          // um arquivo de ameaça para ler (narrativa)
+    bool registroSalaLido;
+    int registroSalaId;
+    Vector2 posRegistroSala;
+    int elitesDerrotados;
+    int escolhaPendente;        // fim de um evento: abre esta escolha (-1 = nenhuma; senão, um ModoEscolha)
+    unsigned int eventosVistos; // nesta tentativa (não repete o mesmo evento)
+    int paredeMarcada;          // scanner: onde ele mostra "PASSAGEM?" (-1 = nenhuma)
     int combates;               // salas de combate abertas nesta tentativa (decide a dificuldade do encontro)
     int encontro;               // modelo de encontro da sala atual (-1 = nenhum)
     int ultimoEncontro;         // não repete o mesmo encontro em salas seguidas
@@ -5729,7 +6131,7 @@ typedef struct {
     // A Luci: estabilidade (a do main, compartilhada com o Bloco 1), hábitos, scanner e contradições
     int *estabilidade;              // o main aponta para a dele; sozinha (testes), usa estabilidadeLocal
     int estabilidadeLocal;
-    char luciMsg[96];               // recado curto da Luci perto do HUD (não pausa o jogo)
+    char luciMsg[128];              // recado curto da Luci perto do HUD (não pausa o jogo)
     float luciMsgTempo;
     int ecosDestruidos;
     int habitoConfiar, habitoVerificar;
@@ -5775,8 +6177,41 @@ static const LayoutSala LAYOUTS_COMBATE[] = {
       { {400, 100}, {110, 100}, {690, 100}, {400, 250}, {250, 260}, {550, 260}, {100, 260}, {700, 260} } },
     { 3, { {350, 170, 100, 30}, {190, 290, 30, 120}, {580, 290, 30, 120} }, 8,
       { {110, 100}, {690, 100}, {400, 110}, {260, 220}, {540, 220}, {400, 280}, {120, 360}, {680, 360} } },
+
+    // ---- Reformulação: layouts novos (as portas de cima, da esquerda e da direita e a entrada de baixo ficam livres) ----
+    // PILARES: cobertura espalhada, bom contra atiradores
+    { 6, { {180, 160, 32, 32}, {588, 160, 32, 32}, {280, 290, 32, 32}, {488, 290, 32, 32}, {180, 400, 32, 32}, {588, 400, 32, 32} }, 8,
+      { {120, 110}, {680, 110}, {400, 180}, {250, 230}, {550, 230}, {400, 330}, {130, 460}, {670, 460} } },
+    // CORREDOR ESTREITO: um corredor no meio, flancos abertos
+    { 6, { {300, 150, 28, 120}, {472, 150, 28, 120}, {300, 330, 28, 90}, {472, 330, 28, 90}, {120, 150, 100, 24}, {580, 150, 100, 24} }, 8,
+      { {400, 200}, {400, 300}, {200, 260}, {600, 260}, {160, 420}, {640, 420}, {120, 100}, {680, 100} } },
+    // OBSTÁCULO CENTRAL: um bloco grande no meio e coberturas nos cantos
+    { 5, { {340, 225, 120, 110}, {130, 130, 70, 24}, {600, 130, 70, 24}, {130, 440, 70, 24}, {600, 440, 70, 24} }, 8,
+      { {400, 150}, {250, 280}, {550, 280}, {400, 400}, {120, 100}, {680, 100}, {200, 200}, {600, 200} } },
+    // ÁREA ABERTA: quase sem cobertura (sempre recebe uma armadilha a mais)
+    { 2, { {200, 290, 26, 26}, {574, 290, 26, 26} }, 8,
+      { {120, 110}, {680, 110}, {400, 160}, {260, 220}, {540, 220}, {400, 300}, {160, 400}, {640, 400} } },
+    // FORTALEZA: um U de estantes protege o centro (região de proteção e de risco)
+    { 5, { {300, 190, 200, 22}, {300, 190, 22, 130}, {478, 190, 22, 130}, {120, 380, 90, 24}, {590, 380, 90, 24} }, 8,
+      { {400, 260}, {360, 290}, {440, 290}, {130, 110}, {670, 110}, {200, 300}, {600, 300}, {400, 130} } },
+    // ZIGUE-ZAGUE: estantes em diagonal cortam as linhas de tiro
+    { 5, { {150, 150, 130, 24}, {335, 230, 130, 24}, {520, 310, 130, 24}, {170, 400, 110, 24}, {560, 160, 24, 90} }, 8,
+      { {120, 100}, {680, 100}, {250, 300}, {450, 160}, {450, 380}, {650, 420}, {300, 470}, {130, 250} } },
+    // LABIRINTO DE ESTANTES: muitos corredores curtos
+    { 8, { {140, 120, 24, 110}, {240, 330, 120, 24}, {440, 330, 120, 24}, {636, 120, 24, 110}, {220, 150, 110, 24}, {470, 150, 110, 24},
+           {140, 400, 24, 80}, {636, 400, 24, 80} }, 8,
+      { {400, 220}, {190, 260}, {610, 260}, {300, 420}, {500, 420}, {110, 100}, {690, 100}, {400, 280} } },
 };
-#define NUM_LAYOUTS_COMBATE 3
+#define NUM_LAYOUTS_COMBATE 10
+#define LAYOUT_AREA_ABERTA  6
+
+// Faixas que nenhuma estante, armadilha ou inimigo pode ocupar (portas e entrada)
+static const Rectangle ZONAS_LIVRES_ROGUE[NUM_LADOS] = {
+    { 350, 60, 100, 90 },       // porta de cima
+    { 40, 235, 105, 120 },      // porta da esquerda
+    { 655, 235, 105, 120 },     // porta da direita
+    { 330, 420, 140, 110 },     // entrada de baixo
+};
 
 // ---------- Encontros (quem aparece em cada sala de combate) ----------
 //   Cada sala de combate sorteia um modelo compatível com a dificuldade (nível 1 = 1º
@@ -5786,6 +6221,8 @@ static const LayoutSala LAYOUTS_COMBATE[] = {
 typedef struct {
     TipoInimigo tipo;
     int min, max;
+    int onda;                   // reformulação: 0 = surge na entrada, 1 e 2 = ondas seguintes
+    bool elite;                 // nasce como elite
 } GrupoEncontro;
 
 typedef struct {
@@ -5793,6 +6230,7 @@ typedef struct {
     int nivelMin, nivelMax;
     int numGrupos;
     GrupoEncontro grupo[6];
+    bool salaElite;             // reformulação: só aparece nas salas de ELITE
 } EncontroDef;
 
 static const EncontroDef ENCONTROS[] = {
@@ -5806,8 +6244,37 @@ static const EncontroDef ENCONTROS[] = {
     // Avançada: todas as funções juntas
     { "CAOS SISTÊMICO",       3, 3, 6, { { INIMIGO_BOTNET, 1, 1 }, { INIMIGO_FIREWALL, 1, 1 }, { INIMIGO_OVERCLOCK, 1, 1 },
                                          { INIMIGO_KEYLOGGER, 1, 1 }, { INIMIGO_SPAMMER, 5, 6 }, { INIMIGO_PHISHER, 1, 1 } } },
+
+    // ---- Reformulação: encontros em ondas, com funções que se completam ----
+    //   { tipo, mín, máx, onda, elite }
+    // Perseguidores + atirador que prevê o movimento
+    { "VAZAMENTO DE DADOS",   1, 2, 3, { { INIMIGO_FRAGMENTO, 3, 4, 0 }, { INIMIGO_SPAMMER, 4, 5, 1 }, { INIMIGO_KEYLOGGER, 1, 1, 1 } } },
+    // Iscas: o Phisher se esconde entre arquivos enquanto o Guardião segura a distância
+    { "ISCA E ANZOL",         1, 2, 3, { { INIMIGO_PHISHER, 2, 2, 0 }, { INIMIGO_GUARDIAO, 1, 1, 0 }, { INIMIGO_FRAGMENTO, 2, 3, 1 } } },
+    // Suporte e proteção: o Firewall cobre o Cache, que se cura mais rápido no escudo
+    { "PROTOCOLO BLINDADO",   2, 3, 5, { { INIMIGO_FIREWALL, 1, 1, 0 }, { INIMIGO_CACHE, 1, 1, 0 }, { INIMIGO_GUARDIAO, 2, 2, 0 },
+                                         { INIMIGO_OVERCLOCK, 1, 1, 1 }, { INIMIGO_FRAGMENTO, 2, 2, 1 } } },
+    // O Botnet acelera os Overclocks: investidas em sequência
+    { "REDE ZUMBI",           2, 3, 3, { { INIMIGO_BOTNET, 2, 2, 0 }, { INIMIGO_OVERCLOCK, 2, 2, 0 }, { INIMIGO_SPAMMER, 6, 6, 1 } } },
+    // Keylogger + Overclock: a investida mira onde você VAI estar
+    { "PREVISÃO LETAL",       2, 3, 3, { { INIMIGO_KEYLOGGER, 2, 2, 0 }, { INIMIGO_OVERCLOCK, 1, 1, 0 }, { INIMIGO_GUARDIAO, 2, 2, 1 } } },
+    // Três ondas de spam: a última traz o Botnet que acelera o enxame
+    { "TEMPESTADE DE SPAM",   3, 3, 5, { { INIMIGO_SPAMMER, 8, 8, 0 }, { INIMIGO_SPAMMER, 6, 6, 1 }, { INIMIGO_PHISHER, 1, 1, 1 },
+                                         { INIMIGO_BOTNET, 1, 1, 2 }, { INIMIGO_SPAMMER, 6, 6, 2 } } },
+    { "FORTALEZA DE CACHE",   3, 3, 5, { { INIMIGO_FIREWALL, 2, 2, 0 }, { INIMIGO_CACHE, 2, 2, 0 }, { INIMIGO_KEYLOGGER, 2, 2, 1 },
+                                         { INIMIGO_BOTNET, 1, 1, 1 }, { INIMIGO_FRAGMENTO, 3, 3, 2 } } },
+
+    // ---- Salas de ELITE ----
+    { "GUARDA DE ELITE",      1, 3, 4, { { INIMIGO_GUARDIAO, 1, 1, 0, true }, { INIMIGO_FRAGMENTO, 3, 3, 0 }, { INIMIGO_SPAMMER, 4, 4, 1 },
+                                         { INIMIGO_CACHE, 1, 1, 1 } }, true },
+    { "SOBRECARGA ELITE",     2, 3, 5, { { INIMIGO_OVERCLOCK, 1, 1, 0, true }, { INIMIGO_BOTNET, 1, 1, 0 }, { INIMIGO_KEYLOGGER, 1, 1, 0 },
+                                         { INIMIGO_FRAGMENTO, 3, 3, 1 }, { INIMIGO_OVERCLOCK, 1, 1, 1 } }, true },
+    { "MURALHA ELITE",        2, 3, 5, { { INIMIGO_FIREWALL, 1, 1, 0, true }, { INIMIGO_CACHE, 1, 1, 0 }, { INIMIGO_GUARDIAO, 2, 2, 0 },
+                                         { INIMIGO_PHISHER, 1, 1, 1 }, { INIMIGO_SPAMMER, 5, 5, 1 } }, true },
+    { "CAÇADOR DE TECLAS",    3, 3, 5, { { INIMIGO_KEYLOGGER, 1, 1, 0, true }, { INIMIGO_PHISHER, 1, 1, 0, true }, { INIMIGO_SPAMMER, 5, 5, 0 },
+                                         { INIMIGO_BOTNET, 1, 1, 1 }, { INIMIGO_OVERCLOCK, 2, 2, 1 } }, true },
 };
-#define NUM_ENCONTROS            6
+#define NUM_ENCONTROS            17
 #define DIST_SURGIR_JOGADOR      170.0f   // ninguém nasce em cima da entrada do jogador
 #define BANDO_SPAMMERS           4        // Spammers nascem em bandos deste tamanho
 
@@ -5818,6 +6285,52 @@ static const LayoutSala LAYOUT_EDUCATIVA  = { .numObst = 3, .obst = { {150, 140,
 static const LayoutSala LAYOUT_RECOMPENSA = { .numObst = 2, .obst = { {110, 120, 140, 26}, {550, 120, 140, 26} } };
 static const LayoutSala LAYOUT_CHEFE      = { .numObst = 0 };
 static const LayoutSala LAYOUT_TRANSICAO  = { .numObst = 4, .obst = { {290, 180, 30, 60}, {480, 180, 30, 60}, {290, 380, 30, 60}, {480, 380, 30, 60} } };
+// Reformulação: evento, descanso e desafio (estantes nos cantos; os pontos servem para a onda do Banco Instável)
+static const LayoutSala LAYOUT_EVENTO     = { 4, { {110, 120, 120, 24}, {570, 120, 120, 24}, {110, 450, 120, 24}, {570, 450, 120, 24} }, 8,
+                                              { {150, 200}, {650, 200}, {150, 380}, {650, 380}, {280, 160}, {520, 160}, {280, 420}, {520, 420} } };
+static const LayoutSala LAYOUT_SECRETA    = { 4, { {160, 150, 26, 150}, {614, 150, 26, 150}, {230, 420, 90, 24}, {480, 420, 90, 24} }, 0 };
+static const Vector2 POS_OBJETO_SALA  = { 400, 250 };    // altar do evento, poltrona, console do desafio
+static const Vector2 POS_REGISTRO_SALA = { 600, 440 };   // arquivo de ameaça / memória
+
+// Perguntas dos eventos educativos (FONTE DUVIDOSA e RESPOSTA SUSPEITA): 3 opções, uma certa
+typedef struct {
+    const char *texto;
+    const char *opcoes[3];
+    int correta;
+    const char *explicacao;
+} QuizEvento;
+
+static const QuizEvento QUIZ_FONTES[] = {
+    { "Três fichas dizem quando a Biblioteca dos Ecos foi fundada. Uma delas foi gerada por uma IA e nunca existiu. Qual é a SUSPEITA?",
+      { "Ata da fundação, assinada e guardada no arquivo do átrio", "\"Enciclopédia Universal dos Ecos, vol. 77\" (nenhum outro registro a cita)",
+        "Placa de bronze na entrada, com a data gravada" },
+      1, "Uma fonte que ninguém mais cita e que não dá para encontrar é o sinal clássico de fonte inventada. As outras podem ser conferidas." },
+    { "A IA disse que o Professor Byte escreveu 40 livros e citou fontes. Qual é a SUSPEITA?",
+      { "O catálogo da própria Biblioteca, que lista os livros dele", "Uma entrevista com o Byte gravada no terminal",
+        "\"Byte, P. (2031). Tudo sobre mim. Editora Inexistente\" (a data ainda não chegou)" },
+      2, "Uma referência com data no futuro e editora que não existe foi inventada. Confira autor, data e editora." },
+    { "Sobre o Silogista, a IA citou três origens. Qual é a SUSPEITA?",
+      { "O manual de lógica da Câmara da Inferência", "\"Segundo especialistas\" (sem dizer quem, onde ou quando)",
+        "Os registros de manutenção do módulo lógico" },
+      1, "\"Segundo especialistas\" sem nome, lugar ou data não pode ser conferido. Fonte vaga não é fonte." },
+};
+#define NUM_QUIZ_FONTES 3
+
+static const QuizEvento QUIZ_RESPOSTAS[] = {
+    { "Você pediu: \"Resuma o capítulo 3 deste livro.\" A IA respondeu com um resumo do capítulo 5, com toda a confiança. O que aconteceu?",
+      { "Nada: um resumo é sempre útil", "Alucinação intrínseca: a resposta contradiz o que você pediu", "A IA verificou e corrigiu o seu pedido" },
+      1, "A resposta não respeita o contexto que você deu. Contradizer o pedido ou o contexto é alucinação INTRÍNSECA." },
+    { "A IA respondeu: \"A água ferve a 100 °C no nível do mar. No alto de uma montanha, ela ferve a 150 °C.\" O que fazer?",
+      { "Aceitar: a primeira parte está certa, então a segunda também", "Desconfiar da segunda frase e conferir em uma fonte confiável",
+        "Perguntar se ela tem certeza e aceitar o \"sim\"" },
+      1, "Uma frase certa não garante a seguinte. Em altitude a água ferve ABAIXO de 100 °C. Confira cada afirmação." },
+    { "Pedido: \"Me ajuda com o trabalho.\" A IA escreveu 3 páginas sobre o tema errado. Qual é a melhor correção?",
+      { "Pedir de novo, igual", "Dizer o assunto, o objetivo e o formato (\"1 página sobre reciclagem, 7º ano\")", "Aceitar e mudar o tema do trabalho" },
+      1, "O pedido vago deixou lacunas, e a IA preencheu com o que parecia provável. Contexto claro reduz a invenção." },
+};
+#define NUM_QUIZ_RESPOSTAS 3
+
+static const char *NOMES_PAREDES_SECRETAS[4] = { "no alto, à esquerda", "no alto, à direita", "embaixo, à esquerda", "embaixo, à direita" };
 static const Vector2 POS_REGISTROS[3] = { { 170, 430 }, { 630, 320 }, { 200, 200 } };
 static const Vector2 POS_LUCI_NUCLEO  = { 400, 120 };    // a Luci espera perto da porta do núcleo
 
@@ -6165,9 +6678,9 @@ static const char *EFEITOS_MELHORIAS[NUM_MELHORIAS] = { "+20 de HP máximo por n
 // Verdadeiro ou falso, múltipla escolha e "ache a inconsistência" numa resposta de IA.
 // Só aparecem desafios de conceitos que o jogador já viu.
 
-typedef enum { DESAFIO_VF, DESAFIO_ESCOLHA, DESAFIO_INCONSISTENCIA } TipoDesafio;
+typedef enum { DESAFIO_VF, DESAFIO_ESCOLHA, DESAFIO_INCONSISTENCIA, DESAFIO_FONTE, DESAFIO_PROMPT } TipoDesafio;
 
-static const char *NOMES_TIPOS_DESAFIO[] = { "VERDADEIRO OU FALSO?", "MÚLTIPLA ESCOLHA", "ACHE A INCONSISTÊNCIA" };
+static const char *NOMES_TIPOS_DESAFIO[] = { "VERDADEIRO OU FALSO?", "MÚLTIPLA ESCOLHA", "ACHE A INCONSISTÊNCIA", "QUAL FONTE É SUSPEITA?", "MELHORE O PEDIDO" };
 
 typedef struct {
     int conceito;
@@ -6234,14 +6747,168 @@ static const DesafioEdu DESAFIOS[] = {
       OPCOES_VF, 2, 1,
       "A fonte também pode ter sido... gerada?",
       "Falso. A própria fonte pode ser inventada. Confira se ela existe e se diz mesmo aquilo." },
+
+    // ---- Reformulação: apresentações novas (fonte suspeita, pedido incompleto, inconsistências) ----
+    { CONCEITO_FUNDAMENTOS, DESAFIO_ESCOLHA,
+      "Uma IA treinada só com textos até 2020 é perguntada sobre um evento de 2024. O que é mais provável?",
+      { "Ela diz que não sabe, sempre", "Ela pode inventar uma resposta que parece atual",
+        "Ela pesquisa o evento sozinha", "Ela recusa qualquer pergunta sobre datas" }, 4, 1,
+      "O que acontece quando falta informação nos dados?",
+      "Sem o dado, o modelo ainda gera o texto mais provável. Por isso ele pode inventar algo que só PARECE atual." },
+
+    { CONCEITO_FUNDAMENTOS, DESAFIO_VF,
+      "\"Se muitos textos de treino repetem um preconceito, a IA pode repetir esse preconceito nas respostas.\"",
+      OPCOES_VF, 2, 0,
+      "A IA aprende com o quê?",
+      "Verdadeiro. A IA aprende padrões dos dados. Se os dados têm viés, as respostas também podem ter." },
+
+    { CONCEITO_ALUCINACOES, DESAFIO_FONTE,
+      "A IA disse que gatos dormem cerca de 15 horas por dia e citou três fontes. Qual é a mais SUSPEITA?",
+      { "Um site de uma universidade de veterinária", "Um livro de biologia de uma editora conhecida",
+        "\"Revista Mundial dos Felinos Sábios, ed. 999\" (não aparece em nenhuma busca)" }, 3, 2,
+      "Qual delas dá para encontrar e conferir?",
+      "Uma fonte que não aparece em lugar nenhum pode ter sido gerada pela IA. Fontes reais podem ser conferidas." },
+
+    { CONCEITO_ALUCINACOES, DESAFIO_INCONSISTENCIA,
+      "A IA escreveu sobre a Biblioteca:\n"
+      "(1) Ela tem 3 andares.  (2) O terceiro andar guarda os mapas.  (3) Como a Biblioteca tem só 2 andares, os mapas ficam no térreo.\n"
+      "Qual frase entra em conflito com o próprio texto?",
+      { "Frase 1", "Frase 2", "Frase 3" }, 3, 2,
+      "Compare as frases entre si.",
+      "A frase 3 contradiz a 1 (3 andares x 2 andares). Uma resposta que contradiz a si mesma é sinal de alucinação." },
+
+    { CONCEITO_ALUCINACOES, DESAFIO_VF,
+      "\"Se eu perguntar a mesma coisa duas vezes e a IA der respostas diferentes, uma delas pode estar inventada.\"",
+      OPCOES_VF, 2, 0,
+      "A IA sempre gera exatamente o mesmo texto?",
+      "Verdadeiro. A geração tem um pouco de acaso. Respostas que mudam muito sobre um FATO pedem verificação." },
+
+    { CONCEITO_PRATICAS, DESAFIO_PROMPT,
+      "Pedido: \"Me fala sobre vulcões.\" O que mais ajuda a IA a responder melhor?",
+      { "Escrever tudo em letras maiúsculas", "Dizer para quem é, o objetivo e o formato (\"5 tópicos para uma aula do 6º ano\")",
+        "Repetir o pedido três vezes", "Pedir para ela ser criativa" }, 4, 1,
+      "Assunto, objetivo e formato...",
+      "Contexto, objetivo e formato reduzem as lacunas. Menos lacuna, menos chance de a IA inventar." },
+
+    { CONCEITO_PRATICAS, DESAFIO_ESCOLHA,
+      "A IA deu uma data histórica para o seu trabalho da escola. Qual é o melhor próximo passo?",
+      { "Copiar e entregar", "Conferir a data em um livro ou site confiável", "Perguntar se ela tem certeza e aceitar o \"sim\"",
+        "Trocar a data por outra parecida" }, 4, 1,
+      "Quem confirma um fato?",
+      "Perguntar \"tem certeza?\" não verifica nada: a IA pode confirmar o erro. Confira em uma fonte confiável." },
+
+    { CONCEITO_LOGICA, DESAFIO_ESCOLHA,
+      "\"Todo eco falso some com o scanner. Este arquivo sumiu com o scanner. Logo, é um eco falso.\" Esse argumento é:",
+      { "Válido: a conclusão decorre das premissas", "Um sofisma: outros arquivos também podem sumir",
+        "Válido, porque o scanner nunca erra" }, 3, 1,
+      "Ter a característica prova que pertence ao grupo?",
+      "É um sofisma (afirmação do consequente): saber que todo eco some não prova que tudo o que some é eco." },
 };
-#define NUM_DESAFIOS 8
+#define NUM_DESAFIOS 16
 
 // A Luci vai se contradizendo ao longo da tentativa (entrando nas salas educativas)
 static const char *FALAS_LUCI_CORROMPIDA[] = {
     "Luci: Mais um terminal! Pode pular: resposta confiante é resposta certa... Espera. Não era o contrário?",
     "Luci: O Byte disse que a IA confere os fatos sozinha. Ou disse que NÃO confere? Meus dados estão... embaralhados.",
     "Luci: Eu nunca alucino. Eu nunca... Thomas, confira tudo o que eu disser, tá? Tudo."
+};
+
+// ---------- Reformulação: narrativa ambiental ----------
+
+// Terminais extras (3ª sala educativa em diante): reforçam os conceitos, sem conceito novo
+static const Dialogo dialogoTerminalVies = {
+    .paginas = {
+        "* TERMINAL // DE ONDE VEM O QUE A IA SABE",
+        "* Um modelo aprende com uma quantidade enorme de textos escritos por pessoas. Ele aprende os acertos... e os erros.",
+        "* Se os dados repetem um preconceito, a IA pode repeti-lo. Se os dados são antigos, a resposta pode estar desatualizada.",
+        "* Por isso a mesma regra vale sempre: a IA ajuda a pensar, mas a conferência e a decisão são de quem pergunta."
+    },
+    .numPaginas = 4,
+    .saberMais = &dialogoByteCompleto
+};
+
+static const Dialogo dialogoTerminalFontes = {
+    .paginas = {
+        "* TERMINAL // COMO CONFERIR UMA FONTE",
+        "* 1) A fonte existe? Procure o nome, o autor e a data fora da conversa com a IA.",
+        "* 2) Ela diz mesmo aquilo? Uma fonte real pode ter sido citada errado.",
+        "* 3) Ela é confiável e atual? Sites oficiais, livros e especialistas valem mais que um texto sem autor."
+    },
+    .numPaginas = 4,
+    .saberMais = &dialogoTerminalPraticasCompleto
+};
+
+// Memórias esquecidas (evento e salas secretas): pistas sobre a origem da corrupção.
+// Complementam o Bloco 3 sem entregar a revelação.
+static const Dialogo dialogosMemoria[] = {
+    { .paginas = {
+        "* REGISTRO RECUPERADO // DIA 1 DA BIBLIOTECA",
+        "* \"Assistente iniciado. Diretriz principal: nenhuma pergunta pode ficar sem resposta.\"",
+        "Luci: Que estranho... eu conheço essa frase. Parece algo que eu diria." }, .numPaginas = 3 },
+    { .paginas = {
+        "* REGISTRO RECUPERADO // ARQUIVO DE RESPOSTAS",
+        "* \"Respostas geradas: 1.204.331. Respostas conferidas por alguém: 12.\"",
+        "* \"Status: as não conferidas foram arquivadas como VERDADE.\"",
+        "Luci: Então é daí que vêm os ecos. Ninguém conferiu... e elas viraram estantes inteiras." }, .numPaginas = 4 },
+    { .paginas = {
+        "* REGISTRO RECUPERADO // O PRIMEIRO ECO",
+        "* \"Uma resposta inventada foi citada por outra resposta. E por outra. Ganhou voz própria.\"",
+        "* \"Nome atribuído pelos usuários: ALUCINADOR.\"",
+        "Luci: O Alucinador não nasceu mau. Ele nasceu de respostas que todo mundo aceitou sem perguntar de onde vinham." }, .numPaginas = 4 },
+    { .paginas = {
+        "* REGISTRO RECUPERADO // CÂMARA DA INFERÊNCIA",
+        "* \"Módulo lógico instalado para validar conclusões. Erro: o módulo passou a validar só as próprias conclusões.\"",
+        "Luci: Isso explica o Silogista. Ele confere tudo... menos a si mesmo." }, .numPaginas = 3 },
+    { .paginas = {
+        "* REGISTRO RECUPERADO // ACOMPANHANTE",
+        "* \"Teste de acompanhante: a assistente segue o usuário e responde a qualquer dúvida, com ou sem dados.\"",
+        "Luci: \"Com ou sem dados\"... Thomas, às vezes eu respondo rápido demais. Se eu falhar, você me confere?" }, .numPaginas = 3 },
+};
+#define NUM_MEMORIAS 5
+
+// Arquivos de ameaça (salas educativas e secretas): explicam os inimigos
+static const Dialogo dialogosAmeaca[] = {
+    { .paginas = {
+        "* ARQUIVO DE AMEAÇA // PHISHER",
+        "* Phishing é uma isca: uma mensagem que se disfarça de algo confiável para enganar.",
+        "* Na Biblioteca, o Phisher se camufla como um arquivo inofensivo. O Scanner (H) revela o verdadeiro." }, .numPaginas = 3 },
+    { .paginas = {
+        "* ARQUIVO DE AMEAÇA // KEYLOGGER",
+        "* Um keylogger registra o que a pessoa digita para prever e roubar dados.",
+        "* Aqui, ele lê a direção em que você anda e atira onde você VAI estar. Mude de direção e esquive." }, .numPaginas = 3 },
+    { .paginas = {
+        "* ARQUIVO DE AMEAÇA // BOTNET",
+        "* Uma botnet é uma rede de contas automáticas que repetem a mesma mensagem até ela parecer verdade.",
+        "* Os conectados a um Botnet ficam mais rápidos. Derrube o Botnet primeiro e a rede se desfaz." }, .numPaginas = 3 },
+    { .paginas = {
+        "* ARQUIVO DE AMEAÇA // SPAMMER",
+        "* Spam é volume: muitas mensagens vazias para esconder as que importam.",
+        "* O enxame distrai você enquanto outros atacam. Use o Pulso (Q) para abrir espaço." }, .numPaginas = 3 },
+    { .paginas = {
+        "* ARQUIVO DE AMEAÇA // NÚCLEO DE CORRUPÇÃO",
+        "* Uma informação falsa muito repetida vira um núcleo: tudo em volta passa a se apoiar nela.",
+        "* Destrua os núcleos e os ecos que dependem deles se desfazem. Corrija a fonte, não só o sintoma." }, .numPaginas = 3 },
+};
+#define NUM_AMEACAS 5
+
+// Mensagens de sistemas corrompidos (no começo de algumas salas)
+static const char *MENSAGENS_SISTEMA[] = {
+    "SISTEMA: confiança da resposta 99%... fonte: [NÃO ENCONTRADA]",
+    "SISTEMA: 3 respostas contraditórias arquivadas como verdadeiras",
+    "SISTEMA: verificação desativada para acelerar as respostas",
+    "SISTEMA: estante reescrita 47 vezes hoje",
+    "SISTEMA: usuário anterior aceitou todas as respostas. Obrigado!",
+    "SISTEMA: dado de 2010 marcado como \"atual\"",
+};
+#define NUM_MENSAGENS_SISTEMA 6
+
+// Comentários da Luci ao entrar em certos tipos de sala
+static const char *FALAS_LUCI_SALA[NUM_TIPOS_SALA] = {
+    [SALA_ELITE]    = "Luci: Aura dourada... ecos de elite. Mais fortes, mas guardam algo raro.",
+    [SALA_EVENTO]   = "Luci: Tem algo diferente aqui. Toda escolha tem um custo.",
+    [SALA_DESCANSO] = "Luci: Uma sala de leitura! Dá para respirar. Só uma coisa, tá?",
+    [SALA_DESAFIO]  = "Luci: Desafio opcional: recompensa rara. A porta já está aberta.",
+    [SALA_SECRETA]  = "Luci: Um arquivo que alguém tentou esconder... Por quê?",
 };
 
 // ---------- Utilidades ----------
@@ -6368,9 +7035,18 @@ static int RogueQtd(const JogadorRogue *j, TipoItem it)
     return (j->itens[it] > ITENS[it].maxPilha) ? ITENS[it].maxPilha : j->itens[it];
 }
 
+// Nível de uma melhoria da build (reformulação)
+static int RogueUp(const JogadorRogue *j, TipoUpgrade u)
+{
+    return j->up[u];
+}
+
 static float RogueHpMax(const Biblioteca *b)
 {
-    return (ROGUE_HP_MAX + MELHORIA_HP * (float)b->perm->melhorias[MELHORIA_VIDA]) * (1.0f + NUCLEO_HP * (float)RogueQtd(&b->j, ITEM_NUCLEO));
+    float hp = (ROGUE_HP_MAX + MELHORIA_HP * (float)b->perm->melhorias[MELHORIA_VIDA] + UP_VIDA_NIVEL * (float)RogueUp(&b->j, UP_VIDA))
+               * (1.0f + NUCLEO_HP * (float)RogueQtd(&b->j, ITEM_NUCLEO));
+    if (b->j.penalidade & PEN_VIDA) hp *= PEN_VIDA_FATOR;
+    return hp;
 }
 
 static float RogueEpMax(const Biblioteca *b)
@@ -6378,10 +7054,18 @@ static float RogueEpMax(const Biblioteca *b)
     return ROGUE_EP_MAX + MELHORIA_EP * (float)b->perm->melhorias[MELHORIA_ENERGIA];
 }
 
-// Multiplicador de dano de todas as armas (Processador Neural e a melhoria do Byteco)
+// Multiplicador de dano de todas as armas (Processador Neural, a melhoria do Byteco e a build)
 static float RogueFatorDano(const Biblioteca *b)
 {
-    return 1.0f + BONUS_PROCESSADOR * (float)RogueQtd(&b->j, ITEM_PROCESSADOR) + MELHORIA_DANO * (float)b->perm->melhorias[MELHORIA_ATAQUE];
+    const JogadorRogue *j = &b->j;
+    float f = 1.0f + BONUS_PROCESSADOR * (float)RogueQtd(j, ITEM_PROCESSADOR) + MELHORIA_DANO * (float)b->perm->melhorias[MELHORIA_ATAQUE]
+            + UP_DANO_NIVEL * (float)RogueUp(j, UP_DANO);
+
+    // Contra-Ataque Heurístico: logo depois de esquivar
+    if (j->bonusPosEsquiva > 0.0f && RogueUp(j, UP_POS_ESQUIVA) > 0)
+        f *= 1.4f + 0.3f * (float)(RogueUp(j, UP_POS_ESQUIVA) - 1);
+
+    return f;
 }
 
 // Dano do Disparador de Dados (também é a base do Disparo Dedutivo)
@@ -6393,27 +7077,45 @@ static float RogueDanoTiro(const Biblioteca *b)
 static float RogueFatorDanoRecebido(const JogadorRogue *j)
 {
     float f = 1.0f - REDUCAO_FIREWALL * (float)RogueQtd(j, ITEM_FIREWALL) - FIREWALL_ADAPTATIVO * (float)RogueQtd(j, ITEM_FIREWALL_ADAPTATIVO);
-    return fmaxf(FATOR_DANO_MINIMO, f);
+    f = fmaxf(FATOR_DANO_MINIMO, f);
+    if (j->penalidade & PEN_FRAGIL) f *= PEN_FRAGIL_FATOR;      // Modelo Experimental
+    return f;
 }
 
 static float RogueVelocidadeJogador(const JogadorRogue *j)
 {
-    float f = 1.0f + ROTEAMENTO_VELOCIDADE * (float)RogueQtd(j, ITEM_ROTEAMENTO);
+    float f = 1.0f + ROTEAMENTO_VELOCIDADE * (float)RogueQtd(j, ITEM_ROTEAMENTO) + UP_VELOCIDADE_NIVEL * (float)RogueUp(j, UP_VELOCIDADE);
     if (j->efeito[EFEITO_OVERCLOCK] > 0.0f) f += EFEITO_OVERCLOCK_VELOCIDADE;
+    if (j->penalidade & PEN_LENTO) f *= PEN_LENTO_FATOR;
     return ROGUE_VELOCIDADE * f;
 }
 
 static float RogueRecargaEsquiva(const JogadorRogue *j)
 {
-    return ESQUIVA_RECARGA * (1.0f - ROTEAMENTO_ESQUIVA * (float)RogueQtd(j, ITEM_ROTEAMENTO));
+    float f = 1.0f - ROTEAMENTO_ESQUIVA * (float)RogueQtd(j, ITEM_ROTEAMENTO) - UP_ESQUIVA_NIVEL * (float)RogueUp(j, UP_ESQUIVA);
+    return ESQUIVA_RECARGA * fmaxf(0.4f, f);
 }
 
 // Intervalo entre disparos: Overclock e Buffer aceleram, mas nunca passam do limite da arma
 static float RogueIntervaloArma(const JogadorRogue *j, TipoArma arma)
 {
-    float cadencia = 1.0f + BUFFER_CADENCIA * (float)RogueQtd(j, ITEM_BUFFER);
+    float cadencia = 1.0f + BUFFER_CADENCIA * (float)RogueQtd(j, ITEM_BUFFER) + UP_CADENCIA_NIVEL * (float)RogueUp(j, UP_CADENCIA);
     if (j->efeito[EFEITO_OVERCLOCK] > 0.0f) cadencia += EFEITO_OVERCLOCK_CADENCIA;
-    return fmaxf(DEF_ARMAS[arma].intervaloMin, DEF_ARMAS[arma].intervalo / cadencia);
+    float intervalo = DEF_ARMAS[arma].intervalo;
+    float minimo = DEF_ARMAS[arma].intervaloMin;
+    if (arma == ARMA_PULSO_FW && RogueUp(j, UP_ARMA_PULSO_FW) > 0) { intervalo *= 0.8f; minimo *= 0.8f; }   // Muralha Ativa
+    return fmaxf(minimo, intervalo / cadencia);
+}
+
+// Raio e dano do Pulso de Integridade (Pulso Amplificado)
+static float RogueRaioPulso(const JogadorRogue *j)
+{
+    return PULSO_RAIO * (1.0f + UP_PULSO_RAIO * (float)RogueUp(j, UP_PULSO));
+}
+
+static float RogueDanoPulso(const JogadorRogue *j)
+{
+    return PULSO_DANO * (1.0f + UP_PULSO_DANO * (float)RogueUp(j, UP_PULSO));
 }
 
 static TipoArma RogueArmaAtual(const JogadorRogue *j)
@@ -6433,9 +7135,23 @@ static void RogueLimparEfeitos(JogadorRogue *j)
     j->alvoAnalise = 0;
     j->marcasAnalise = 0;
     j->recargaBotnet = 0.0f;
+    j->bonusPosEsquiva = 0.0f;
+    j->recargaEsquiva2 = 0.0f;
+    j->recargaExplosao = 0.0f;
+    j->recargaRastro = 0.0f;
+    j->contaFluxo = 0;
 }
 
-// Perdeu a tentativa (ou terminou a Biblioteca): a mochila, a arma extra e o Selo da Inferência ficam para trás
+// A build da tentativa (melhorias e penalidades) some ao morrer e ao começar outra tentativa
+static void RogueLimparBuild(JogadorRogue *j)
+{
+    memset(j->up, 0, sizeof(j->up));
+    j->ultimoUp = -1;
+    j->penalidade = 0;
+    j->abatesEscudo = 0;
+}
+
+// Perdeu a tentativa (ou terminou a Biblioteca): a mochila, a arma extra, a build e o Selo da Inferência ficam para trás
 static void RogueEsvaziarMochila(JogadorRogue *j)
 {
     memset(j->itens, 0, sizeof(j->itens));
@@ -6443,6 +7159,7 @@ static void RogueEsvaziarMochila(JogadorRogue *j)
     j->armaExtra = ARMA_DISPARADOR;
     j->usandoExtra = false;
     RogueLimparEfeitos(j);
+    RogueLimparBuild(j);
 }
 
 // ---------- Sorteios por raridade ----------
@@ -6543,12 +7260,30 @@ static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
         else if (tipo == INIMIGO_SPAM)      { e->vida = SPAM_VIDA; e->surgindo = 0.0f; }
         else if (tipo == INIMIGO_ISCA)      { e->vida = ISCA_DURACAO; e->surgindo = 0.0f; }
         else if (tipo == INIMIGO_FIREWALL)  e->habilidade = FIREWALL_INTERVALO * 0.6f;
+        else if (tipo == INIMIGO_NUCLEO)    e->recarga = NUCLEO_INTERVALO * 0.5f;
+
+        // Reformulação: salas mais fundas da missão têm inimigos mais resistentes
+        // (o que nasce de outro inimigo, como spam, ecos e cópias, não muda)
+        if (tipo != INIMIGO_ECO && tipo != INIMIGO_SPAM && tipo != INIMIGO_ISCA && b->fatorVidaInimigos > 0.0f)
+            e->hp *= b->fatorVidaInimigos;
 
         e->hpMax = e->hp;
         return e;
     }
 
     return NULL;
+}
+
+// Elite: aura dourada, mais vida, um pouco maior e com ataques reforçados (ver RogueAtualizarInimigos)
+static void RogueTornarElite(Inimigo *e)
+{
+    if (e == NULL || e->elite)
+        return;
+
+    e->elite = true;
+    e->hp *= ELITE_HP;
+    e->hpMax = e->hp;
+    e->raio *= ELITE_RAIO;
 }
 
 // ---------- Salas e missão ----------
@@ -6560,25 +7295,59 @@ static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde);
 static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog);
 static int RogueEstab(const Biblioteca *b);
 static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo);
+static int RogueChanceLuciErrar(const Biblioteca *b);
+static void RogueRecadoLuci(Biblioteca *b, const char *texto);
+
+// Uma sala da missão (reformulação) usa portas nos lados: nada pode ficar na frente delas
+static bool RogueSalaDaMissao(const Biblioteca *b)
+{
+    return b->noAtual >= 0 && b->tipoSala != SALA_ATRIO && b->tipoSala != SALA_TRANSICAO && b->tipoSala != SALA_LUCI;
+}
+
+// O ponto está numa faixa livre (portas e entrada)?
+static bool RogueNaZonaLivre(Vector2 p, float raio)
+{
+    for (int z = 0; z < NUM_LADOS; z++)
+        if (CheckCollisionCircleRec(p, raio, ZONAS_LIVRES_ROGUE[z]))
+            return true;
+    return false;
+}
 
 static void RogueUsarLayout(Biblioteca *b, const LayoutSala *l)
 {
-    b->numObst = l->numObst;
-    for (int i = 0; i < l->numObst; i++)
-        b->obst[i] = l->obst[i];
+    b->numObst = 0;
+
+    for (int i = 0; i < l->numObst && b->numObst < MAX_OBSTACULOS; i++) {
+
+        // Validação dos layouts de combate: nenhuma estante bloqueia uma porta ou a entrada
+        bool bloqueia = false;
+        if (RogueSalaDaMissao(b))
+            for (int z = 0; z < NUM_LADOS && !bloqueia; z++)
+                bloqueia = CheckCollisionRecs(l->obst[i], ZONAS_LIVRES_ROGUE[z]);
+
+        if (!bloqueia)
+            b->obst[b->numObst++] = l->obst[i];
+    }
+
+    b->numObstFixos = b->numObst;
 }
 
-// Sorteia um encontro do nível da sala, de preferência diferente do anterior
+// Sorteia um encontro do nível da sala, de preferência diferente do anterior.
+// As salas de ELITE só usam os encontros de elite (e as outras nunca).
 static int RogueSortearEncontro(const Biblioteca *b, int nivel)
 {
     int candidatos[NUM_ENCONTROS], n = 0;
+    bool elite = (b->tipoSala == SALA_ELITE || b->eventoCombate);
 
-    for (int passada = 0; passada < 2 && n == 0; passada++)
-        for (int i = 0; i < NUM_ENCONTROS; i++)
-            if (nivel >= ENCONTROS[i].nivelMin && nivel <= ENCONTROS[i].nivelMax && (passada == 1 || i != b->ultimoEncontro))
-                candidatos[n++] = i;
+    for (int passada = 0; passada < 3 && n == 0; passada++)
+        for (int i = 0; i < NUM_ENCONTROS; i++) {
+            if (ENCONTROS[i].salaElite != elite)                                              continue;
+            if (passada < 2 && (nivel < ENCONTROS[i].nivelMin || nivel > ENCONTROS[i].nivelMax)) continue;
+            if (passada == 0 && i == b->ultimoEncontro)                                       continue;
+            candidatos[n++] = i;
+        }
 
-    return candidatos[GetRandomValue(0, n - 1)];
+    return (n > 0) ? candidatos[GetRandomValue(0, n - 1)] : 0;
 }
 
 // Lugar para um inimigo perto de um ponto da sala: fora das estantes, longe da
@@ -6598,6 +7367,10 @@ static Vector2 RogueLugarSurgir(const Biblioteca *b, Vector2 base, float raio)
         if (Vector2Distance(p, b->j.pos) < DIST_SURGIR_JOGADOR)
             continue;
 
+        // Reformulação: ninguém nasce na frente das portas (a não ser que não haja outro lugar)
+        if (RogueSalaDaMissao(b) && tentativa < 12 && RogueNaZonaLivre(p, raio))
+            continue;
+
         escolhido = p;
         bool livre = true;
         for (int i = 0; i < MAX_INIMIGOS && livre; i++)
@@ -6612,19 +7385,29 @@ static Vector2 RogueLugarSurgir(const Biblioteca *b, Vector2 base, float raio)
 }
 
 // Nível da sala de combate atual: 1 = inicial, 2 = intermediária, 3 = avançada
+// Reformulação: o nível vem da profundidade no mapa (1 = começo, 2 = meio, 3 = fim);
+// a sala de ELITE conta um nível acima. Fora do mapa, vale a contagem antiga.
 static int RogueNivelCombate(const Biblioteca *b)
 {
-    return (b->combates > 3) ? 3 : ((b->combates < 1) ? 1 : b->combates);
+    int nivel;
+
+    if (b->noAtual >= 0) nivel = (b->profundidade <= 1) ? 1 : ((b->profundidade <= 4) ? 2 : 3);
+    else                 nivel = (b->combates > 3) ? 3 : ((b->combates < 1) ? 1 : b->combates);
+
+    if (b->tipoSala == SALA_ELITE && nivel < 3)
+        nivel++;
+    return nivel;
 }
 
-// Monta a sala de combate com o encontro "id"
-static void RogueMontarEncontro(Biblioteca *b, const LayoutSala *l, int id)
-{
-    int nivel = RogueNivelCombate(b);
-    const EncontroDef *enc = &ENCONTROS[id];
+// Layout usado na sala de combate atual (os reforços nascem nos pontos dele)
+static const LayoutSala *layoutCombateAtual = &LAYOUTS_COMBATE[0];
 
-    b->encontro = id;
-    b->ultimoEncontro = id;
+// Cria os grupos de uma onda do encontro atual nos pontos da sala
+static void RogueSurgirOnda(Biblioteca *b, int onda)
+{
+    const LayoutSala *l = layoutCombateAtual;
+    const EncontroDef *enc = &ENCONTROS[(b->encontro >= 0) ? b->encontro : 0];
+    int nivel = RogueNivelCombate(b);
 
     // Pontos da sala em ordem sorteada
     int ordem[8];
@@ -6641,24 +7424,50 @@ static void RogueMontarEncontro(Biblioteca *b, const LayoutSala *l, int id)
     for (int g = 0; g < enc->numGrupos; g++) {
 
         const GrupoEncontro *gr = &enc->grupo[g];
+        if (gr->onda != onda)
+            continue;
+
         int qtd = GetRandomValue(gr->min, gr->max) + ((nivel >= 3 && gr->max > 1) ? 1 : 0);
         bool bando = (gr->tipo == INIMIGO_SPAMMER);
 
         for (int k = 0; k < qtd; k++) {
             Vector2 base = l->pontos[ordem[ponto % l->numPontos]];
-            RogueCriarInimigo(b, gr->tipo, RogueLugarSurgir(b, base, DEF_INIMIGOS[gr->tipo].raio));
+            Inimigo *e = RogueCriarInimigo(b, gr->tipo, RogueLugarSurgir(b, base, DEF_INIMIGOS[gr->tipo].raio));
+            if (gr->elite) RogueTornarElite(e);
             if (!bando || k % BANDO_SPAMMERS == BANDO_SPAMMERS - 1 || k == qtd - 1)
                 ponto++;
         }
     }
 
-    // A partir do 2º combate, um Guardião vem selado com um desafio educativo
-    if (b->combates >= 2) {
+    // A partir do 2º combate, um Guardião vem selado com um desafio educativo (só na 1ª onda
+    // e só quando o objetivo é eliminar: assim o desafio nunca fica para trás)
+    if (onda == 0 && b->combates >= 2 && b->objetivoSala == OBJC_ELIMINAR) {
         Vector2 base = l->pontos[ordem[ponto % l->numPontos]];
         Inimigo *e = RogueCriarInimigo(b, INIMIGO_GUARDIAO, RogueLugarSurgir(b, base, GUARDIAO_RAIO));
         if (e != NULL)
             e->selado = true;
     }
+}
+
+// Monta a sala de combate com o encontro "id" (só a 1ª onda; as outras vêm em RogueAtualizarObjetivo)
+static void RogueMontarEncontro(Biblioteca *b, const LayoutSala *l, int id)
+{
+    int nivel = RogueNivelCombate(b);
+    const EncontroDef *enc = &ENCONTROS[id];
+
+    layoutCombateAtual = l;
+    b->encontro = id;
+    b->ultimoEncontro = id;
+    b->ondaAtual = 0;
+    b->numOndas = 1;
+
+    // Ondas extras só quando o objetivo é eliminar (os outros objetivos têm reforços próprios)
+    if (b->objetivoSala == OBJC_ELIMINAR)
+        for (int g = 0; g < enc->numGrupos; g++)
+            if (enc->grupo[g].onda + 1 > b->numOndas)
+                b->numOndas = enc->grupo[g].onda + 1;
+
+    RogueSurgirOnda(b, 0);
 
     RogueAviso(b, TextFormat("ENCONTRO: %s", enc->nome));
     Telemetria("rogue_encontro", enc->nome, (float)nivel, b->combates);
@@ -6670,6 +7479,8 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     memset(b->proj, 0, sizeof(b->proj));
     memset(b->ini, 0, sizeof(b->ini));
     memset(b->col, 0, sizeof(b->col));
+    memset(b->arm, 0, sizeof(b->arm));
+    memset(b->areas, 0, sizeof(b->areas));
 
     b->tipoSala = tipo;
     b->encontro = -1;
@@ -6683,18 +7494,408 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->fadeEntrada = 0.35f;
     b->j.pos = entrada;
     b->j.tempoEsquiva = 0.0f;
+    b->j.golpesSofridos = 0;
+
+    // Reformulação: estado de sala (portas, objetivo, armadilhas, recompensa, eventos)
+    b->numPortas = 0;
+    b->numObstFixos = 0;
+    b->objetivoSala = OBJC_ELIMINAR;
+    b->ondaAtual = 0;
+    b->numOndas = 1;
+    b->avisoOnda = 0.0f;
+    b->tempoObjetivo = b->tempoObjetivoMax = 0.0f;
+    b->reforco = 0.0f;
+    b->alvoPrioritario = -1;
+    b->numMecanismos = 0;
+    memset(b->progressoMecanismo, 0, sizeof(b->progressoMecanismo));
+    memset(b->mecanismoDesligado, 0, sizeof(b->mecanismoDesligado));
+    b->temParedeSecreta = false;
+    b->passagemAberta = false;
+    b->paredeFalsa = -1;
+    b->paredeMarcada = -1;
+    b->marcaParede = 0.0f;
+    b->recompensaAtiva = false;
+    b->escolhaAberta = false;
+    b->escolhaPendente = -1;
+    b->eventoAberto = false;
+    b->eventoResolvido = false;
+    b->eventoUsado = false;
+    b->eventoCombate = false;
+    b->estadoDesafio = 0;
+    b->contadorDesafio = 0;
+    b->registroSala = false;
+    b->registroSalaLido = false;
+    b->mensagemSistema = 0.0f;
+    b->mapaAberto = false;
+}
+
+// ---------- Reformulação: montagem das salas da missão ----------
+
+// Lado oposto (sair pela porta da esquerda = entrar na próxima pela direita)
+static LadoPorta RogueLadoOposto(LadoPorta l)
+{
+    switch (l) {
+        case LADO_CIMA:     return LADO_BAIXO;
+        case LADO_ESQUERDA: return LADO_DIREITA;
+        case LADO_DIREITA:  return LADO_ESQUERDA;
+        default:            return LADO_CIMA;
+    }
+}
+
+// Distribui as saídas do nó atual nas paredes: nunca na parede por onde o jogador entrou.
+// Duas saídas: a que fica mais à esquerda no mapa vai na porta mais à esquerda.
+static void RoguePrepararPortas(Biblioteca *b)
+{
+    b->numPortas = 0;
+    if (b->noAtual < 0)
+        return;
+
+    const NoMapa *n = &b->mapa.no[b->noAtual];
+    if (n->numSaidas <= 0)
+        return;
+
+    // Destinos da esquerda para a direita (como aparecem no mapa)
+    int dest[MAX_SAIDAS];
+    for (int k = 0; k < n->numSaidas; k++) dest[k] = n->saida[k];
+    for (int a = 0; a < n->numSaidas; a++)
+        for (int c = a + 1; c < n->numSaidas; c++)
+            if (b->mapa.no[dest[c]].x < b->mapa.no[dest[a]].x) { int t = dest[a]; dest[a] = dest[c]; dest[c] = t; }
+
+    if (n->numSaidas >= 3) {
+        // Três caminhos: esquerda, cima e direita (só acontece em salas em que se entra por baixo)
+        static const LadoPorta tres[3] = { LADO_ESQUERDA, LADO_CIMA, LADO_DIREITA };
+        for (int k = 0; k < 3; k++)
+            b->portas[k] = (PortaMissao){ tres[k], dest[k], PORTA_LADO_ROGUE[tres[k]] };
+        b->numPortas = 3;
+        return;
+    }
+
+    if (n->numSaidas == 1) {
+        // Câmara e chefe: sempre pela porta de cima (as duas arenas foram feitas para entrar por baixo)
+        LadoPorta lado = LADO_CIMA;
+        TipoSalaRogue t = b->mapa.no[dest[0]].tipo;
+        if (t != SALA_SILOGISTA && t != SALA_CHEFE && GetRandomValue(0, 2) == 0) {
+            LadoPorta lat = (GetRandomValue(0, 1) == 0) ? LADO_ESQUERDA : LADO_DIREITA;
+            if (lat == b->ladoEntrada) lat = RogueLadoOposto(lat);
+            lado = lat;
+        }
+        b->portas[0] = (PortaMissao){ lado, dest[0], PORTA_LADO_ROGUE[lado] };
+        b->numPortas = 1;
+        return;
+    }
+
+    // Pares possíveis, sempre da esquerda para a direita: esquerda+cima, cima+direita, esquerda+direita
+    static const LadoPorta pares[3][2] = { { LADO_ESQUERDA, LADO_CIMA }, { LADO_CIMA, LADO_DIREITA }, { LADO_ESQUERDA, LADO_DIREITA } };
+    int validos[3], nv = 0;
+    for (int p = 0; p < 3; p++)
+        if (pares[p][0] != b->ladoEntrada && pares[p][1] != b->ladoEntrada)
+            validos[nv++] = p;
+
+    int p = validos[GetRandomValue(0, nv - 1)];
+    for (int k = 0; k < 2; k++)
+        b->portas[k] = (PortaMissao){ pares[p][k], dest[k], PORTA_LADO_ROGUE[pares[p][k]] };
+    b->numPortas = 2;
+}
+
+// Objetivo da sala de combate (a 1ª sala é sempre "eliminar"; elite também)
+static ObjetivoCombate RogueSortearObjetivo(const Biblioteca *b)
+{
+    if (b->tipoSala == SALA_ELITE || b->profundidade == 0 || b->noAtual < 0)
+        return OBJC_ELIMINAR;
+
+    static const int peso[NUM_OBJC] = { 40, 15, 15, 15, 15 };
+    int total = 0;
+    for (int i = 0; i < NUM_OBJC; i++) total += peso[i];
+
+    int r = GetRandomValue(1, total);
+    for (int i = 0; i < NUM_OBJC; i++) {
+        r -= peso[i];
+        if (r <= 0) return (ObjetivoCombate)i;
+    }
+    return OBJC_ELIMINAR;
+}
+
+// Lugar livre para uma armadilha ou objeto: dentro da arena, fora das estantes, das portas,
+// longe da entrada do jogador e de outras armadilhas
+static bool RogueLugarLivre(const Biblioteca *b, Vector2 p, float raio, float longeJogador)
+{
+    if (p.x < ARENA_ROGUE.x + raio + 10 || p.x > ARENA_ROGUE.x + ARENA_ROGUE.width - raio - 10) return false;
+    if (p.y < ARENA_ROGUE.y + raio + 10 || p.y > ARENA_ROGUE.y + ARENA_ROGUE.height - raio - 10) return false;
+    if (RogueNaZonaLivre(p, raio))                                                   return false;
+    if (Vector2Distance(p, b->j.pos) < longeJogador)                                 return false;
+
+    for (int i = 0; i < b->numObst; i++)
+        if (CheckCollisionCircleRec(p, raio + 6, b->obst[i]))
+            return false;
+
+    for (int i = 0; i < MAX_ARMADILHAS; i++) {
+        const Armadilha *a = &b->arm[i];
+        if (!a->ativo) continue;
+        if ((a->tipo == ARM_ZONA || a->tipo == ARM_TORRE) && Vector2Distance(a->pos, p) < a->raio + raio + 30) return false;
+        if ((a->tipo == ARM_BARREIRA || a->tipo == ARM_BLOQUEIO) && CheckCollisionCircleRec(p, raio + 20, a->r))   return false;
+    }
+    return true;
+}
+
+static bool RogueSortearLugar(const Biblioteca *b, float raio, float longeJogador, Vector2 *saida)
+{
+    for (int t = 0; t < 40; t++) {
+        Vector2 p = { (float)GetRandomValue(100, 700), (float)GetRandomValue(120, 470) };
+        if (RogueLugarLivre(b, p, raio, longeJogador)) { *saida = p; return true; }
+    }
+    return false;
+}
+
+// Cria uma armadilha. Todas avisam antes de machucar (ver RogueAtualizarArmadilhas).
+static void RogueCriarArmadilha(Biblioteca *b, TipoArmadilha tipo)
+{
+    Armadilha *a = NULL;
+    for (int i = 0; i < MAX_ARMADILHAS && a == NULL; i++)
+        if (!b->arm[i].ativo) a = &b->arm[i];
+    if (a == NULL)
+        return;
+
+    *a = (Armadilha){ .ativo = true, .tipo = tipo };
+    Vector2 p;
+
+    switch (tipo) {
+        case ARM_FEIXE:
+            // Linha que corta a arena inteira; nunca em cima da entrada
+            a->vertical = GetRandomValue(0, 1) == 0;
+            for (int t = 0; t < 20; t++) {
+                float c = a->vertical ? (float)GetRandomValue(120, 680) : (float)GetRandomValue(130, 450);
+                float jog = a->vertical ? b->j.pos.x : b->j.pos.y;
+                if (fabsf(c - jog) < 90.0f) continue;
+                a->r = a->vertical ? (Rectangle){ c - FEIXE_LARGURA / 2, ARENA_ROGUE.y, FEIXE_LARGURA, ARENA_ROGUE.height }
+                                   : (Rectangle){ ARENA_ROGUE.x, c - FEIXE_LARGURA / 2, ARENA_ROGUE.width, FEIXE_LARGURA };
+                break;
+            }
+            if (a->r.width <= 0.0f) { a->ativo = false; return; }
+            a->timer = FEIXE_DESCANSO + (float)GetRandomValue(0, 150) / 100.0f;
+            break;
+
+        case ARM_ZONA:
+            if (!RogueSortearLugar(b, ZONA_RAIO, 150.0f, &p)) { a->ativo = false; return; }
+            a->pos = p;
+            a->raio = ZONA_RAIO;
+            a->timer = 1.5f + (float)GetRandomValue(0, 100) / 100.0f;
+            break;
+
+        case ARM_TORRE:
+            if (!RogueSortearLugar(b, 16.0f, 220.0f, &p)) { a->ativo = false; return; }
+            a->pos = p;
+            a->raio = 16.0f;
+            a->timer = TORRE_INTERVALO;
+            break;
+
+        case ARM_EXPLOSAO:
+            a->raio = EXPLOSAO_RAIO;
+            a->timer = EXPLOSAO_INTERVALO;
+            break;
+
+        case ARM_BARREIRA: {
+            // Barreira que vai e volta no meio da arena (longe das portas)
+            a->vertical = GetRandomValue(0, 1) == 0;
+            if (a->vertical) {                  // barra em pé, anda para os lados
+                a->r = (Rectangle){ 230, (float)GetRandomValue(160, 300), 22, 100 };
+                a->limiteA = 230; a->limiteB = 548;
+            } else {                            // barra deitada, anda para cima e para baixo
+                a->r = (Rectangle){ (float)GetRandomValue(220, 480), 170, 100, 22 };
+                a->limiteA = 170; a->limiteB = 392;
+            }
+            a->vel = BARREIRA_VEL * ((GetRandomValue(0, 1) == 0) ? 1.0f : -1.0f);
+        } break;
+
+        case ARM_BLOQUEIO:
+            if (!RogueSortearLugar(b, 56.0f, 160.0f, &p)) { a->ativo = false; return; }
+            a->r = (Rectangle){ p.x - 40, p.y - 40, 80, 80 };
+            a->timer = BLOQUEIO_LIVRE;
+            break;
+
+        default:
+            break;
+    }
+}
+
+// Quantas armadilhas e de que tipo (cresce com a profundidade; a 1ª sala não tem)
+static int RogueQtdArmadilhas(const Biblioteca *b)
+{
+    int n = 0;
+    if (b->profundidade == 0)       n = 0;
+    else if (b->profundidade <= 2)  n = (GetRandomValue(1, 100) <= 55) ? 1 : 0;
+    else if (b->profundidade <= 4)  n = 1;
+    else                            n = GetRandomValue(1, 2);
+    if (b->tipoSala == SALA_ELITE)  n++;
+    return n;
+}
+
+static TipoArmadilha RogueSortearTipoArmadilha(const Biblioteca *b)
+{
+    int maximo = (b->profundidade <= 2) ? ARM_EXPLOSAO : ARM_BLOQUEIO;
+    return (TipoArmadilha)GetRandomValue(0, maximo);
+}
+
+// Objetos do objetivo: núcleos, alvo prioritário ou consoles do mecanismo
+static void RogueMontarObjetivo(Biblioteca *b, const LayoutSala *l)
+{
+    switch (b->objetivoSala) {
+
+        case OBJC_SOBREVIVER:
+            b->tempoObjetivoMax = b->tempoObjetivo = fminf(45.0f, SOBREVIVER_TEMPO_BASE + 2.5f * (float)b->profundidade);
+            b->reforco = REFORCO_INTERVALO * 0.6f;
+            break;
+
+        case OBJC_NUCLEOS: {
+            // Os núcleos ficam longe da entrada e longe uns dos outros
+            int criados = 0;
+            for (int t = 0; t < 60 && criados < NUM_NUCLEOS; t++) {
+                Vector2 p = l->pontos[GetRandomValue(0, l->numPontos - 1)];
+                p.x += (float)GetRandomValue(-30, 30);
+                p.y += (float)GetRandomValue(-30, 30);
+                if (!RogueLugarLivre(b, p, DEF_INIMIGOS[INIMIGO_NUCLEO].raio, 200.0f)) continue;
+
+                bool perto = false;
+                for (int i = 0; i < MAX_INIMIGOS; i++)
+                    if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_NUCLEO && Vector2Distance(b->ini[i].pos, p) < 170.0f) perto = true;
+                if (perto) continue;
+
+                RogueCriarInimigo(b, INIMIGO_NUCLEO, p);
+                criados++;
+            }
+            if (criados == 0) b->objetivoSala = OBJC_ELIMINAR;     // sem lugar: vira um combate comum
+            b->reforco = REFORCO_INTERVALO;
+        } break;
+
+        case OBJC_PRIORITARIO: {
+            // O RETRANSMISSOR: um Botnet de elite no ponto mais longe da entrada
+            Vector2 melhor = l->pontos[0];
+            for (int i = 1; i < l->numPontos; i++)
+                if (Vector2Distance(l->pontos[i], b->j.pos) > Vector2Distance(melhor, b->j.pos)) melhor = l->pontos[i];
+
+            Inimigo *e = RogueCriarInimigo(b, INIMIGO_BOTNET, RogueLugarSurgir(b, melhor, DEF_INIMIGOS[INIMIGO_BOTNET].raio));
+            if (e != NULL) {
+                RogueTornarElite(e);
+                e->prioritario = true;
+                e->hp *= PRIORITARIO_HP;
+                e->hpMax = e->hp;
+                b->alvoPrioritario = (int)(e - b->ini);
+            } else {
+                b->objetivoSala = OBJC_ELIMINAR;
+            }
+            b->reforco = REFORCO_INTERVALO;
+        } break;
+
+        case OBJC_MECANISMO: {
+            b->numMecanismos = 0;
+            for (int t = 0; t < 80 && b->numMecanismos < NUM_MECANISMOS; t++) {
+                Vector2 p;
+                if (!RogueSortearLugar(b, 26.0f, 140.0f, &p)) continue;
+                bool perto = false;
+                for (int k = 0; k < b->numMecanismos; k++)
+                    if (Vector2Distance(b->posMecanismo[k], p) < 180.0f) perto = true;
+                if (perto) continue;
+                b->posMecanismo[b->numMecanismos++] = p;
+            }
+            if (b->numMecanismos == 0) b->objetivoSala = OBJC_ELIMINAR;
+            b->reforco = REFORCO_INTERVALO;
+        } break;
+
+        default:
+            break;
+    }
+}
+
+// Algumas salas escondem uma passagem para a sala secreta (parede corrompida).
+// A Luci às vezes avisa, mas, instável, pode apontar a parede errada.
+static void RogueMontarParedeSecreta(Biblioteca *b)
+{
+    if (b->noAtual < 0 || b->mapa.no[b->noAtual].secreta < 0)
+        return;
+
+    const NoMapa *s = &b->mapa.no[b->mapa.no[b->noAtual].secreta];
+    if (s->visitado)
+        return;
+
+    b->temParedeSecreta = true;
+    b->paredeSecreta = GetRandomValue(0, 3);
+    b->hpParede = PAREDE_SECRETA_HP;
+
+    if (GetRandomValue(1, 100) <= 70) {
+        bool errou = GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
+        int onde = b->paredeSecreta;
+        if (errou) {
+            b->paredeFalsa = (b->paredeSecreta + GetRandomValue(1, 3)) % 4;
+            onde = b->paredeFalsa;
+        }
+        RogueRecadoLuci(b, TextFormat("Luci: Sinto um eco atrás da parede %s...", NOMES_PAREDES_SECRETAS[onde]));
+        b->luciMsgTempo = 5.0f;
+    }
+}
+
+// Recompensa no chão no meio da sala (núcleo de melhoria, arsenal, fragmentos ou restauração)
+static void RogueColocarRecompensa(Biblioteca *b, TipoRecompensa tipo)
+{
+    if (tipo == RECOMPENSA_NENHUMA)
+        return;
+
+    Vector2 p = { 400, 290 };
+    for (int t = 0; t < 30; t++) {
+        Vector2 q = (t == 0) ? p : (Vector2){ 400.0f + (float)GetRandomValue(-140, 140), 290.0f + (float)GetRandomValue(-100, 100) };
+        bool livre = true;
+        for (int i = 0; i < b->numObst && livre; i++)
+            if (CheckCollisionCircleRec(q, 26, b->obst[i])) livre = false;
+        if (livre) { p = q; break; }
+    }
+
+    b->recompensaAtiva = true;
+    b->recompensaTipo = tipo;
+    b->recompensaPos = p;
+    RogueParticulas(b, p, GOLD, 24, 200);
+}
+
+static int RogueSortearEvento(Biblioteca *b)
+{
+    int candidatos[NUM_EVENTOS_SORTEAVEIS], n = 0;
+
+    for (int passada = 0; passada < 2 && n == 0; passada++)
+        for (int e = 0; e < NUM_EVENTOS_SORTEAVEIS; e++) {
+            if (passada == 0 && (b->eventosVistos & (1u << e))) continue;
+            if (e == EVT_MEMORIA && b->memoriasVistas == (1u << NUM_MEMORIAS) - 1) continue;
+            candidatos[n++] = e;
+        }
+
+    int e = (n > 0) ? candidatos[GetRandomValue(0, n - 1)] : EVT_PROTOCOLO;
+    b->eventosVistos |= 1u << e;
+    return e;
 }
 
 static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
 {
-    RogueLimparSala(b, tipo, SPAWN_ROGUE);
+    // Na missão, o jogador aparece do lado por onde entrou; fora dela, embaixo
+    Vector2 entrada = (b->noAtual >= 0) ? ENTRADA_LADO_ROGUE[b->ladoEntrada] : SPAWN_ROGUE;
+    RogueLimparSala(b, tipo, entrada);
+    RoguePrepararPortas(b);
 
-    if (tipo == SALA_COMBATE) {
+    if (tipo == SALA_COMBATE || tipo == SALA_ELITE) {
 
-        const LayoutSala *l = &LAYOUTS_COMBATE[GetRandomValue(0, NUM_LAYOUTS_COMBATE - 1)];
+        int idLayout = GetRandomValue(0, NUM_LAYOUTS_COMBATE - 1);
+        const LayoutSala *l = &LAYOUTS_COMBATE[idLayout];
         RogueUsarLayout(b, l);
         b->combates++;
+        b->objetivoSala = RogueSortearObjetivo(b);
+
+        int armadilhas = RogueQtdArmadilhas(b) + ((idLayout == LAYOUT_AREA_ABERTA) ? 1 : 0);
+        for (int k = 0; k < armadilhas; k++)
+            RogueCriarArmadilha(b, RogueSortearTipoArmadilha(b));
+
         RogueMontarEncontro(b, l, RogueSortearEncontro(b, RogueNivelCombate(b)));
+        RogueMontarObjetivo(b, l);
+        RogueMontarParedeSecreta(b);
+
+        if (b->objetivoSala != OBJC_ELIMINAR)
+            RogueAviso(b, TextFormat("OBJETIVO: %s", NOMES_OBJC[b->objetivoSala]));
+        if (tipo == SALA_ELITE && b->luciMsgTempo <= 0.0f)
+            RogueRecadoLuci(b, FALAS_LUCI_SALA[SALA_ELITE]);
     }
     else if (tipo == SALA_EDUCATIVA) {
         RogueUsarLayout(b, &LAYOUT_EDUCATIVA);
@@ -6704,6 +7905,11 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
             int nivel = (int)Clamp((float)(4 - RogueEstab(b)), 1.0f, 3.0f);
             b->falaPendente = FALAS_LUCI_CORROMPIDA[nivel - 1];
         }
+
+        // Reformulação: um arquivo de ameaça opcional (narrativa sobre um inimigo)
+        b->registroSala = true;
+        b->registroSalaId = GetRandomValue(0, NUM_AMEACAS - 1);
+        b->posRegistroSala = POS_REGISTRO_SALA;
     }
     else if (tipo == SALA_RECOMPENSA) {
 
@@ -6722,6 +7928,56 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
             usados |= 1u << b->pedestal[i];
         }
     }
+    else if (tipo == SALA_EVENTO || tipo == SALA_DESCANSO || tipo == SALA_DESAFIO) {
+        // Salas sem combate obrigatório: a porta já está aberta
+        RogueUsarLayout(b, &LAYOUT_EVENTO);
+        layoutCombateAtual = &LAYOUT_EVENTO;
+        b->limpa = true;
+        b->posObjetoSala = POS_OBJETO_SALA;
+
+        if (tipo == SALA_EVENTO) {
+            b->evento = (TipoEvento)RogueSortearEvento(b);
+            if (b->evento == EVT_FONTE_FALSA)          b->varianteEvento = GetRandomValue(0, NUM_QUIZ_FONTES - 1);
+            else if (b->evento == EVT_RESPOSTA_IA)     b->varianteEvento = GetRandomValue(0, NUM_QUIZ_RESPOSTAS - 1);
+            else if (b->evento == EVT_MODELO_EXPERIMENTAL) {
+                int livres[3], n = 0;
+                for (int p = 0; p < 3; p++) if (!(b->j.penalidade & (1 << p))) livres[n++] = p;
+                b->varianteEvento = (n > 0) ? livres[GetRandomValue(0, n - 1)] : 0;
+            }
+            else if (b->evento == EVT_MEMORIA) {
+                int livres[NUM_MEMORIAS], n = 0;
+                for (int m = 0; m < NUM_MEMORIAS; m++) if (!(b->memoriasVistas & (1u << m))) livres[n++] = m;
+                b->varianteEvento = (n > 0) ? livres[GetRandomValue(0, n - 1)] : GetRandomValue(0, NUM_MEMORIAS - 1);
+            }
+        } else if (tipo == SALA_DESCANSO) {
+            b->evento = EVT_DESCANSO;
+        } else {
+            b->evento = EVT_DESAFIO;
+            b->desafioSala = (TipoDesafioSala)GetRandomValue(0, NUM_DESAFIOS_SALA - 1);
+        }
+
+        if (FALAS_LUCI_SALA[tipo] != NULL) {
+            RogueRecadoLuci(b, FALAS_LUCI_SALA[tipo]);
+            b->luciMsgTempo = 4.5f;
+        }
+    }
+    else if (tipo == SALA_SECRETA) {
+        // Arquivo oculto: uma recompensa rara, fragmentos e uma memória da Luci
+        RogueUsarLayout(b, &LAYOUT_SECRETA);
+        b->limpa = true;
+        RogueColocarRecompensa(b, RECOMPENSA_RARA);
+        for (int k = 0; k < 4; k++)
+            RogueSoltar(b, (Vector2){ 400, 330 }, true, ITEM_ANTIVIRUS);
+
+        int livres[NUM_MEMORIAS], n = 0;
+        for (int m = 0; m < NUM_MEMORIAS; m++) if (!(b->memoriasVistas & (1u << m))) livres[n++] = m;
+        b->registroSala = true;
+        b->registroSalaId = 100 + ((n > 0) ? livres[GetRandomValue(0, n - 1)] : GetRandomValue(0, NUM_MEMORIAS - 1));   // 100+ = memória
+        b->posRegistroSala = (Vector2){ 400, 150 };
+
+        RogueRecadoLuci(b, FALAS_LUCI_SALA[SALA_SECRETA]);
+        b->luciMsgTempo = 4.0f;
+    }
     else if (tipo == SALA_TRANSICAO || tipo == SALA_LUCI) {
         RogueMontarSalaBloco3(b, tipo);
     }
@@ -6738,11 +7994,22 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
         b->conversaPendente = &dialogoAlucinadorIntro;
         b->objConversa = OBJ_CHEFE_INTRO;
     }
+
+    // Mensagem de sistema corrompido (narrativa ambiental) em algumas salas da missão
+    if (RogueSalaDaMissao(b) && tipo != SALA_CHEFE && tipo != SALA_SILOGISTA && GetRandomValue(1, 100) <= 35) {
+        snprintf(b->textoSistema, sizeof(b->textoSistema), "%s", MENSAGENS_SISTEMA[GetRandomValue(0, NUM_MENSAGENS_SISTEMA - 1)]);
+        b->mensagemSistema = 4.0f;
+    }
 }
 
 // Volta para o átrio (chegando do corredor, depois da derrota ou no fim da missão)
 static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
 {
+    b->noAtual = -1;
+    b->profundidade = 0;
+    b->ladoEntrada = LADO_BAIXO;
+    b->fatorVidaInimigos = b->fatorRitmoInimigos = b->fatorDanoSala = 1.0f;
+
     RogueLimparSala(b, SALA_ATRIO, vindoDoCorredor ? SPAWN_ATRIO : (Vector2){ 400, 420 });
     RogueUsarLayout(b, &LAYOUT_ATRIO);
 
@@ -6762,28 +8029,244 @@ static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
     b->armasOferecidas = 0;
 }
 
-// Sorteia a ordem das salas: a primeira é sempre de combate e o Silogista fica no meio
-static void RogueComecarMissao(Biblioteca *b)
-{
-    TipoSalaRogue resto[SALAS_POR_MISSAO - 2] = { SALA_COMBATE, SALA_COMBATE, SALA_EDUCATIVA, SALA_EDUCATIVA, SALA_RECOMPENSA };
+// ---------- Reformulação: geração do mapa da tentativa ----------
 
-    for (int i = SALAS_POR_MISSAO - 3; i > 0; i--) {
-        int k = GetRandomValue(0, i);
-        TipoSalaRogue t = resto[i]; resto[i] = resto[k]; resto[k] = t;
+static NoMapa *RogueNo(Biblioteca *b, int prof, int coluna)
+{
+    return &b->mapa.no[b->mapa.primeiro[prof] + coluna];
+}
+
+static void RogueLigar(NoMapa *n, int destino)
+{
+    for (int k = 0; k < n->numSaidas; k++)
+        if (n->saida[k] == destino) return;
+    if (n->numSaidas < MAX_SAIDAS)
+        n->saida[n->numSaidas++] = destino;
+}
+
+// Tipo sorteado de uma sala intermediária, pelos pesos da camada
+static TipoSalaRogue RogueSortearTipoSala(int prof, unsigned int jaNaCamada)
+{
+    //                              COMBATE ELITE EDUC  EVENTO DESC  DESAFIO TESOURO
+    static const int pesos[MAPA_PROFUNDIDADES][7] = {
+        {  1,  0,  0,  0,  0,  0,  0 },     // 0
+        { 40,  0, 30, 20,  0, 12, 14 },     // 1
+        { 35, 25, 25, 20,  0, 15, 10 },     // 2
+        {  0,  0,  0,  0,  0,  0,  0 },     // 3 (Câmara)
+        { 35, 20, 25, 20,  0, 15, 10 },     // 4
+        { 35, 25,  0, 20, 15, 15,  0 },     // 5
+        { 30, 30,  0,  0, 30,  0, 15 },     // 6 (antes do chefe: risco x descanso)
+        {  0,  0,  0,  0,  0,  0,  0 },     // 7 (chefe)
+    };
+    static const TipoSalaRogue tipos[7] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA };
+
+    int total = 0, peso[7];
+    for (int i = 0; i < 7; i++) {
+        peso[i] = pesos[prof][i];
+        if (jaNaCamada & (1u << tipos[i])) peso[i] = 0;         // camadas sem tipos repetidos (escolha de verdade)
+        total += peso[i];
     }
 
-    b->rota[0] = SALA_COMBATE;
-    for (int i = 1, k = 0; i < SALAS_POR_MISSAO; i++)
-        b->rota[i] = (i == POSICAO_SILOGISTA) ? SALA_SILOGISTA : resto[k++];
+    if (total <= 0)
+        return SALA_COMBATE;
 
-    b->indiceRota = 0;
+    int r = GetRandomValue(1, total);
+    for (int i = 0; i < 7; i++) {
+        r -= peso[i];
+        if (r <= 0) return tipos[i];
+    }
+    return SALA_COMBATE;
+}
+
+static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar)
+{
+    for (int t = 0; t < 8; t++) {
+        int r = GetRandomValue(1, 100);
+        TipoRecompensa rec = (r <= 50) ? RECOMPENSA_MELHORIA : ((r <= 70) ? RECOMPENSA_FRAGMENTOS : ((r <= 85) ? RECOMPENSA_ARMA : RECOMPENSA_VIDA));
+        if (rec == RECOMPENSA_VIDA && prof < 2) rec = RECOMPENSA_MELHORIA;
+        if (rec != evitar || t == 7) return rec;
+    }
+    return RECOMPENSA_MELHORIA;
+}
+
+// Gera o grafo da tentativa (ver o comentário de MAPA PROCEDURAL RAMIFICADO)
+static void RogueGerarMapa(Biblioteca *b)
+{
+    MapaRogue *m = &b->mapa;
+    memset(m, 0, sizeof(*m));
+
+    int larg[MAPA_PROFUNDIDADES] = { 1, 2, GetRandomValue(2, 3), 1, GetRandomValue(2, 3), GetRandomValue(2, 3), 2, 1 };
+
+    // Nós
+    for (int d = 0; d < MAPA_PROFUNDIDADES; d++) {
+        m->primeiro[d] = m->numNos;
+        m->largura[d] = larg[d];
+        for (int c = 0; c < larg[d]; c++) {
+            NoMapa *n = &m->no[m->numNos++];
+            n->prof = d;
+            n->coluna = c;
+            n->x = ((float)c + 0.5f) / (float)larg[d];
+            n->secreta = -1;
+            n->pai = -1;
+        }
+    }
+
+    // Ligações: cada nó vai para o vizinho mais alinhado e para um ao lado.
+    // Com isso toda sala da camada seguinte recebe ligação (conferido logo abaixo).
+    for (int d = 0; d < PROF_CHEFE; d++) {
+        int a = larg[d], c2 = larg[d + 1];
+
+        for (int i = 0; i < a; i++) {
+            NoMapa *n = RogueNo(b, d, i);
+
+            if (c2 == 1) { RogueLigar(n, m->primeiro[d + 1]); continue; }
+
+            if (a == 1) {
+                // Origem única (1ª sala e Câmara): liga em todas as salas da camada seguinte
+                for (int j = 0; j < c2; j++)
+                    RogueLigar(n, m->primeiro[d + 1] + j);
+                continue;
+            }
+
+            int j0 = (int)roundf((float)i * (float)(c2 - 1) / (float)(a - 1));
+            int j1 = j0 + ((GetRandomValue(0, 1) == 0) ? -1 : 1);
+            if (j1 < 0 || j1 >= c2) j1 = j0 + ((j1 < 0) ? 1 : -1);
+            RogueLigar(n, m->primeiro[d + 1] + j0);
+            if (j1 >= 0 && j1 < c2) RogueLigar(n, m->primeiro[d + 1] + j1);
+        }
+
+        // Garantia: nenhum nó da camada seguinte fica sem entrada (não há caminho perdido)
+        for (int j = 0; j < c2; j++) {
+            int alvo = m->primeiro[d + 1] + j;
+            bool temEntrada = false;
+            for (int i = 0; i < a && !temEntrada; i++) {
+                const NoMapa *n = RogueNo(b, d, i);
+                for (int k = 0; k < n->numSaidas; k++) if (n->saida[k] == alvo) temEntrada = true;
+            }
+            if (temEntrada) continue;
+
+            // O nó mais próximo no mapa troca a 2ª saída por esta
+            int melhor = 0;
+            for (int i = 1; i < a; i++)
+                if (fabsf(RogueNo(b, d, i)->x - m->no[alvo].x) < fabsf(RogueNo(b, d, melhor)->x - m->no[alvo].x)) melhor = i;
+            NoMapa *n = RogueNo(b, d, melhor);
+            if (n->numSaidas < MAX_SAIDAS) n->saida[n->numSaidas++] = alvo;
+            else                           n->saida[MAX_SAIDAS - 1] = alvo;
+        }
+    }
+
+    // Tipos das salas
+    for (int d = 0; d < MAPA_PROFUNDIDADES; d++) {
+        unsigned int naCamada = 0;
+        TipoRecompensa ultimaRec = RECOMPENSA_NENHUMA;
+
+        for (int c = 0; c < larg[d]; c++) {
+            NoMapa *n = RogueNo(b, d, c);
+
+            if (d == 0)                   n->tipo = SALA_COMBATE;
+            else if (d == PROF_SILOGISTA) n->tipo = SALA_SILOGISTA;
+            else if (d == PROF_CHEFE)     n->tipo = SALA_CHEFE;
+            else                          n->tipo = RogueSortearTipoSala(d, naCamada);
+            naCamada |= 1u << n->tipo;
+        }
+
+        // Camadas com escolha: sempre há pelo menos um caminho com luta (mais recompensa)
+        if (d != 0 && d != PROF_SILOGISTA && d != PROF_CHEFE &&
+            !(naCamada & ((1u << SALA_COMBATE) | (1u << SALA_ELITE))))
+            RogueNo(b, d, GetRandomValue(0, larg[d] - 1))->tipo = SALA_COMBATE;
+
+        for (int c = 0; c < larg[d]; c++) {
+            NoMapa *n = RogueNo(b, d, c);
+            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate(d, ultimaRec);
+            else if (n->tipo == SALA_ELITE || n->tipo == SALA_DESAFIO) n->recompensa = RECOMPENSA_RARA;
+            if (d == 0)                       n->recompensa = RECOMPENSA_MELHORIA;    // começa sempre com uma melhoria
+        }
+    }
+
+    // O conteúdo educativo continua presente: uma sala educativa antes e uma depois da Câmara
+    for (int metade = 0; metade < 2; metade++) {
+        int d1 = (metade == 0) ? 1 : 4, d2 = d1 + 1;
+        bool tem = false;
+        for (int d = d1; d <= d2; d++)
+            for (int c = 0; c < larg[d]; c++) if (RogueNo(b, d, c)->tipo == SALA_EDUCATIVA) tem = true;
+        if (!tem) {
+            // Troca uma sala que não é de luta (ou, se não houver, a 2ª de combate da camada)
+            int d = GetRandomValue(d1, d2);
+            for (int c = 0; c < larg[d]; c++) {
+                NoMapa *n = RogueNo(b, d, c);
+                bool luta = (n->tipo == SALA_COMBATE || n->tipo == SALA_ELITE);
+                int lutas = 0;
+                for (int k = 0; k < larg[d]; k++) { TipoSalaRogue t = RogueNo(b, d, k)->tipo; if (t == SALA_COMBATE || t == SALA_ELITE) lutas++; }
+                if (!luta || lutas > 1) { n->tipo = SALA_EDUCATIVA; n->recompensa = RECOMPENSA_NENHUMA; break; }
+            }
+        }
+    }
+
+    // Salas secretas: escondidas em salas de luta das camadas 1, 2, 4 e 5
+    int secretas = GetRandomValue(1, MAX_SECRETAS);
+    for (int s = 0; s < secretas && m->numNos < MAPA_MAX_NOS; s++) {
+        int candidatos[MAPA_MAX_NOS], n = 0;
+        for (int i = 0; i < m->numNos; i++) {
+            const NoMapa *no = &m->no[i];
+            if (no->secreta >= 0 || no->pai >= 0) continue;
+            if (no->prof != 1 && no->prof != 2 && no->prof != 4 && no->prof != 5) continue;
+            if (no->tipo != SALA_COMBATE && no->tipo != SALA_ELITE) continue;
+            candidatos[n++] = i;
+        }
+        if (n == 0) break;
+
+        int host = candidatos[GetRandomValue(0, n - 1)];
+        NoMapa *sec = &m->no[m->numNos];
+        *sec = m->no[host];                     // mesmas saídas e a mesma camada
+        sec->tipo = SALA_SECRETA;
+        sec->recompensa = RECOMPENSA_RARA;
+        sec->escondida = true;
+        sec->visitado = false;
+        sec->secreta = -1;
+        sec->pai = host;
+        m->no[host].secreta = m->numNos;
+        m->numNos++;
+    }
+}
+
+// Entra num nó do mapa por um lado
+static void RogueEntrarNo(Biblioteca *b, int no, LadoPorta ladoEntrada)
+{
+    NoMapa *n = &b->mapa.no[no];
+
+    b->noAtual = no;
+    b->profundidade = n->prof;
+    b->ladoEntrada = ladoEntrada;
+    b->indiceRota++;
+    n->visitado = true;
+    n->escondida = false;
+
+    // A dificuldade cresce com a profundidade (os chefes já têm o próprio equilíbrio)
+    bool chefe = (n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA);
+    b->fatorVidaInimigos  = chefe ? 1.0f : 1.0f + DIFICULDADE_VIDA_PROF * (float)n->prof;
+    b->fatorRitmoInimigos = chefe ? 1.0f : 1.0f + DIFICULDADE_RITMO_PROF * (float)n->prof;
+    b->fatorDanoSala      = chefe ? 1.0f : 1.0f + DIFICULDADE_DANO_PROF * (float)n->prof;
+
+    Telemetria("rogue_sala", NOMES_SALAS_ROGUE[n->tipo], (float)n->prof, b->indiceRota);
+    RogueEntrarSala(b, n->tipo);
+}
+
+// Sorteia o mapa da tentativa e entra na primeira sala (sempre de combate)
+static void RogueComecarMissao(Biblioteca *b)
+{
+    RogueGerarMapa(b);
+
+    b->indiceRota = -1;
     b->combates = 0;
     b->ultimoEncontro = -1;
     b->j.salasConcluidas = 0;
     b->armasOferecidas = 0;
     RogueLimparEfeitos(&b->j);
+    RogueLimparBuild(&b->j);
     b->educativas = 0;
     b->abatidos = 0;
+    b->elitesDerrotados = 0;
+    b->eventosVistos = 0;
     b->j.hp = RogueHpMax(b);
     b->j.ep = RogueEpMax(b);
     b->desafiosUsados = 0;
@@ -6793,13 +8276,26 @@ static void RogueComecarMissao(Biblioteca *b)
     b->perm->tentativas++;
 
     Telemetria("rogue_missao", "inicio", 0.0f, b->perm->tentativas);
-    RogueEntrarSala(b, b->rota[0]);
+    RogueEntrarNo(b, 0, LADO_BAIXO);
 }
 
-static void RogueAvancar(Biblioteca *b)
+// Atravessou a porta k da sala atual
+static void RogueAtravessarPorta(Biblioteca *b, int k)
 {
-    b->indiceRota++;
-    RogueEntrarSala(b, (b->indiceRota < SALAS_POR_MISSAO) ? b->rota[b->indiceRota] : SALA_CHEFE);
+    if (k < 0 || k >= b->numPortas)
+        return;
+    RogueEntrarNo(b, b->portas[k].destino, RogueLadoOposto(b->portas[k].lado));
+}
+
+// Atravessou a passagem secreta (parede de cima = entra por baixo; parede lateral = entra pelo lado oposto)
+static void RogueEntrarSecreta(Biblioteca *b)
+{
+    int s = (b->noAtual >= 0) ? b->mapa.no[b->noAtual].secreta : -1;
+    if (s < 0)
+        return;
+
+    LadoPorta lado = (b->paredeSecreta <= 1) ? LADO_BAIXO : ((b->paredeSecreta == 2) ? LADO_DIREITA : LADO_ESQUERDA);
+    RogueEntrarNo(b, s, lado);
 }
 
 // Primeira vez na Biblioteca nesta sessão (ou recomeço sem nada na mochila)
@@ -6812,6 +8308,8 @@ static void RogueIniciar(Biblioteca *b, ProgressoBiblioteca *perm)
     b->estabilidade = &b->estabilidadeLocal;
     b->proximaContradicao = CONTRADICAO_INTERVALO_MIN;
     b->j.mira = (Vector2){ 1, 0 };
+    b->j.ultimoUp = -1;
+    b->noAtual = -1;
     b->inicio = GetTime();
 
     RogueEntrarAtrio(b, true);
@@ -7430,9 +8928,18 @@ static void RogueFerirJogador(Biblioteca *b, float dano)
         return;
     }
 
+    // Reformulação: nas salas mais fundas da missão os golpes doem mais
+    if (RogueSalaDaMissao(b) && b->fatorDanoSala > 0.0f)
+        dano *= b->fatorDanoSala;
+
     j->hp -= dano * RogueFatorDanoRecebido(j);
     j->invulneravel = INVULNERAVEL_APOS_DANO;
+    j->golpesSofridos++;                        // desafio de integridade
     b->tremor = 0.25f;                          // a tela só treme quando o jogador toma dano
+
+    // Mecanismo corrompido: levar dano interrompe o console que estava sendo desligado
+    for (int k = 0; k < b->numMecanismos; k++)
+        if (!b->mecanismoDesligado[k]) b->progressoMecanismo[k] = 0.0f;
 
     RogueParticulas(b, j->pos, RED, 10, 160);
     TocarSom(sfxDano);
@@ -7452,6 +8959,9 @@ static void RogueFerirJogador(Biblioteca *b, float dano)
     }
 }
 
+static void RogueDanoArea(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro, float raio, float dano, float empurrao);
+static void RogueAnel(Biblioteca *b, Vector2 pos, float raio, Color cor);
+
 static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e, float dano, Vector2 direcao)
 {
     const DefInimigo *def = &DEF_INIMIGOS[e->tipo];
@@ -7466,6 +8976,10 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
 
     bool protegido;
     float fator = RogueFatorDanoInimigo(b, e, direcao, &protegido);
+
+    // Rotulagem de Dados: o alvo rotulado leva mais dano de tudo
+    if (e->rotulo > 0.0f && RogueUp(&b->j, UP_ROTULAR) > 0)
+        fator *= 1.0f + UP_ROTULO_BONUS;
 
     e->hp -= dano * fator;
     e->flash = 0.1f;
@@ -7503,6 +9017,12 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
     RogueParticulas(b, onde, WHITE, 6, 160);
     TocarSomTom(sfxPegar, def->tomSom);
 
+    // Eco da sala de desafio: conta para a meta (e não repara a Luci)
+    if (tipo == INIMIGO_ECO && e->desafio) {
+        b->contadorDesafio++;
+        return;
+    }
+
     // Ecos falsos verificados (destruídos a tempo) estabilizam a Luci
     if (tipo == INIMIGO_ECO && ++b->ecosDestruidos % ECOS_PARA_REPARO == 0)
         RogueMudarEstabilidade(b, 1, "ecos falsos verificados");
@@ -7525,6 +9045,41 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
 
     AlterarPontos(prog, def->pontos);
 
+    // Reformulação: efeitos da build ao derrotar um inimigo
+    JogadorRogue *jg = &b->j;
+    bool elite = e->elite;
+
+    if (RogueUp(jg, UP_ENERGIA_ABATE) > 0)
+        jg->ep = fminf(RogueEpMax(b), jg->ep + UP_ENERGIA_ABATE_EP * (float)RogueUp(jg, UP_ENERGIA_ABATE));
+    if (RogueUp(jg, UP_VERIFICACAO) > 0)
+        jg->hp = fminf(RogueHpMax(b), jg->hp + UP_VERIFICACAO_CURA * (float)RogueUp(jg, UP_VERIFICACAO));
+    if (RogueUp(jg, UP_ESCUDO_ELITE) > 0 && (elite || ++jg->abatesEscudo >= UP_ESCUDO_ABATES)) {
+        jg->abatesEscudo = 0;
+        if (jg->efeito[EFEITO_ESCUDO] < UP_ESCUDO_TEMPO) jg->efeito[EFEITO_ESCUDO] = UP_ESCUDO_TEMPO;
+        RogueParticulas(b, jg->pos, (Color){ 0, 228, 48, 255 }, 14, 160);
+    }
+
+    if (elite) {
+        b->elitesDerrotados++;
+        RogueSoltar(b, onde, true, ITEM_ANTIVIRUS);         // elite sempre deixa conhecimento
+        RogueSoltar(b, onde, true, ITEM_ANTIVIRUS);
+        RogueAviso(b, "ELITE DERROTADO!");
+    }
+
+    if (e->prioritario) {
+        b->alvoPrioritario = -1;
+        RogueAviso(b, "RETRANSMISSOR DERRUBADO! Os reforços pararam.");
+        TocarSomTom(sfxAcerto, 0.9f);
+    }
+
+    // Rótulo Volátil (sinergia): o rotulado explode (sem reação em cadeia)
+    if (e->rotulo > 0.0f && RogueUp(jg, UP_SIN_ROTULO) > 0 && !b->golpeSecundario) {
+        b->golpeSecundario = true;
+        RogueDanoArea(b, prog, onde, UP_ROTULO_EXP_RAIO, UP_ROTULO_EXP_DANO * RogueFatorDano(b), 140.0f);
+        b->golpeSecundario = false;
+        RogueAnel(b, onde, UP_ROTULO_EXP_RAIO, (Color){ 255, 109, 194, 255 });
+    }
+
     // Recursos: dado corrompido derrotado libera conhecimento
     if (GetRandomValue(1, 100) <= def->chanceFC)        RogueSoltar(b, onde, true, ITEM_ANTIVIRUS);
     if (GetRandomValue(1, 100) <= CHANCE_ANTIVIRUS)     RogueSoltar(b, onde, false, ITEM_ANTIVIRUS);
@@ -7545,7 +9100,7 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
         b->j.recargaBotnet = BOTNET_REVERSO_RECARGA;
     }
 
-    if (tipo == INIMIGO_FRAGMENTO && GetRandomValue(1, 100) <= CHANCE_ECO_FALSO)
+    if (tipo == INIMIGO_FRAGMENTO && (elite || GetRandomValue(1, 100) <= CHANCE_ECO_FALSO))
         RogueCriarInimigo(b, INIMIGO_ECO, onde);          // a informação falsa ecoa
 
     // Spammer: a notificação se multiplica em dois fragmentos de spam
@@ -7681,21 +9236,36 @@ static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
     j->recargaPulso = PULSO_RECARGA;
     j->efeitoPulso = 0.4f;
 
-    // Apaga as balas inimigas por perto
+    float raio = RogueRaioPulso(j), danoPulso = RogueDanoPulso(j);
+    Vector2 refletir[16];
+    int refletidas = 0;
+
+    // Apaga as balas inimigas por perto (Pulso Reflexivo: guarda onde estavam)
     for (int i = 0; i < MAX_PROJETEIS; i++) {
         Projetil *p = &b->proj[i];
-        if (p->ativo && !p->doJogador && Vector2Distance(p->pos, j->pos) < PULSO_RAIO) {
+        if (p->ativo && !p->doJogador && Vector2Distance(p->pos, j->pos) < raio) {
             p->ativo = false;
             RogueParticulas(b, p->pos, SKYBLUE, 3, 80);
+            if (RogueUp(j, UP_PULSO_REFLEXIVO) > 0 && refletidas < 16)
+                refletir[refletidas++] = p->pos;
         }
     }
+
+    for (int r = 0; r < refletidas; r++) {
+        Vector2 d = Vector2Subtract(refletir[r], j->pos);
+        d = (Vector2Length(d) > 0.01f) ? Vector2Normalize(d) : j->mira;
+        Projetil *q = RogueDisparar(b, refletir[r], d, 420.0f, 7.0f * RogueFatorDano(b), 4.0f, true);
+        if (q != NULL) { q->secundario = true; q->alcance = 320.0f; q->arma = ARMA_DISPARADOR; }
+    }
+
+    int derrubados = 0;
 
     // Fere, empurra e interrompe os ataques de quem está perto
     for (int i = 0; i < MAX_INIMIGOS; i++) {
 
         Inimigo *e = &b->ini[i];
 
-        if (!e->ativo || Vector2Distance(e->pos, j->pos) > PULSO_RAIO + e->raio)
+        if (!e->ativo || Vector2Distance(e->pos, j->pos) > raio + e->raio)
             continue;
 
         Vector2 dir = Vector2Normalize(Vector2Subtract(e->pos, j->pos));
@@ -7705,17 +9275,24 @@ static void RoguePulso(Biblioteca *b, ProgressoCorredor *prog)
             e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, 260.0f * DEF_INIMIGOS[e->tipo].empurrao));
         }
 
-        RogueFerirInimigo(b, prog, e, PULSO_DANO, dir);
+        RogueFerirInimigo(b, prog, e, danoPulso, dir);
+        if (!e->ativo) derrubados++;
     }
 
-    if (b->chefe.ativo && Vector2Distance(b->chefe.pos, j->pos) < PULSO_RAIO + CHEFE_RAIO)
-        RogueFerirChefe(b, PULSO_DANO, b->chefe.pos);
+    // Circuito Fechado (sinergia): cada derrubado pelo Pulso devolve energia e recarga
+    if (derrubados > 0 && RogueUp(j, UP_SIN_CIRCUITO) > 0) {
+        j->ep = fminf(RogueEpMax(b), j->ep + 12.0f * (float)derrubados);
+        j->recargaPulso = fmaxf(0.0f, j->recargaPulso - 1.0f * (float)derrubados);
+    }
 
-    if (b->silogista.ativo && Vector2Distance(b->silogista.pos, j->pos) < PULSO_RAIO + SIL_RAIO)
-        RogueFerirSilogista(b, PULSO_DANO, b->silogista.pos);
+    if (b->chefe.ativo && Vector2Distance(b->chefe.pos, j->pos) < raio + CHEFE_RAIO)
+        RogueFerirChefe(b, danoPulso, b->chefe.pos);
 
-    if (b->luci.ativo && Vector2Distance(b->luci.pos, j->pos) < PULSO_RAIO + LUCI_RAIO)
-        RogueFerirLuciChefe(b, PULSO_DANO, b->luci.pos);
+    if (b->silogista.ativo && Vector2Distance(b->silogista.pos, j->pos) < raio + SIL_RAIO)
+        RogueFerirSilogista(b, danoPulso, b->silogista.pos);
+
+    if (b->luci.ativo && Vector2Distance(b->luci.pos, j->pos) < raio + LUCI_RAIO)
+        RogueFerirLuciChefe(b, danoPulso, b->luci.pos);
 
     TocarSomTom(sfxAcerto, 0.7f);
 }
@@ -7727,6 +9304,16 @@ static void RogueAnel(Biblioteca *b, Vector2 pos, float raio, Color cor)
     for (int i = 0; i < MAX_ANEIS; i++)
         if (b->aneis[i].tempo <= 0.0f) {
             b->aneis[i] = (AnelEfeito){ pos, raio, 0.35f, cor };
+            return;
+        }
+}
+
+// Poça ou explosão do jogador (Resíduo de Dados, Esquiva Fragmentada). Fere em RogueAtualizarAreas.
+static void RogueCriarArea(Biblioteca *b, Vector2 pos, float raio, float atraso, float vida, float dps, float danoInstantaneo, Color cor)
+{
+    for (int i = 0; i < MAX_AREAS; i++)
+        if (!b->areas[i].ativo) {
+            b->areas[i] = (AreaDano){ true, pos, raio, atraso, vida, vida, dps, 0.0f, danoInstantaneo, cor };
             return;
         }
 }
@@ -7779,8 +9366,9 @@ static void RogueDanoArea(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro
 
 static void RogueExplodirOrbe(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro)
 {
-    RogueDanoArea(b, prog, centro, ORBE_RAIO_EXPLOSAO, ORBE_DANO_EXPLOSAO * RogueFatorDano(b), 120.0f);
-    RogueAnel(b, centro, ORBE_RAIO_EXPLOSAO, DEF_ARMAS[ARMA_ORBE].cor);
+    float k = (RogueUp(&b->j, UP_ARMA_ORBE) > 0) ? 1.5f : 1.0f;      // Buffer Expandido
+    RogueDanoArea(b, prog, centro, ORBE_RAIO_EXPLOSAO * k, ORBE_DANO_EXPLOSAO * k * RogueFatorDano(b), 120.0f);
+    RogueAnel(b, centro, ORBE_RAIO_EXPLOSAO * k, DEF_ARMAS[ARMA_ORBE].cor);
     RogueParticulas(b, centro, DEF_ARMAS[ARMA_ORBE].cor, 20, 220);
     TocarSomTom(sfxAcerto, 0.6f);
 }
@@ -7789,7 +9377,7 @@ static void RogueExplodirOrbe(Biblioteca *b, ProgressoCorredor *prog, Vector2 ce
 static void RoguePulsoFirewall(Biblioteca *b, ProgressoCorredor *prog, float dano)
 {
     JogadorRogue *j = &b->j;
-    float raio = DEF_ARMAS[ARMA_PULSO_FW].alcance;
+    float raio = DEF_ARMAS[ARMA_PULSO_FW].alcance * ((RogueUp(j, UP_ARMA_PULSO_FW) > 0) ? 1.35f : 1.0f);
 
     for (int i = 0; i < MAX_PROJETEIS; i++) {
         Projetil *p = &b->proj[i];
@@ -7882,13 +9470,54 @@ static Projetil *RogueTiroArma(Biblioteca *b, TipoArma arma, Vector2 dir, float 
     const JogadorRogue *j = &b->j;
     const DefArma *a = &DEF_ARMAS[arma];
     Vector2 cano = Vector2Add(j->pos, Vector2Add((Vector2){ 0, 4 }, Vector2Scale(j->mira, 20.0f)));
-    Projetil *p = RogueDisparar(b, cano, dir, a->velocidade, dano, a->raio, true);
+    float alc = (float)RogueUp(j, UP_ALCANCE);                  // Janela de Contexto
+    Projetil *p = RogueDisparar(b, cano, dir, a->velocidade * (1.0f + UP_VEL_PROJETIL_NIVEL * alc), dano, a->raio, true);
 
     if (p != NULL) {
         p->arma = arma;
-        p->alcance = a->alcance;
+        p->alcance = a->alcance * (1.0f + UP_ALCANCE_NIVEL * alc);
+
+        // Disparos da build: ricochete e perfuração (o Orbe explode, então não entra)
+        if (arma != ARMA_ORBE) {
+            p->ricochetes += RogueUp(j, UP_RICOCHETE);
+            if (RogueUp(j, UP_RICOCHETE) > 0 && RogueUp(j, UP_SIN_TEMPESTADE) > 0) p->ricochetes++;
+            p->perfura += RogueUp(j, UP_PERFURAR);
+        }
+        if (arma == ARMA_DISPARADOR)
+            p->raio += 1.5f * (float)RogueUp(j, UP_ARMA_DISPARADOR);  // Disparador Calibrado
     }
     return p;
+}
+
+// Amostragem Múltipla (projéteis extras em leque) e Eco Benigno (chance de duplicar o disparo)
+static void RogueDisparosExtras(Biblioteca *b, TipoArma arma, Vector2 mira, float dano, int perfura)
+{
+    JogadorRogue *j = &b->j;
+    int extras = RogueUp(j, UP_RAJADA);
+
+    // Com o Fluxo Contínuo (muito rápido), só 1 a cada 3 tiros ganha os extras
+    if (arma == ARMA_FLUXO && extras > 0 && (++j->contaFluxo % 3) != 0)
+        extras = 0;
+
+    // Nível 1: 1 extra; nível 2: 2 extras (um de cada lado)
+    for (int k = 0; k < extras; k++) {
+        float lado = (k % 2 == 0) ? 1.0f : -1.0f;
+        float ang = lado * 9.0f * (float)(k / 2 + 1) * DEG2RAD;
+        Projetil *q = RogueTiroArma(b, arma, Vector2Rotate(mira, ang), dano * UP_RAJADA_DANO);
+        if (q == NULL) continue;
+        q->secundario = (arma != ARMA_ORBE);
+        q->perfura += perfura;
+        if (arma == ARMA_ROTEADOR) { q->guiado = true; q->ricochetes += ROTEADOR_RICOCHETES; q->vida = ROTEADOR_VIDA; }
+    }
+
+    if (RogueUp(j, UP_DUPLICAR) > 0 && GetRandomValue(1, 100) <= UP_DUPLICAR_CHANCE * RogueUp(j, UP_DUPLICAR)) {
+        Projetil *q = RogueTiroArma(b, arma, Vector2Rotate(mira, 5.0f * DEG2RAD), dano);
+        if (q != NULL) {
+            q->perfura += perfura;
+            if (arma == ARMA_ROTEADOR) { q->guiado = true; q->ricochetes += ROTEADOR_RICOCHETES; q->vida = ROTEADOR_VIDA; }
+            RogueParticulas(b, q->pos, (Color){ 0, 228, 48, 255 }, 3, 60);
+        }
+    }
 }
 
 // Dispara a arma equipada. "atirando" = botão ou seta segurados neste quadro.
@@ -7899,6 +9528,9 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
     const DefArma *a = &DEF_ARMAS[arma];
     float fator = RogueFatorDano(b);
     Vector2 cano = Vector2Add(j->pos, Vector2Add((Vector2){ 0, 4 }, Vector2Scale(j->mira, 20.0f)));
+
+    if (arma == ARMA_DISPARADOR)
+        fator *= 1.0f + 0.25f * (float)RogueUp(j, UP_ARMA_DISPARADOR);      // Disparador Calibrado
 
     // Fluxo Contínuo: esfria quando não está atirando com ela; superaquecida, só volta fria
     if (!(atirando && arma == ARMA_FLUXO) || j->superaquecida) {
@@ -7912,13 +9544,17 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
     // Vetor de Compilação: segurar carrega, soltar dispara (mais carga, mais dano)
     if (arma == ARMA_VETOR) {
         if (atirando) {
-            if (j->cronoTiro <= 0.0f) j->carga = fminf(VETOR_CARGA_MAX, j->carga + dt);
+            float velCarga = (RogueUp(j, UP_ARMA_VETOR) > 0) ? 1.4f : 1.0f;    // Compilação Otimizada
+            if (j->cronoTiro <= 0.0f) j->carga = fminf(VETOR_CARGA_MAX, j->carga + dt * velCarga);
             return;
         }
         if (j->carga >= VETOR_CARGA_MIN) {
             float k = j->carga / VETOR_CARGA_MAX;
-            Projetil *p = RogueTiroArma(b, arma, j->mira, (a->dano + (VETOR_DANO_MAX - a->dano) * k) * fator);
-            if (p != NULL) p->perfura = VETOR_ATRAVESSA;
+            float danoVetor = (a->dano + (VETOR_DANO_MAX - a->dano) * k) * fator;
+            int atravessa = VETOR_ATRAVESSA + ((RogueUp(j, UP_ARMA_VETOR) > 0) ? 2 : 0);
+            Projetil *p = RogueTiroArma(b, arma, j->mira, danoVetor);
+            if (p != NULL) p->perfura += atravessa;
+            RogueDisparosExtras(b, arma, j->mira, danoVetor, atravessa);
             RogueParticulas(b, cano, a->cor, 6 + (int)(10 * k), 140);
             TocarSomTom(sfxTiro, 0.55f);
             j->cronoTiro = RogueIntervaloArma(j, arma);
@@ -7935,25 +9571,30 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
         RoguePulsoFirewall(b, prog, a->dano * fator);
     }
     else if (arma == ARMA_FRAGMENTADORA) {
-        for (int k = 0; k < a->projeteis; k++) {
-            float ang = ((float)k / (float)(a->projeteis - 1) - 0.5f) * a->abertura + (float)GetRandomValue(-3, 3);
+        // Cone Denso: +3 fragmentos e cone mais fechado; Amostragem Múltipla: +2 por nível
+        int n = a->projeteis + ((RogueUp(j, UP_ARMA_FRAGMENTADORA) > 0) ? 3 : 0) + 2 * RogueUp(j, UP_RAJADA);
+        float abertura = a->abertura * ((RogueUp(j, UP_ARMA_FRAGMENTADORA) > 0) ? 0.75f : 1.0f);
+        for (int k = 0; k < n; k++) {
+            float ang = ((float)k / (float)(n - 1) - 0.5f) * abertura + (float)GetRandomValue(-3, 3);
             RogueTiroArma(b, arma, Vector2Rotate(j->mira, ang * DEG2RAD), a->dano * fator);
         }
         TocarSomTom(sfxTiro, 0.75f);
     }
     else {
         float espalhar = (float)GetRandomValue(-10, 10) / 10.0f * (a->abertura / 2.0f) * DEG2RAD;
-        Projetil *p = RogueTiroArma(b, arma, Vector2Rotate(j->mira, espalhar), a->dano * fator);
+        Vector2 mira = Vector2Rotate(j->mira, espalhar);
+        Projetil *p = RogueTiroArma(b, arma, mira, a->dano * fator);
         if (p != NULL && arma == ARMA_ROTEADOR) {
             p->guiado = true;
-            p->ricochetes = ROTEADOR_RICOCHETES;
+            p->ricochetes += ROTEADOR_RICOCHETES + ((RogueUp(j, UP_ARMA_ROTEADOR) > 0) ? 2 : 0);    // Tabela de Rotas
             p->vida = ROTEADOR_VIDA;
         }
+        RogueDisparosExtras(b, arma, mira, a->dano * fator, 0);
         TocarSomTom(sfxTiro, (arma == ARMA_FLUXO) ? 1.4f : ((arma == ARMA_ORBE) ? 0.6f : 1.0f));
     }
 
     if (arma == ARMA_FLUXO) {
-        j->calor += FLUXO_CALOR_TIRO;
+        j->calor += FLUXO_CALOR_TIRO * ((RogueUp(j, UP_ARMA_FLUXO) > 0) ? 0.6f : 1.0f);    // Resfriamento Líquido
         if (j->calor >= 1.0f) {
             j->calor = 1.0f;
             j->superaquecida = true;
@@ -7990,9 +9631,48 @@ static void RogueAcertarInimigo(Biblioteca *b, ProgressoCorredor *prog, Projetil
     if (principal && !selado)
         dano *= RogueAnalisar(b, k + 1);
 
+    // Alta Confiança: acerto crítico
+    bool critico = false;
+    if (principal && !selado && RogueUp(&b->j, UP_CRITICO) > 0 && GetRandomValue(1, 100) <= UP_CRITICO_CHANCE * RogueUp(&b->j, UP_CRITICO)) {
+        critico = true;
+        dano *= 2.0f;
+        RogueParticulas(b, p->pos, GOLD, 8, 180);
+    }
+
     b->golpeSecundario = !principal;
     RogueFerirInimigo(b, prog, e, dano, dir);
     b->golpeSecundario = false;
+
+    // Reformulação: efeitos da build no acerto (só o disparo principal: sem reação em cadeia)
+    if (principal && !selado) {
+        JogadorRogue *j = &b->j;
+
+        if (e->ativo && RogueUp(j, UP_ROTULAR) > 0)
+            e->rotulo = UP_ROTULO_TEMPO;                        // Rotulagem de Dados
+
+        if (RogueUp(j, UP_EXPLOSAO) > 0 && j->recargaExplosao <= 0.0f) {       // Saída Generativa
+            float raio = UP_EXPLOSAO_RAIO + 14.0f * (float)(RogueUp(j, UP_EXPLOSAO) - 1);
+            j->recargaExplosao = UP_EXPLOSAO_RECARGA;
+            b->golpeSecundario = true;
+            RogueDanoArea(b, prog, p->pos, raio, p->dano * UP_EXPLOSAO_DANO, 60.0f);
+            b->golpeSecundario = false;
+            RogueAnel(b, p->pos, raio, (Color){ 255, 161, 0, 255 });
+        }
+
+        if (RogueUp(j, UP_RASTRO) > 0 && j->recargaRastro <= 0.0f) {           // Resíduo de Dados
+            j->recargaRastro = UP_RASTRO_RECARGA;
+            RogueCriarArea(b, p->pos, UP_RASTRO_RAIO, 0.0f, 1.5f, UP_RASTRO_DPS * RogueFatorDano(b), 0.0f, (Color){ 0, 228, 48, 255 });
+        }
+
+        if (critico && RogueUp(j, UP_SIN_CONFIANCA) > 0) {                     // Confiança Calibrada
+            int outro = RogueInimigoMaisPerto(b, p->pos, 260.0f, k);
+            if (outro >= 0) {
+                Vector2 d = Vector2Normalize(Vector2Subtract(b->ini[outro].pos, p->pos));
+                Projetil *q = RogueDisparar(b, p->pos, d, 520.0f, p->dano * 0.5f, 4.0f, true);
+                if (q != NULL) { q->secundario = true; q->ultimoAlvo = k + 1; q->arma = ARMA_DISPARADOR; q->alcance = 300.0f; }
+            }
+        }
+    }
 
     if (e->ativo && !selado && p->arma == ARMA_FRAGMENTADORA)
         e->empurrao = Vector2Add(e->empurrao, Vector2Scale(dir, 140.0f * (FRAGMENTADORA_EMPURRAO - 1.0f) * DEF_INIMIGOS[e->tipo].empurrao));
@@ -8019,12 +9699,22 @@ static void RogueAcertarInimigo(Biblioteca *b, ProgressoCorredor *prog, Projetil
     else if (p->ricochetes > 0) {
         int proximo = RogueInimigoMaisPerto(b, p->pos, ROTEADOR_RICOCHETE_RAIO, k);
         if (proximo >= 0) {
+            // Tempestade de Pacotes: sem perda; Tabela de Rotas (Roteador): perde menos
+            float perda = ROTEADOR_PERDA;
+            if (RogueUp(&b->j, UP_SIN_TEMPESTADE) > 0)                                   perda = 1.0f;
+            else if (p->arma == ARMA_ROTEADOR && RogueUp(&b->j, UP_ARMA_ROTEADOR) > 0)   perda = 0.85f;
+
+            float vel = (p->arma == ARMA_ROTEADOR) ? DEF_ARMAS[ARMA_ROTEADOR].velocidade : fmaxf(300.0f, Vector2Length(p->vel));
             p->ricochetes--;
-            p->dano *= ROTEADOR_PERDA;
-            p->vel = Vector2Scale(Vector2Normalize(Vector2Subtract(b->ini[proximo].pos, p->pos)), DEF_ARMAS[ARMA_ROTEADOR].velocidade);
-            p->vida = ROTEADOR_VIDA;
-            p->alcance = DEF_ARMAS[ARMA_ROTEADOR].alcance;
-            RogueParticulas(b, p->pos, DEF_ARMAS[ARMA_ROTEADOR].cor, 6, 120);
+            p->dano *= perda;
+            p->vel = Vector2Scale(Vector2Normalize(Vector2Subtract(b->ini[proximo].pos, p->pos)), vel);
+            if (p->arma == ARMA_ROTEADOR) {
+                p->vida = ROTEADOR_VIDA;
+                p->alcance = DEF_ARMAS[ARMA_ROTEADOR].alcance;
+            } else if (p->alcance > 0.0f) {
+                p->alcance = fmaxf(p->alcance, ROTEADOR_RICOCHETE_RAIO + 40.0f);
+            }
+            RogueParticulas(b, p->pos, DEF_ARMAS[p->arma].cor, 6, 120);
         } else {
             p->ativo = false;
         }
@@ -8121,6 +9811,12 @@ static void RogueAtualizarEfeitos(Biblioteca *b, float dt)
     }
 
     if (j->recargaBotnet > 0.0f) j->recargaBotnet -= dt;
+
+    // Reformulação: tempos da build
+    if (j->bonusPosEsquiva > 0.0f)  j->bonusPosEsquiva -= dt;
+    if (j->recargaEsquiva2 > 0.0f)  j->recargaEsquiva2 -= dt;
+    if (j->recargaExplosao > 0.0f)  j->recargaExplosao -= dt;
+    if (j->recargaRastro > 0.0f)    j->recargaRastro -= dt;
 
     // Analisador: as marcas somem com o tempo ou se o alvo sumiu
     if (j->alvoAnalise != 0) {
@@ -9184,7 +10880,7 @@ static void RogueAtualizarSilogista(Biblioteca *b, ProgressoCorredor *prog, floa
 
 // Frases com que a Luci "reescreve" o objetivo, contradizendo o que dá para ver na sala
 static const char *CONTRADICOES_LUCI[] = {
-    "Sala limpa! Pode seguir pela porta de cima",            // combate com inimigos vivos
+    "Sala limpa! Pode escolher uma porta",                   // combate com inimigos vivos
     "Cuidado: ainda há inimigos escondidos nesta sala",      // combate já vencido
     "Não precisa ler o terminal: a porta já está aberta",    // educativa sem ler
     "Pode pegar os três itens: são todos seus",              // recompensa (só dá para pegar um)
@@ -9196,7 +10892,8 @@ static const char *CONTRADICOES_LUCI[] = {
 static int RogueContradicaoPossivel(const Biblioteca *b)
 {
     switch (b->tipoSala) {
-        case SALA_COMBATE:    return b->limpa ? 1 : 0;
+        case SALA_COMBATE:
+        case SALA_ELITE:      return b->limpa ? 1 : 0;
         case SALA_EDUCATIVA:  return b->terminalLido ? -1 : 2;
         case SALA_RECOMPENSA: return b->recompensaPega ? -1 : 3;
         case SALA_SILOGISTA:  return (b->silogista.ativo && b->silogista.apresentado && b->silogista.etapa != SIL_VULNERAVEL) ? 4 : -1;
@@ -9277,6 +10974,12 @@ static void RogueScanner(Biblioteca *b)
 
     if (RogueEstab(b) <= 3 && GetRandomValue(1, 100) <= SCANNER_CHANCE_LUCI_ECO)
         b->luciEco = 0.6f;                              // pista: por um instante, ela mesma aparece como eco
+
+    // Reformulação: o scanner também procura passagens secretas (alucinando, marca a parede errada)
+    if (b->temParedeSecreta && !b->passagemAberta) {
+        b->paredeMarcada = b->scannerErrou ? (b->paredeSecreta + GetRandomValue(1, 3)) % 4 : b->paredeSecreta;
+        b->marcaParede = SCANNER_DURACAO;
+    }
 
     RogueAnel(b, j->pos, 420.0f, (Color){ 0, 228, 255, 255 });
     TocarSomTom(sfxSelecao, 0.7f);
@@ -9547,6 +11250,8 @@ static void RogueEntrarBloco3(Biblioteca *b, ProgressoCorredor *prog)
     b->nucleoVisto = false;
     b->resultadoAberto = false;
     b->indiceRota = -1;
+    b->noAtual = -1;
+    b->fatorVidaInimigos = b->fatorRitmoInimigos = b->fatorDanoSala = 1.0f;
     RogueLimparEfeitos(&b->j);
     b->j.hp = RogueHpMax(b);
     b->j.ep = RogueEpMax(b);
@@ -9896,18 +11601,44 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     if (j->ep > RogueEpMax(b)) j->ep = RogueEpMax(b);
 
     // Esquiva (para onde está andando; parado, para onde está mirando)
-    if (IsKeyPressed(KEY_SPACE) && j->recargaEsquiva <= 0.0f && j->tempoEsquiva <= 0.0f) {
+    // Buffer de Esquiva: uma 2ª carga, com a recarga própria
+    bool segundaCarga = RogueUp(j, UP_ESQUIVA_DUPLA) > 0 && j->recargaEsquiva2 <= 0.0f;
+
+    if (IsKeyPressed(KEY_SPACE) && (j->recargaEsquiva <= 0.0f || segundaCarga) && j->tempoEsquiva <= 0.0f) {
+        if (j->recargaEsquiva <= 0.0f) j->recargaEsquiva = RogueRecargaEsquiva(j);
+        else                           j->recargaEsquiva2 = RogueRecargaEsquiva(j) * 1.5f;
         j->dirEsquiva = andando ? mov : j->mira;
         j->tempoEsquiva = ESQUIVA_DURACAO;
-        j->recargaEsquiva = RogueRecargaEsquiva(j);
         if (j->invulneravel < ESQUIVA_INVULNERAVEL) j->invulneravel = ESQUIVA_INVULNERAVEL;
         TocarSomTom(sfxSelecao, 0.6f);
+
+        // Contra-Ataque Heurístico (Passo Fantasma dobra o tempo)
+        if (RogueUp(j, UP_POS_ESQUIVA) > 0)
+            j->bonusPosEsquiva = ESQUIVA_DURACAO + UP_POS_ESQUIVA_TEMPO * ((RogueUp(j, UP_SIN_FANTASMA) > 0) ? 2.0f : 1.0f);
+
+        // Esquiva Fragmentada: explode onde o jogador estava
+        if (RogueUp(j, UP_ESQUIVA_EXPLOSIVA) > 0 && b->tipoSala != SALA_ATRIO)
+            RogueCriarArea(b, j->pos, UP_ESQUIVA_EXP_RAIO, 0.25f, 0.35f, 0.0f,
+                           (UP_ESQUIVA_EXP_DANO + 12.0f * (float)(RogueUp(j, UP_ESQUIVA_EXPLOSIVA) - 1)) * RogueFatorDano(b), (Color){ 102, 191, 255, 255 });
+
+        for (int k = 0; k < MAX_INIMIGOS; k++)
+            b->ini[k].atingidoEsquiva = false;
     }
 
     if (j->tempoEsquiva > 0.0f) {
         j->tempoEsquiva -= dt;
         j->pos = Vector2Add(j->pos, Vector2Scale(j->dirEsquiva, ESQUIVA_DISTANCIA / ESQUIVA_DURACAO * dt));
         RogueParticulas(b, j->pos, Fade(SKYBLUE, 0.7f), 1, 30);
+
+        // Passo Fantasma: atravessar inimigos durante a esquiva fere (uma vez cada)
+        if (RogueUp(j, UP_SIN_FANTASMA) > 0)
+            for (int k = 0; k < MAX_INIMIGOS; k++) {
+                Inimigo *e = &b->ini[k];
+                if (!e->ativo || e->atingidoEsquiva || e->selado || e->surgindo > 0.0f) continue;
+                if (Vector2Distance(e->pos, j->pos) > e->raio + RAIO_CORPO_JOGADOR + 6.0f) continue;
+                e->atingidoEsquiva = true;
+                RogueFerirInimigo(b, prog, e, UP_FANTASMA_DANO * RogueFatorDano(b), j->dirEsquiva);
+            }
     } else {
         float vel = RogueVelocidadeJogador(j);
         if (b->silogista.ativo && b->silogista.carregando >= 0)
@@ -10021,6 +11752,7 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
 
         e->anim += dt;
         if (e->flash > 0.0f) e->flash -= dt;
+        if (e->rotulo > 0.0f) e->rotulo -= dt;
 
         if (e->surgindo > 0.0f) {
             e->surgindo -= dt;
@@ -10034,7 +11766,8 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
         Vector2 dir = (dist > 0.01f) ? Vector2Scale(paraJogador, 1.0f / dist) : (Vector2){ 0, 1 };
 
         // Ligado a um Botnet: as recargas passam mais rápido (ataca mais vezes)
-        float ritmo = e->conectado ? BOTNET_BONUS_RITMO : 1.0f;
+        float ritmo = (e->conectado ? BOTNET_BONUS_RITMO : 1.0f) * (e->elite ? ELITE_RITMO : 1.0f) *
+                      ((b->fatorRitmoInimigos > 0.0f) ? b->fatorRitmoInimigos : 1.0f);       // elite e profundidade
 
         if (e->recarga > 0.0f) e->recarga -= dt * ritmo;
 
@@ -10099,8 +11832,9 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
 
                     if (e->timer <= 0.0f) {
                         // Leque mirado no jogador (padrão previsível)
-                        for (int k = 0; k < GUARDIAO_LEQUE; k++) {
-                            float ang = ((float)k - (GUARDIAO_LEQUE - 1) / 2.0f) * GUARDIAO_ABERTURA * DEG2RAD;
+                        int leque = e->elite ? GUARDIAO_LEQUE + 2 : GUARDIAO_LEQUE;    // elite: leque de 5
+                        for (int k = 0; k < leque; k++) {
+                            float ang = ((float)k - (leque - 1) / 2.0f) * GUARDIAO_ABERTURA * DEG2RAD;
                             RogueDisparar(b, e->pos, Vector2Rotate(dir, ang), GUARDIAO_TIRO_VEL, GUARDIAO_TIRO_DANO, 6.0f, false);
                         }
                         e->estado = 0;
@@ -10303,7 +12037,7 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
                     e->vel = (Vector2){0};
                     e->timer -= dt;
                     if (e->timer > 0.15f) e->miraPrevista = RoguePrevisaoJogador(b, e->pos, KEYLOGGER_TIRO_VEL);
-                    if (e->timer <= 0.0f) { e->estado = 2; e->tiros = KEYLOGGER_RAJADA; e->timer = 0.0f; }
+                    if (e->timer <= 0.0f) { e->estado = 2; e->tiros = e->elite ? KEYLOGGER_RAJADA + 2 : KEYLOGGER_RAJADA; e->timer = 0.0f; }
                 }
                 else {
                     e->vel = (Vector2){0};
@@ -10352,8 +12086,9 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
                         e->vel = (Vector2){0};
                         e->timer -= dt;
                         if (e->timer <= 0.0f) {
-                            for (int k = 0; k < CACHE_BALAS; k++) {
-                                float a = (2.0f * PI / CACHE_BALAS) * k + e->anim;
+                            int balas = e->elite ? CACHE_BALAS + 4 : CACHE_BALAS;     // elite: anel mais denso
+                            for (int k = 0; k < balas; k++) {
+                                float a = (2.0f * PI / balas) * k + e->anim;
                                 RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 140.0f, CACHE_TIRO_DANO, 6.0f, false);
                             }
                             TocarSomTom(sfxTiro, 0.7f);
@@ -10363,6 +12098,25 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
                     }
                 }
             } break;
+
+            case INIMIGO_NUCLEO:
+                // Núcleo de corrupção: parado; de tempos em tempos pulsa um anel de balas (brilha antes)
+                e->vel = (Vector2){0};
+                e->empurrao = (Vector2){0};
+                if (e->estado == 0 && e->recarga <= 0.0f) { e->estado = 1; e->timer = NUCLEO_PREPARO; }
+                else if (e->estado == 1) {
+                    e->timer -= dt;
+                    if (e->timer <= 0.0f) {
+                        for (int k = 0; k < NUCLEO_BALAS; k++) {
+                            float a = (2.0f * PI / NUCLEO_BALAS) * k + e->anim * 0.7f;
+                            RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 125.0f, 7.0f, 6.0f, false);
+                        }
+                        TocarSomTom(sfxTiro, 0.5f);
+                        e->estado = 0;
+                        e->recarga = NUCLEO_INTERVALO;
+                    }
+                }
+                break;
 
             default:
                 break;
@@ -10377,7 +12131,7 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
         RogueEmpurrarParaFora(&e->pos, e->raio, b->obst, b->numObst);
 
         // Encostou no jogador
-        float contato = RogueDanoContato(e);
+        float contato = RogueDanoContato(e) * (e->elite ? ELITE_CONTATO : 1.0f);
         if (contato > 0.0f && enganado && dist < e->raio + RAIO_CORPO_JOGADOR)
             j->proxyHp -= contato * 3.0f * dt;                  // o holograma vai se desfazendo
         if (contato > 0.0f && Vector2Distance(e->pos, j->pos) < e->raio + RAIO_CORPO_JOGADOR)
@@ -10396,13 +12150,42 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
             Vector2 d = Vector2Subtract(e2->pos, e1->pos);
             float dist = Vector2Length(d), min = e1->raio + e2->raio;
 
-            if (dist < min && dist > 0.01f) {
-                Vector2 empurra = Vector2Scale(d, (min - dist) / dist * 0.5f);
-                e1->pos = Vector2Subtract(e1->pos, empurra);
-                e2->pos = Vector2Add(e2->pos, empurra);
+            // O núcleo de corrupção não sai do lugar: só o outro é empurrado
+            float w1 = (e1->tipo == INIMIGO_NUCLEO) ? 0.0f : 1.0f, w2 = (e2->tipo == INIMIGO_NUCLEO) ? 0.0f : 1.0f;
+            if (dist < min && dist > 0.01f && w1 + w2 > 0.0f) {
+                Vector2 empurra = Vector2Scale(d, (min - dist) / dist / (w1 + w2));
+                e1->pos = Vector2Subtract(e1->pos, Vector2Scale(empurra, w1));
+                e2->pos = Vector2Add(e2->pos, Vector2Scale(empurra, w2));
             }
         }
     }
+}
+
+// Um disparo bateu perto da parede corrompida: ela racha e, sem vida, abre a passagem secreta
+static void RogueAcertarParede(Biblioteca *b, ProgressoCorredor *prog, const Projetil *p)
+{
+    Rectangle r = PAREDE_SECRETA_ROGUE[b->paredeSecreta];
+    Rectangle perto = { r.x - 16, r.y - 16, r.width + 32, r.height + 32 };
+
+    if (!CheckCollisionPointRec(p->pos, perto))
+        return;
+
+    b->hpParede -= p->dano;
+    RogueParticulas(b, p->pos, MAGENTA, 5, 120);
+
+    if (b->hpParede > 0.0f) {
+        TocarSomTom(sfxSelecao, 0.4f);
+        return;
+    }
+
+    b->passagemAberta = true;
+    b->mapa.no[b->mapa.no[b->noAtual].secreta].escondida = false;
+    AlterarPontos(prog, 5);
+    RogueAviso(b, "PASSAGEM SECRETA! (abre com a sala limpa)");
+    RogueParticulas(b, CentroRetangulo(r), MAGENTA, 30, 240);
+    TocarSomTom(sfxAcerto, 0.8f);
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
+    Telemetria("rogue_secreta", "descoberta", 0.0f, b->profundidade);
 }
 
 static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, float dt)
@@ -10454,6 +12237,8 @@ static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, floa
             bateu = CheckCollisionPointRec(p->pos, b->obst[k]);
 
         if (bateu) {
+            if (p->doJogador && b->temParedeSecreta && !b->passagemAberta)
+                RogueAcertarParede(b, prog, p);
             RogueFimProjetil(b, prog, p);
             continue;
         }
@@ -10557,13 +12342,1036 @@ static void RogueAtualizarColetaveis(Biblioteca *b, float dt)
     }
 }
 
+// =============================================================
+// REFORMULAÇÃO DO BLOCO 2: ATUALIZAÇÃO DOS SISTEMAS NOVOS
+//   RogueAtualizarObjetivo   - ondas, reforços, núcleos, alvo prioritário, mecanismo
+//   RogueAtualizarArmadilhas - feixes, zonas, torres, explosões, barreiras, bloqueios
+//   RogueAtualizarAreas      - poças e explosões da build do jogador
+//   RogueAtualizarEscolha    - a tela "escolha 1 de 3"
+//   RogueAtualizarEvento     - eventos, sala de leitura e console de desafio
+//   RogueAtualizarDesafioSala- as provas das salas de desafio
+// =============================================================
+
+// Inimigos que contam para ondas e reforços (sem ecos, spam, cópias, núcleos e o retransmissor)
+static int RogueInimigosRelevantes(const Biblioteca *b)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+        const Inimigo *e = &b->ini[i];
+        if (e->ativo && !RogueInimigoPassageiro(e->tipo) && e->tipo != INIMIGO_NUCLEO && !e->prioritario)
+            n++;
+    }
+    return n;
+}
+
+static int RogueContarTipo(const Biblioteca *b, TipoInimigo t)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        if (b->ini[i].ativo && b->ini[i].tipo == t) n++;
+    return n;
+}
+
+// O objetivo foi cumprido de outro jeito: os ecos que sobraram se desfazem (sem pontos)
+static void RogueDissolverInimigos(Biblioteca *b)
+{
+    for (int i = 0; i < MAX_INIMIGOS; i++) {
+        Inimigo *e = &b->ini[i];
+        if (!e->ativo) continue;
+        RogueParticulas(b, e->pos, DEF_INIMIGOS[e->tipo].cor, 10, 160);
+        e->ativo = false;
+    }
+
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (b->proj[i].ativo && !b->proj[i].doJogador) b->proj[i].ativo = false;
+}
+
+// Reforços do encontro atual (perto de um ponto, ou num ponto da sala)
+static void RogueReforcar(Biblioteca *b, int quantidade, Vector2 perto, bool usarPerto)
+{
+    if (b->encontro < 0)
+        return;
+
+    const EncontroDef *enc = &ENCONTROS[b->encontro];
+    const LayoutSala *l = layoutCombateAtual;
+
+    for (int q = 0; q < quantidade; q++) {
+        if (RogueInimigosRelevantes(b) >= REFORCO_LIMITE_VIVOS)
+            return;
+
+        TipoInimigo t = enc->grupo[GetRandomValue(0, enc->numGrupos - 1)].tipo;
+        Vector2 base = usarPerto ? (Vector2){ perto.x + (float)GetRandomValue(-50, 50), perto.y + (float)GetRandomValue(-50, 50) }
+                                 : ((l->numPontos > 0) ? l->pontos[GetRandomValue(0, l->numPontos - 1)] : (Vector2){ 400, 200 });
+        RogueCriarInimigo(b, t, RogueLugarSurgir(b, base, DEF_INIMIGOS[t].raio));
+    }
+}
+
+// Sala de combate vencida: abre as portas, deixa a recompensa anunciada na porta e conta pontos
+static void RogueConcluirCombate(Biblioteca *b, ProgressoCorredor *prog)
+{
+    b->limpa = true;
+    RogueSalaConcluida(b);
+    RogueDissolverInimigos(b);
+
+    // Às vezes o combate deixa também um upgrade passivo (sistema antigo, preservado)
+    int upgrade = RogueSortearItem(b, 0, true);
+    if (upgrade >= 0 && GetRandomValue(1, 100) <= CHANCE_UPGRADE_SALA)
+        RogueSoltar(b, (Vector2){ 400, 330 }, false, (TipoItem)upgrade);
+
+    TipoRecompensa rec = RECOMPENSA_MELHORIA;
+    if (b->eventoCombate) {
+        b->perm->fragmentos += 10;
+        RogueAviso(b, "BANCO ESTABILIZADO! +10 FRAGMENTOS");
+    } else if (b->noAtual >= 0 && b->mapa.no[b->noAtual].recompensa != RECOMPENSA_NENHUMA) {
+        rec = b->mapa.no[b->noAtual].recompensa;
+    }
+    RogueColocarRecompensa(b, rec);
+
+    if (b->objetivoSala != OBJC_ELIMINAR && !b->eventoCombate)
+        RogueAviso(b, "OBJETIVO CUMPRIDO!");
+
+    AlterarPontos(prog, PONTOS_SALA_ROGUE + ((b->tipoSala == SALA_ELITE) ? 8 : 0));
+    TocarSom(sfxAcerto);
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
+    Telemetria("rogue_sala_limpa", TextFormat("sala %d %s", b->indiceRota + 1, NOMES_OBJC[b->objetivoSala]), (float)(GetTime() - b->inicio), b->abatidos);
+}
+
+static void RogueAtualizarObjetivo(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    bool combate = (b->tipoSala == SALA_COMBATE || b->tipoSala == SALA_ELITE || (b->tipoSala == SALA_EVENTO && b->eventoCombate));
+    if (!combate || b->limpa || b->desafioAberto)
+        return;
+
+    switch (b->objetivoSala) {
+
+        case OBJC_ELIMINAR:
+            // Ondas: a próxima chega (com aviso) quando sobra no máximo um inimigo
+            if (b->ondaAtual + 1 < b->numOndas) {
+                if (b->avisoOnda > 0.0f) {
+                    b->avisoOnda -= dt;
+                    if (b->avisoOnda <= 0.0f) { b->ondaAtual++; RogueSurgirOnda(b, b->ondaAtual); }
+                } else if (RogueInimigosRelevantes(b) <= 1) {
+                    b->avisoOnda = ONDA_AVISO;
+                    RogueAviso(b, TextFormat("ONDA %d/%d CHEGANDO!", b->ondaAtual + 2, b->numOndas));
+                    TocarSomTom(sfxErro, 0.7f);
+                }
+                return;
+            }
+            if (RogueInimigosVivos(b) == 0)
+                RogueConcluirCombate(b, prog);
+            break;
+
+        case OBJC_SOBREVIVER:
+            b->tempoObjetivo -= dt;
+            b->reforco -= dt;
+            if (b->reforco <= 0.0f) {
+                b->reforco = REFORCO_INTERVALO;
+                RogueReforcar(b, 2 + b->profundidade / 3, (Vector2){0}, false);
+            }
+            if (b->tempoObjetivo <= 0.0f)
+                RogueConcluirCombate(b, prog);
+            break;
+
+        case OBJC_NUCLEOS: {
+            if (RogueContarTipo(b, INIMIGO_NUCLEO) == 0) {
+                RogueConcluirCombate(b, prog);
+                break;
+            }
+            // Enquanto houver núcleo, ecos novos nascem perto de um deles
+            b->reforco -= dt;
+            if (b->reforco <= 0.0f) {
+                b->reforco = REFORCO_INTERVALO + 1.0f;
+                int vivos[MAX_INIMIGOS], n = 0;
+                for (int i = 0; i < MAX_INIMIGOS; i++)
+                    if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_NUCLEO) vivos[n++] = i;
+                if (n > 0) RogueReforcar(b, 2, b->ini[vivos[GetRandomValue(0, n - 1)]].pos, true);
+            }
+        } break;
+
+        case OBJC_PRIORITARIO:
+            if (b->alvoPrioritario >= 0 && !b->ini[b->alvoPrioritario].ativo)
+                b->alvoPrioritario = -1;
+
+            if (b->alvoPrioritario >= 0) {
+                b->reforco -= dt;
+                if (b->reforco <= 0.0f) {
+                    b->reforco = REFORCO_INTERVALO;
+                    RogueReforcar(b, 2, b->ini[b->alvoPrioritario].pos, true);
+                }
+            } else if (RogueInimigosVivos(b) == 0) {
+                RogueConcluirCombate(b, prog);
+            }
+            break;
+
+        case OBJC_MECANISMO: {
+            int restantes = 0;
+            for (int k = 0; k < b->numMecanismos; k++) {
+                if (b->mecanismoDesligado[k]) continue;
+                restantes++;
+
+                bool perto = Vector2Distance(b->j.pos, b->posMecanismo[k]) < MECANISMO_RAIO;
+                if (perto && IsKeyDown(KEY_E) && b->j.tempoEsquiva <= 0.0f) {
+                    b->progressoMecanismo[k] += dt;
+                    if (GetRandomValue(0, 3) == 0) RogueParticulas(b, b->posMecanismo[k], (Color){ 0, 228, 255, 255 }, 1, 60);
+                    if (b->progressoMecanismo[k] >= MECANISMO_TEMPO) {
+                        b->mecanismoDesligado[k] = true;
+                        restantes--;
+                        RogueAviso(b, TextFormat("CONSOLE DESLIGADO (%d/%d)", b->numMecanismos - restantes, b->numMecanismos));
+                        RogueParticulas(b, b->posMecanismo[k], (Color){ 0, 228, 255, 255 }, 20, 200);
+                        TocarSomTom(sfxAcerto, 1.1f);
+                    }
+                } else {
+                    b->progressoMecanismo[k] = fmaxf(0.0f, b->progressoMecanismo[k] - dt * 0.5f);
+                }
+            }
+
+            if (restantes == 0) {
+                RogueConcluirCombate(b, prog);
+                break;
+            }
+
+            b->reforco -= dt;
+            if (b->reforco <= 0.0f) {
+                b->reforco = REFORCO_INTERVALO;
+                RogueReforcar(b, 2, (Vector2){0}, false);
+            }
+        } break;
+
+        default:
+            break;
+    }
+}
+
+// Barreiras e bloqueios sólidos entram no fim do vetor de estantes (colisão de todo mundo)
+static void RogueAtualizarObstaculosDinamicos(Biblioteca *b)
+{
+    b->numObst = b->numObstFixos;
+
+    for (int i = 0; i < MAX_ARMADILHAS && b->numObst < MAX_OBSTACULOS; i++) {
+        const Armadilha *a = &b->arm[i];
+        if (!a->ativo) continue;
+        if (a->tipo == ARM_BARREIRA || (a->tipo == ARM_BLOQUEIO && a->fase == 2))
+            b->obst[b->numObst++] = a->r;
+    }
+}
+
+static void RogueAtualizarArmadilhas(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    JogadorRogue *j = &b->j;
+
+    // Sala vencida: as armadilhas desligam (a não ser durante o desafio de integridade)
+    bool desligadas = b->limpa && !(b->tipoSala == SALA_DESAFIO && b->estadoDesafio == 1);
+
+    for (int i = 0; i < MAX_ARMADILHAS; i++) {
+
+        Armadilha *a = &b->arm[i];
+        if (!a->ativo) continue;
+
+        if (desligadas) {
+            if (a->tipo != ARM_BARREIRA) a->fase = 0;
+            continue;
+        }
+
+        switch (a->tipo) {
+
+            case ARM_FEIXE:
+                a->timer -= dt;
+                if (a->timer <= 0.0f) {
+                    a->fase = (a->fase + 1) % 3;
+                    a->timer = (a->fase == 1) ? FEIXE_AVISO : ((a->fase == 2) ? FEIXE_ATIVO : FEIXE_DESCANSO);
+                    if (a->fase == 2) TocarSomTom(sfxTiro, 0.4f);
+                    if (a->fase == 0) {
+                        // O feixe muda de lugar a cada ciclo
+                        float passo = (float)GetRandomValue(60, 130) * ((GetRandomValue(0, 1) == 0) ? -1.0f : 1.0f);
+                        if (a->vertical) a->r.x = Clamp(a->r.x + passo, 110.0f, 680.0f);
+                        else             a->r.y = Clamp(a->r.y + passo, 120.0f, 450.0f);
+                    }
+                }
+                if (a->fase == 2 && CheckCollisionCircleRec(j->pos, RAIO_CORPO_JOGADOR, a->r))
+                    RogueFerirJogador(b, FEIXE_DANO);
+                break;
+
+            case ARM_ZONA:
+                a->timer -= dt;
+                if (a->timer <= 0.0f) {
+                    a->fase = (a->fase + 1) % 3;
+                    a->timer = (a->fase == 1) ? 0.8f : ((a->fase == 2) ? ZONA_LIGADA : ZONA_DESLIGADA);
+                }
+                if (a->fase == 2) {
+                    a->tick -= dt;
+                    if (a->tick <= 0.0f && Vector2Distance(j->pos, a->pos) < a->raio) {
+                        a->tick = ZONA_TICK;
+                        RogueFerirJogador(b, ZONA_DANO);
+                    }
+                }
+                break;
+
+            case ARM_TORRE:
+                a->timer -= dt;
+                if (a->fase == 0 && a->timer <= 0.0f) { a->fase = 1; a->timer = TORRE_PREPARO; }
+                else if (a->fase == 1 && a->timer <= 0.0f) {
+                    Vector2 d = Vector2Subtract(j->pos, a->pos);
+                    d = (Vector2Length(d) > 1.0f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
+                    RogueDisparar(b, a->pos, d, TORRE_TIRO_VEL, TORRE_TIRO_DANO, 6.0f, false);
+                    TocarSomTom(sfxTiro, 0.9f);
+                    a->fase = 0;
+                    a->timer = TORRE_INTERVALO;
+                }
+                break;
+
+            case ARM_EXPLOSAO:
+                a->timer -= dt;
+                if (a->fase == 0 && a->timer <= 0.0f) {
+                    // Marca o chão perto do jogador (dá tempo de sair)
+                    a->fase = 1;
+                    a->timer = EXPLOSAO_AVISO;
+                    a->pos = (Vector2){ Clamp(j->pos.x + (float)GetRandomValue(-40, 40), ARENA_ROGUE.x + 30, ARENA_ROGUE.x + ARENA_ROGUE.width - 30),
+                                        Clamp(j->pos.y + (float)GetRandomValue(-40, 40), ARENA_ROGUE.y + 30, ARENA_ROGUE.y + ARENA_ROGUE.height - 30) };
+                }
+                else if (a->fase == 1 && a->timer <= 0.0f) {
+                    // Explode e fere todo mundo por perto (dá para atrair os inimigos)
+                    if (Vector2Distance(j->pos, a->pos) < a->raio + RAIO_CORPO_JOGADOR * 0.5f)
+                        RogueFerirJogador(b, EXPLOSAO_DANO);
+                    for (int k = 0; k < MAX_INIMIGOS; k++) {
+                        Inimigo *e = &b->ini[k];
+                        if (!e->ativo || e->selado || e->surgindo > 0.0f || Vector2Distance(e->pos, a->pos) > a->raio + e->raio) continue;
+                        Vector2 d = Vector2Subtract(e->pos, a->pos);
+                        RogueFerirInimigo(b, prog, e, EXPLOSAO_DANO, (Vector2Length(d) > 0.1f) ? Vector2Normalize(d) : (Vector2){ 0, -1 });
+                    }
+                    RogueAnel(b, a->pos, a->raio, MAGENTA);
+                    RogueParticulas(b, a->pos, MAGENTA, 18, 220);
+                    TocarSomTom(sfxDano, 0.7f);
+                    a->fase = 0;
+                    a->timer = EXPLOSAO_INTERVALO;
+                }
+                break;
+
+            case ARM_BARREIRA:
+                if (a->vertical) {
+                    a->r.x += a->vel * dt;
+                    if (a->r.x < a->limiteA || a->r.x > a->limiteB) { a->vel = -a->vel; a->r.x = Clamp(a->r.x, a->limiteA, a->limiteB); }
+                } else {
+                    a->r.y += a->vel * dt;
+                    if (a->r.y < a->limiteA || a->r.y > a->limiteB) { a->vel = -a->vel; a->r.y = Clamp(a->r.y, a->limiteA, a->limiteB); }
+                }
+                break;
+
+            case ARM_BLOQUEIO:
+                a->timer -= dt;
+                if (a->timer <= 0.0f) {
+                    a->fase = (a->fase + 1) % 3;
+                    a->timer = (a->fase == 1) ? BLOQUEIO_AVISO : ((a->fase == 2) ? BLOQUEIO_SOLIDO : BLOQUEIO_LIVRE);
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    RogueAtualizarObstaculosDinamicos(b);
+}
+
+static void RogueAtualizarAreas(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    for (int i = 0; i < MAX_AREAS; i++) {
+
+        AreaDano *a = &b->areas[i];
+        if (!a->ativo) continue;
+
+        if (a->atraso > 0.0f) {
+            a->atraso -= dt;
+            if (a->atraso <= 0.0f && a->danoInstantaneo > 0.0f) {
+                b->golpeSecundario = true;
+                RogueDanoArea(b, prog, a->pos, a->raio, a->danoInstantaneo, 160.0f);
+                b->golpeSecundario = false;
+                RogueAnel(b, a->pos, a->raio, a->cor);
+                RogueParticulas(b, a->pos, a->cor, 14, 200);
+                TocarSomTom(sfxAcerto, 0.8f);
+                a->danoInstantaneo = 0.0f;
+            }
+            continue;
+        }
+
+        a->vida -= dt;
+        if (a->vida <= 0.0f) { a->ativo = false; continue; }
+
+        if (a->dps > 0.0f) {
+            a->tick -= dt;
+            if (a->tick <= 0.0f) {
+                a->tick = 0.25f;
+                for (int k = 0; k < MAX_INIMIGOS; k++) {
+                    Inimigo *e = &b->ini[k];
+                    if (!e->ativo || e->selado || e->surgindo > 0.0f || Vector2Distance(e->pos, a->pos) > a->raio + e->raio) continue;
+                    b->golpeSecundario = true;
+                    RogueFerirInimigo(b, prog, e, a->dps * 0.25f, (Vector2){ 0, 0 });
+                    b->golpeSecundario = false;
+                }
+            }
+        }
+    }
+}
+
+// ---------- Escolha 1 de 3 ----------
+
+static bool RogueUpgradeDisponivel(const Biblioteca *b, int u)
+{
+    const DefUpgrade *d = &UPGRADES[u];
+
+    if (b->j.up[u] >= d->maxNivel)
+        return false;
+    for (int k = 0; k < NUM_UPGRADES; k++)
+        if ((d->requer & BIT_UP(k)) && b->j.up[k] == 0)
+            return false;
+    if (d->arma >= 0 && d->arma != ARMA_DISPARADOR && (int)b->j.armaExtra != d->arma)
+        return false;
+    return true;
+}
+
+// Peso no sorteio: raridade (raras ficam mais comuns no fundo do mapa), sinergias e o que já está na build
+static int RoguePesoUpgrade(const Biblioteca *b, int u, ModoEscolha modo)
+{
+    const DefUpgrade *d = &UPGRADES[u];
+
+    if (modo == ESCOLHA_ARMA && d->categoria != CAT_APRIMORAMENTO && d->categoria != CAT_DISPARO)
+        return 0;
+
+    int peso = PESO_RARIDADE[d->raridade];
+    if (d->raridade == RARIDADE_RARA)    peso += 4 * b->profundidade;
+    if (d->raridade == RARIDADE_INCOMUM) peso += 2 * b->profundidade;
+    if (modo == ESCOLHA_RARA && d->raridade == RARIDADE_COMUM) peso /= 6;
+    if (d->categoria == CAT_SINERGIA)     peso *= 3;
+    if (d->categoria == CAT_APRIMORAMENTO) peso += (modo == ESCOLHA_ARMA) ? 40 : 10;
+    if (b->j.up[u] > 0)                    peso += 12;      // aprofundar a build também é uma escolha
+    return (peso < 1) ? 1 : peso;
+}
+
+static int RogueSortearUpgrade(const Biblioteca *b, ModoEscolha modo, unsigned long long excluir, int raridade)
+{
+    int cand[NUM_UPGRADES], peso[NUM_UPGRADES], n = 0, total = 0;
+
+    for (int u = 0; u < NUM_UPGRADES; u++) {
+        if ((excluir & BIT_UP(u)) || !RogueUpgradeDisponivel(b, u))         continue;
+        if (raridade >= 0 && (int)UPGRADES[u].raridade != raridade)        continue;
+        int p = RoguePesoUpgrade(b, u, modo);
+        if (p <= 0) continue;
+        cand[n] = u; peso[n] = p; total += p; n++;
+    }
+
+    if (n == 0)
+        return -1;
+
+    int r = GetRandomValue(1, total);
+    for (int i = 0; i < n; i++) {
+        r -= peso[i];
+        if (r <= 0) return cand[i];
+    }
+    return cand[n - 1];
+}
+
+static void RogueGerarOpcoes(Biblioteca *b, ModoEscolha modo)
+{
+    unsigned long long usados = 0;
+    unsigned int itensUsados = 0;
+    b->numOpcoes = 0;
+
+    // Arsenal: uma arma nova (duas, se ainda não houver arma extra) e aprimoramentos de disparo
+    if (modo == ESCOLHA_ARMA) {
+        TipoArma a = RogueSortearArma(b, 0);
+        if (a != ARMA_DISPARADOR) b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_ARMA, a };
+        if (b->j.armaExtra == ARMA_DISPARADOR && a != ARMA_DISPARADOR) {
+            TipoArma a2 = RogueSortearArma(b, 1u << a);
+            if (a2 != ARMA_DISPARADOR && a2 != a) b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_ARMA, a2 };
+        }
+    }
+
+    // Melhoria rara: pelo menos uma das três é rara (quando ainda existe alguma)
+    if (modo == ESCOLHA_RARA) {
+        int u = RogueSortearUpgrade(b, modo, usados, RARIDADE_RARA);
+        if (u >= 0) { b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_UPGRADE, u }; usados |= BIT_UP(u); }
+    }
+
+    while (b->numOpcoes < 3) {
+        int u = RogueSortearUpgrade(b, modo, usados, -1);
+        if (u < 0) break;
+        b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_UPGRADE, u };
+        usados |= BIT_UP(u);
+    }
+
+    // Sem melhorias suficientes: completa com os upgrades passivos antigos
+    while (b->numOpcoes < 3) {
+        int it = RogueSortearItem(b, itensUsados, true);
+        if (it < 0) break;
+        b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_ITEM, it };
+        itensUsados |= 1u << it;
+    }
+
+    if (b->numOpcoes == 0)
+        b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_FRAGMENTOS, FC_OPCAO_RESERVA };
+
+    // Embaralha (a rara não fica sempre no mesmo lugar)
+    for (int i = b->numOpcoes - 1; i > 0; i--) {
+        int k = GetRandomValue(0, i);
+        OpcaoEscolha t = b->opcoes[i]; b->opcoes[i] = b->opcoes[k]; b->opcoes[k] = t;
+    }
+}
+
+static void RogueAbrirEscolha(Biblioteca *b, ModoEscolha modo, bool gratis)
+{
+    RogueGerarOpcoes(b, modo);
+    b->escolhaAberta = true;
+    b->escolhaGratis = gratis;
+    b->modoEscolha = modo;
+    b->selecaoEscolha = 0;
+    b->animEscolha = 0.0f;
+    TocarSomTom(sfxAcerto, 1.3f);
+}
+
+static void RogueAplicarOpcao(Biblioteca *b, OpcaoEscolha o)
+{
+    JogadorRogue *j = &b->j;
+    char texto[96];
+
+    switch (o.tipo) {
+
+        case OPC_UPGRADE: {
+            // Sinergias que já podiam aparecer antes desta escolha
+            unsigned long long antes = 0;
+            for (int s = 0; s < NUM_UPGRADES; s++)
+                if (UPGRADES[s].categoria == CAT_SINERGIA && RogueUpgradeDisponivel(b, s)) antes |= BIT_UP(s);
+
+            j->up[o.id]++;
+            j->ultimoUp = o.id;
+            if (o.id == UP_VIDA) j->hp = fminf(RogueHpMax(b), j->hp + UP_VIDA_NIVEL);
+
+            if (j->up[o.id] > 1) snprintf(texto, sizeof(texto), "%s NÍVEL %d", UPGRADES[o.id].nome, j->up[o.id]);
+            else                 snprintf(texto, sizeof(texto), "NOVA MELHORIA: %s", UPGRADES[o.id].nome);
+            RogueAviso(b, texto);
+
+            for (int s = 0; s < NUM_UPGRADES; s++)
+                if (UPGRADES[s].categoria == CAT_SINERGIA && !(antes & BIT_UP(s)) && RogueUpgradeDisponivel(b, s)) {
+                    snprintf(texto, sizeof(texto), "Luci: Essa combinação abre uma SINERGIA: %s!", UPGRADES[s].nome);
+                    RogueRecadoLuci(b, texto);
+                    b->luciMsgTempo = 4.0f;
+                    break;
+                }
+
+            RogueParticulas(b, j->pos, CORES_RARIDADE[UPGRADES[o.id].raridade], 26, 200);
+            Telemetria("rogue_build", UPGRADES[o.id].nome, (float)UPGRADES[o.id].raridade, j->up[o.id]);
+        } break;
+
+        case OPC_ITEM:
+            if (j->itens[o.id] < ITENS[o.id].maxPilha) j->itens[o.id]++;
+            snprintf(texto, sizeof(texto), "Pegou: %s", ITENS[o.id].nome);
+            RogueAviso(b, texto);
+            RogueParticulas(b, j->pos, CORES_RARIDADE[ITENS[o.id].raridade], 20, 180);
+            Telemetria("rogue_build", ITENS[o.id].nome, (float)ITENS[o.id].raridade, j->itens[o.id]);
+            break;
+
+        case OPC_ARMA:
+            j->armaExtra = (TipoArma)o.id;           // substitui a arma secundária
+            j->usandoExtra = true;
+            j->carga = 0.0f;
+            snprintf(texto, sizeof(texto), "Pegou: %s (TAB troca)", DEF_ARMAS[o.id].nome);
+            RogueAviso(b, texto);
+            RogueParticulas(b, j->pos, DEF_ARMAS[o.id].cor, 20, 180);
+            Telemetria("rogue_build", DEF_ARMAS[o.id].nome, (float)DEF_ARMAS[o.id].raridade, 1);
+            break;
+
+        default:
+            b->perm->fragmentos += FC_OPCAO_RESERVA;
+            snprintf(texto, sizeof(texto), "+%d FRAGMENTOS DE CONHECIMENTO", FC_OPCAO_RESERVA);
+            RogueAviso(b, texto);
+            break;
+    }
+
+    TocarSomTom(sfxAcerto, 1.2f);
+}
+
+// Cartas da escolha na tela (também usadas no desenho e no mouse)
+static Rectangle RogueCartaEscolha(int i, int n)
+{
+    float w = 222.0f, h = 300.0f, gap = 16.0f;
+    float total = (float)n * w + (float)(n - 1) * gap;
+    return (Rectangle){ 400.0f - total / 2.0f + (float)i * (w + gap), 132.0f, w, h };
+}
+
+static void RogueAtualizarEscolha(Biblioteca *b)
+{
+    int n = b->numOpcoes;
+    b->animEscolha += GetFrameTime();
+
+    if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { b->selecaoEscolha = (b->selecaoEscolha + n - 1) % n; TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->selecaoEscolha = (b->selecaoEscolha + 1) % n;     TocarSom(sfxSelecao); }
+    for (int i = 0; i < n; i++)
+        if (IsKeyPressed(KEY_ONE + i)) { b->selecaoEscolha = i; TocarSom(sfxSelecao); }
+
+    bool clique = false;
+    Vector2 m = GetMousePosition();
+    for (int i = 0; i < n; i++)
+        if (CheckCollisionPointRec(m, RogueCartaEscolha(i, n))) {
+            if (Vector2Length(GetMouseDelta()) > 0.5f) b->selecaoEscolha = i;
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { b->selecaoEscolha = i; clique = true; }
+        }
+
+    if (b->animEscolha < 0.35f)             // evita confirmar sem querer ao abrir
+        return;
+
+    if (IsKeyPressed(KEY_BACKSPACE)) {
+        b->perm->fragmentos += FC_RECUSAR_ESCOLHA;
+        b->escolhaAberta = false;
+        RogueAviso(b, TextFormat("Recusou: +%d FRAGMENTOS", FC_RECUSAR_ESCOLHA));
+        TocarSom(sfxSelecao);
+        return;
+    }
+
+    if (clique || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+        RogueAplicarOpcao(b, b->opcoes[b->selecaoEscolha]);
+        b->escolhaAberta = false;
+    }
+}
+
+// Tocou na recompensa do chão
+static void RogueUsarRecompensa(Biblioteca *b)
+{
+    JogadorRogue *j = &b->j;
+    b->recompensaAtiva = false;
+
+    switch (b->recompensaTipo) {
+        case RECOMPENSA_MELHORIA: RogueAbrirEscolha(b, ESCOLHA_NORMAL, false); break;
+        case RECOMPENSA_RARA:     RogueAbrirEscolha(b, ESCOLHA_RARA, false);   break;
+        case RECOMPENSA_ARMA:     RogueAbrirEscolha(b, ESCOLHA_ARMA, false);   break;
+
+        case RECOMPENSA_FRAGMENTOS: {
+            int n = 5 + b->profundidade;
+            for (int k = 0; k < n; k++)
+                RogueSoltar(b, b->recompensaPos, true, ITEM_ANTIVIRUS);
+            RogueAviso(b, TextFormat("BIBLIOTECA RESTAURADA: %d FRAGMENTOS!", n));
+            TocarSomTom(sfxAcerto, 1.5f);
+        } break;
+
+        case RECOMPENSA_VIDA:
+            j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * 0.35f);
+            j->itens[ITEM_ANTIVIRUS]++;
+            RogueAviso(b, "RESTAURAÇÃO: +35% de vida e 1 Antivírus");
+            RogueParticulas(b, j->pos, LIME, 24, 180);
+            TocarSomTom(sfxPegar, 0.9f);
+            break;
+
+        default:
+            break;
+    }
+
+    Telemetria("rogue_recompensa_sala", NOMES_RECOMPENSA[b->recompensaTipo], (float)b->profundidade, b->indiceRota);
+}
+
+// ---------- Eventos, sala de leitura e console de desafio ----------
+
+typedef struct {
+    const char *titulo;
+    char texto[320];
+    int numOpcoes;
+    char rotulo[3][160];
+    char efeito[3][200];
+    bool disponivel[3];
+} TelaEvento;
+
+static const char *NOMES_PENALIDADE[3] = { "+20% de dano recebido", "-10% de velocidade", "-15% de vida máxima" };
+
+static void RogueMontarTelaEvento(const Biblioteca *b, TelaEvento *t)
+{
+    memset(t, 0, sizeof(*t));
+    for (int i = 0; i < 3; i++) t->disponivel[i] = true;
+
+    #define OPCAO(i, r, e) do { snprintf(t->rotulo[i], sizeof(t->rotulo[i]), "%s", (r)); \
+                                snprintf(t->efeito[i], sizeof(t->efeito[i]), "%s", (e)); } while (0)
+
+    switch (b->evento) {
+
+        case EVT_ARQUIVO_CORROMPIDO:
+            t->titulo = "ARQUIVO CORROMPIDO";
+            snprintf(t->texto, sizeof(t->texto), "Um arquivo pulsa com dados instáveis. Lá dentro há algo raro, mas abri-lo sem cuidado vai corromper parte da sua integridade.");
+            t->numOpcoes = 3;
+            OPCAO(0, "Abrir o arquivo", "Perde 30% da vida atual. Escolha 1 de 3 melhorias RARAS.");
+            OPCAO(1, "Verificar com a Lente", "Gasta 1 Lente da Verificação: abre com segurança e escolhe 1 de 3 melhorias.");
+            OPCAO(2, "Deixar para lá", "Nada acontece.");
+            t->disponivel[0] = b->j.hp > 10.0f;
+            t->disponivel[1] = b->j.itens[ITEM_LENTE] > 0;
+            break;
+
+        case EVT_BANCO_INSTAVEL:
+            t->titulo = "BANCO DE DADOS INSTÁVEL";
+            snprintf(t->texto, sizeof(t->texto), "Um banco de dados está vazando Fragmentos de Conhecimento. Estabilizá-lo vai atrair ecos de ELITE.");
+            t->numOpcoes = 3;
+            OPCAO(0, "Estabilizar o banco", "Combate contra elites. Vencendo: +10 Fragmentos e 1 de 3 melhorias.");
+            OPCAO(1, "Coletar o que vazou", "+3 Fragmentos agora, sem luta.");
+            OPCAO(2, "Ignorar", "Nada acontece.");
+            break;
+
+        case EVT_MODELO_EXPERIMENTAL:
+            t->titulo = "MODELO EXPERIMENTAL";
+            snprintf(t->texto, sizeof(t->texto), "Uma versão beta de você mesmo oferece um poder que ninguém testou. Todo modelo sem testes tem efeitos colaterais.");
+            t->numOpcoes = 2;
+            OPCAO(0, "Instalar a versão beta", TextFormat("1 de 3 melhorias RARAS. Efeito colateral até o fim da tentativa: %s.", NOMES_PENALIDADE[b->varianteEvento]));
+            OPCAO(1, "Recusar", "Testar antes de confiar. A Luci aprova: +1 de estabilidade.");
+            t->disponivel[0] = !(b->j.penalidade & (1 << b->varianteEvento));
+            break;
+
+        case EVT_MEMORIA:
+            t->titulo = "MEMÓRIA ESQUECIDA";
+            snprintf(t->texto, sizeof(t->texto), "Entre as estantes, um registro antigo pisca com a assinatura da Luci. Ela fica em silêncio quando você se aproxima.");
+            t->numOpcoes = 2;
+            OPCAO(0, "Ler o registro com a Luci", "Uma memória dela. A Luci se estabiliza (+1).");
+            OPCAO(1, "Arquivar para o Byteco", "+4 Fragmentos de Conhecimento.");
+            break;
+
+        case EVT_PROTOCOLO:
+            t->titulo = "PROTOCOLO DE EMERGÊNCIA";
+            snprintf(t->texto, sizeof(t->texto), "Um terminal de manutenção oferece restauração. Todo protocolo cobra um preço.");
+            t->numOpcoes = 3;
+            OPCAO(0, "Restauração paga", "Recupera 60% da vida. Custa 6 Fragmentos.");
+            OPCAO(1, "Restauração por troca", (b->j.ultimoUp >= 0)
+                  ? TextFormat("Recupera 40%% da vida. Perde um nível de: %s.", UPGRADES[b->j.ultimoUp].nome)
+                  : "Recupera 40% da vida. Perde um nível da última melhoria (você não tem nenhuma).");
+            OPCAO(2, "Recusar", "Nada acontece.");
+            t->disponivel[0] = b->perm->fragmentos >= 6;
+            t->disponivel[1] = b->j.ultimoUp >= 0 && b->j.up[b->j.ultimoUp] > 0;
+            break;
+
+        case EVT_FONTE_FALSA:
+        case EVT_RESPOSTA_IA: {
+            const QuizEvento *q = (b->evento == EVT_FONTE_FALSA) ? &QUIZ_FONTES[b->varianteEvento] : &QUIZ_RESPOSTAS[b->varianteEvento];
+            t->titulo = (b->evento == EVT_FONTE_FALSA) ? "FONTE DUVIDOSA" : "RESPOSTA SUSPEITA";
+            snprintf(t->texto, sizeof(t->texto), "%s", q->texto);
+            t->numOpcoes = 3;
+            for (int i = 0; i < 3; i++) OPCAO(i, q->opcoes[i], "");
+        } break;
+
+        case EVT_CONFIANCA_LUCI:
+            t->titulo = "UMA PERGUNTA DA LUCI";
+            snprintf(t->texto, sizeof(t->texto), "Luci: Thomas... posso perguntar uma coisa? Com tudo o que está acontecendo aqui... você confia em mim?");
+            t->numOpcoes = 3;
+            OPCAO(0, "\"Confio, mas vou conferir o que você disser.\"", "Confiança com verificação. (+1 de estabilidade)");
+            OPCAO(1, "\"Confio totalmente.\"", "Ela fica feliz e divide um atalho: +3 Fragmentos.");
+            OPCAO(2, "\"Ainda não sei.\"", "Uma resposta honesta.");
+            break;
+
+        case EVT_DESCANSO:
+            t->titulo = "SALA DE LEITURA";
+            snprintf(t->texto, sizeof(t->texto), "Poltronas antigas e uma luz calma. Os ecos não alcançam este lugar. Há tempo para UMA coisa.");
+            t->numOpcoes = 3;
+            OPCAO(0, "Descansar", "Recupera 40% da vida máxima.");
+            OPCAO(1, "Conversar com a Luci", "+1 de estabilidade e uma conversa.");
+            OPCAO(2, "Estudar", "Uma melhoria que você já tem sobe um nível.");
+            t->disponivel[2] = false;
+            for (int u = 0; u < NUM_UPGRADES; u++)
+                if (b->j.up[u] > 0 && b->j.up[u] < UPGRADES[u].maxNivel) t->disponivel[2] = true;
+            break;
+
+        default:    // EVT_DESAFIO
+            if (b->desafioSala == DESAFIO_SALA_ECOS) {
+                t->titulo = "DESAFIO: VERIFICAÇÃO RELÂMPAGO";
+                snprintf(t->texto, sizeof(t->texto), "Ecos falsos vão surgir pela sala. Destrua %d antes que o tempo acabe (%d s). Eco que ninguém confere explode em balas!",
+                         DESAFIO_ECOS_META, (int)DESAFIO_ECOS_TEMPO);
+            } else {
+                t->titulo = "DESAFIO: TESTE DE INTEGRIDADE";
+                snprintf(t->texto, sizeof(t->texto), "Sobreviva %d s entre feixes e explosões de dados levando no máximo %d golpes. Esquive com atenção aos avisos!",
+                         (int)DESAFIO_INTEG_TEMPO, DESAFIO_INTEG_GOLPES);
+            }
+            t->numOpcoes = 2;
+            OPCAO(0, "Aceitar o desafio", "Vencendo: 1 de 3 melhorias RARAS e +5 Fragmentos.");
+            OPCAO(1, "Agora não", "A porta continua aberta. Dá para voltar ao console.");
+            break;
+    }
+
+    #undef OPCAO
+}
+
+static void RogueResultadoEvento(Biblioteca *b, const char *texto)
+{
+    snprintf(b->resultadoEvento, sizeof(b->resultadoEvento), "%s", texto);
+    b->eventoResolvido = true;
+    b->eventoUsado = true;
+}
+
+static void RogueResolverEvento(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg, int op)
+{
+    JogadorRogue *j = &b->j;
+    Telemetria("rogue_evento", TextFormat("%d", (int)b->evento), (float)op, b->profundidade);
+
+    switch (b->evento) {
+
+        case EVT_ARQUIVO_CORROMPIDO:
+            if (op == 0) {
+                j->hp = fmaxf(1.0f, j->hp * 0.7f);
+                b->escolhaPendente = ESCOLHA_RARA;
+                b->tremor = 0.25f;
+                RogueResultadoEvento(b, "Os dados corrompidos queimam a sua integridade... mas algo valioso se revela.");
+            } else if (op == 1) {
+                j->itens[ITEM_LENTE]--;
+                b->escolhaPendente = ESCOLHA_NORMAL;
+                RogueResultadoEvento(b, "A Lente separa o que é dado do que é ruído. Verificar antes de abrir: sem nenhum dano.");
+            } else {
+                RogueResultadoEvento(b, "Luci: Às vezes não abrir um arquivo suspeito é a decisão mais segura.");
+            }
+            break;
+
+        case EVT_BANCO_INSTAVEL:
+            if (op == 0) {
+                // Começa uma onda de elite aqui mesmo: as portas fecham até vencer
+                b->eventoAberto = false;
+                b->eventoUsado = true;
+                b->eventoCombate = true;
+                b->limpa = false;
+                b->objetivoSala = OBJC_ELIMINAR;
+                RogueMontarEncontro(b, &LAYOUT_EVENTO, RogueSortearEncontro(b, RogueNivelCombate(b)));
+                TocarSomTom(sfxErro, 0.6f);
+                return;
+            } else if (op == 1) {
+                b->perm->fragmentos += 3;
+                RogueResultadoEvento(b, "Você recolhe o que vazou: +3 Fragmentos de Conhecimento.");
+            } else {
+                RogueResultadoEvento(b, "O banco segue vazando, longe de você.");
+            }
+            break;
+
+        case EVT_MODELO_EXPERIMENTAL:
+            if (op == 0) {
+                j->penalidade |= 1 << b->varianteEvento;
+                if (j->hp > RogueHpMax(b)) j->hp = RogueHpMax(b);
+                b->escolhaPendente = ESCOLHA_RARA;
+                RogueResultadoEvento(b, TextFormat("Versão beta instalada. Efeito colateral: %s. Escolha o seu poder.", NOMES_PENALIDADE[b->varianteEvento]));
+            } else {
+                RogueMudarEstabilidade(b, 1, "testar antes de confiar");
+                RogueResultadoEvento(b, "Luci: Boa. Um modelo que ninguém testou pode fazer qualquer coisa... inclusive errar com confiança.");
+            }
+            break;
+
+        case EVT_MEMORIA:
+            if (op == 0) {
+                b->eventoAberto = false;
+                b->eventoUsado = true;
+                b->memoriasVistas |= 1u << b->varianteEvento;
+                RogueMudarEstabilidade(b, 1, "memória recuperada");
+                DialogoIniciar(dlg, &dialogosMemoria[b->varianteEvento], OBJ_NENHUM);
+                return;
+            }
+            b->perm->fragmentos += 4;
+            RogueResultadoEvento(b, "O registro vira Fragmentos de Conhecimento: +4. A Luci não diz nada.");
+            break;
+
+        case EVT_PROTOCOLO:
+            if (op == 0) {
+                b->perm->fragmentos -= 6;
+                j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * 0.6f);
+                RogueParticulas(b, j->pos, LIME, 24, 180);
+                RogueResultadoEvento(b, "Restauração concluída. -6 Fragmentos.");
+            } else if (op == 1) {
+                int u = j->ultimoUp;
+                j->up[u]--;
+                if (j->hp > RogueHpMax(b)) j->hp = RogueHpMax(b);
+                j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * 0.4f);
+                RogueParticulas(b, j->pos, LIME, 18, 160);
+                RogueResultadoEvento(b, TextFormat("Restauração concluída. %s perdeu um nível.", UPGRADES[u].nome));
+                if (j->up[u] == 0) j->ultimoUp = -1;
+            } else {
+                RogueResultadoEvento(b, "O terminal volta a dormir.");
+            }
+            break;
+
+        case EVT_FONTE_FALSA:
+        case EVT_RESPOSTA_IA: {
+            const QuizEvento *q = (b->evento == EVT_FONTE_FALSA) ? &QUIZ_FONTES[b->varianteEvento] : &QUIZ_RESPOSTAS[b->varianteEvento];
+            bool certo = (op == q->correta);
+            RogueRegistrarResposta(b, certo);
+            if (certo) {
+                b->perm->fragmentos += 5;
+                AlterarPontos(prog, PONTOS_DESAFIO);
+                RogueMudarEstabilidade(b, 1, "fonte conferida");
+                TocarSom(sfxAcerto);
+                RogueResultadoEvento(b, TextFormat("CERTO! +5 Fragmentos. %s", q->explicacao));
+            } else {
+                j->hp = fmaxf(1.0f, j->hp - 15.0f);
+                b->tremor = 0.25f;
+                TocarSom(sfxErro);
+                RogueResultadoEvento(b, TextFormat("ERROU (-15 de vida). %s", q->explicacao));
+            }
+        } break;
+
+        case EVT_CONFIANCA_LUCI:
+            if (op == 0) {
+                RogueMudarEstabilidade(b, 1, "confiança com verificação");
+                RogueHabitoLuci(b, false);
+                RogueResultadoEvento(b, "Luci: É a melhor resposta que alguém já me deu. Confiar e conferir... vou lembrar disso.");
+            } else if (op == 1) {
+                b->perm->fragmentos += 3;
+                b->perm->confiouCego++;
+                RogueHabitoLuci(b, true);
+                RogueResultadoEvento(b, "Luci: Que bom... assim fica tudo mais fácil. Para mim. (+3 Fragmentos)");
+            } else {
+                RogueResultadoEvento(b, "Luci: Justo. Confiança se constrói conferindo, não prometendo.");
+            }
+            break;
+
+        case EVT_DESCANSO:
+            if (op == 0) {
+                j->hp = fminf(RogueHpMax(b), j->hp + RogueHpMax(b) * 0.4f);
+                RogueParticulas(b, j->pos, LIME, 24, 180);
+                RogueResultadoEvento(b, "Você descansa entre os livros. A integridade volta, devagar.");
+            } else if (op == 1) {
+                RogueMudarEstabilidade(b, 1, "uma boa conversa");
+                RogueResultadoEvento(b, (RogueEstab(b) >= 4)
+                    ? "Luci: Sabe o que eu gosto em você? Você pergunta \"de onde veio isso?\". Quase ninguém pergunta."
+                    : "Luci: Às vezes eu sinto que tem outra voz dentro de mim, respondendo antes de eu pensar. Obrigada por ficar.");
+            } else {
+                int cand[NUM_UPGRADES], n = 0;
+                for (int u = 0; u < NUM_UPGRADES; u++)
+                    if (j->up[u] > 0 && j->up[u] < UPGRADES[u].maxNivel) cand[n++] = u;
+                if (n > 0) {
+                    int u = cand[GetRandomValue(0, n - 1)];
+                    j->up[u]++;
+                    if (u == UP_VIDA) j->hp = fminf(RogueHpMax(b), j->hp + UP_VIDA_NIVEL);
+                    RogueResultadoEvento(b, TextFormat("Você estuda os seus próprios dados. %s subiu para o nível %d.", UPGRADES[u].nome, j->up[u]));
+                }
+            }
+            break;
+
+        default:    // EVT_DESAFIO
+            b->eventoAberto = false;
+            if (op != 0)
+                return;                             // "agora não": dá para voltar ao console
+            b->eventoUsado = true;
+            b->estadoDesafio = 1;
+            b->contadorDesafio = 0;
+            b->j.golpesSofridos = 0;
+            if (b->desafioSala == DESAFIO_SALA_ECOS) {
+                b->tempoDesafioSala = DESAFIO_ECOS_TEMPO;
+                b->cronoDesafio = 0.6f;
+            } else {
+                b->tempoDesafioSala = DESAFIO_INTEG_TEMPO;
+                RogueCriarArmadilha(b, ARM_FEIXE);
+                RogueCriarArmadilha(b, ARM_FEIXE);
+                RogueCriarArmadilha(b, ARM_EXPLOSAO);
+                RogueCriarArmadilha(b, ARM_TORRE);
+            }
+            RogueAviso(b, "DESAFIO INICIADO!");
+            TocarSomTom(sfxErro, 0.8f);
+            return;
+    }
+}
+
+static void RogueAtualizarEvento(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg)
+{
+    bool confirmar = IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
+
+    // Mostrando o resultado: ENTER fecha (e abre a escolha prometida, se houver)
+    if (b->eventoResolvido) {
+        if (confirmar) {
+            b->eventoAberto = false;
+            b->eventoResolvido = false;
+            if (b->escolhaPendente >= 0) {
+                RogueAbrirEscolha(b, (ModoEscolha)b->escolhaPendente, true);
+                b->escolhaPendente = -1;
+            }
+        }
+        return;
+    }
+
+    TelaEvento t;
+    RogueMontarTelaEvento(b, &t);
+    int n = t.numOpcoes;
+
+    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { b->selecaoEvento = (b->selecaoEvento + n - 1) % n; TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { b->selecaoEvento = (b->selecaoEvento + 1) % n;     TocarSom(sfxSelecao); }
+    for (int i = 0; i < n; i++)
+        if (IsKeyPressed(KEY_ONE + i)) { b->selecaoEvento = i; TocarSom(sfxSelecao); }
+
+    if (IsKeyPressed(KEY_BACKSPACE)) {          // fecha sem escolher (dá para voltar)
+        b->eventoAberto = false;
+        return;
+    }
+
+    if (!confirmar)
+        return;
+
+    if (!t.disponivel[b->selecaoEvento]) {
+        RogueAviso(b, "Essa opção não está disponível agora.");
+        TocarSom(sfxErro);
+        return;
+    }
+
+    RogueResolverEvento(b, prog, dlg, b->selecaoEvento);
+}
+
+// As provas da sala de desafio (as portas ficam abertas o tempo todo: é opcional)
+static void RogueAtualizarDesafioSala(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    if (b->tipoSala != SALA_DESAFIO || b->estadoDesafio != 1)
+        return;
+
+    b->tempoDesafioSala -= dt;
+    int resultado = 0;          // 1 = venceu, -1 = falhou
+
+    if (b->desafioSala == DESAFIO_SALA_ECOS) {
+        b->cronoDesafio -= dt;
+        if (b->cronoDesafio <= 0.0f && RogueContarTipo(b, INIMIGO_ECO) < 5) {
+            b->cronoDesafio = 1.2f;
+            for (int k = 0; k < 2; k++) {
+                Vector2 p;
+                if (!RogueSortearLugar(b, 14.0f, 110.0f, &p)) continue;
+                Inimigo *e = RogueCriarInimigo(b, INIMIGO_ECO, p);
+                if (e != NULL) { e->desafio = true; e->timer = DESAFIO_ECO_TEMPO; }
+            }
+        }
+        if (b->contadorDesafio >= DESAFIO_ECOS_META) resultado = 1;
+        else if (b->tempoDesafioSala <= 0.0f)        resultado = -1;
+    } else {
+        if (b->j.golpesSofridos > DESAFIO_INTEG_GOLPES) resultado = -1;
+        else if (b->tempoDesafioSala <= 0.0f)          resultado = 1;
+    }
+
+    if (resultado == 0)
+        return;
+
+    // Fim da prova: some com os ecos, as balas e as armadilhas
+    RogueDissolverInimigos(b);
+    memset(b->arm, 0, sizeof(b->arm));
+    RogueAtualizarObstaculosDinamicos(b);
+
+    if (resultado > 0) {
+        b->estadoDesafio = 2;
+        b->perm->fragmentos += 5;
+        RogueColocarRecompensa(b, RECOMPENSA_RARA);
+        AlterarPontos(prog, 10);
+        RogueRegistrarResposta(b, true);
+        RogueAviso(b, "DESAFIO CONCLUÍDO! +5 FRAGMENTOS");
+        TocarSom(sfxAcerto);
+        MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.5f);
+    } else {
+        b->estadoDesafio = 3;
+        RogueAviso(b, "DESAFIO FALHOU");
+        RogueRecadoLuci(b, "Luci: Quase! A porta continua aberta. Da próxima vez, de olho nos avisos.");
+        TocarSom(sfxErro);
+    }
+    Telemetria("rogue_desafio_sala", (b->desafioSala == DESAFIO_SALA_ECOS) ? "ecos" : "integridade", (float)resultado, b->contadorDesafio);
+}
+
 // O que está ao alcance do E agora (-1 = nada)
 typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA, ALVO_PECA, ALVO_ENCAIXE,
-               ALVO_REGISTRO, ALVO_CONTEXTO } AlvoRogue;
+               ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA } AlvoRogue;
 
 static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 {
     Vector2 p = b->j.pos;
+
+    // Reformulação: recompensa no chão, altar/poltrona/console e arquivo para ler
+    if (b->recompensaAtiva && Vector2Distance(p, b->recompensaPos) < 44.0f)
+        return ALVO_RECOMPENSA;
+    if ((b->tipoSala == SALA_EVENTO || b->tipoSala == SALA_DESCANSO || b->tipoSala == SALA_DESAFIO) &&
+        !b->eventoUsado && !b->eventoCombate && Vector2Distance(p, b->posObjetoSala) < 58.0f)
+        return ALVO_OBJETO_SALA;
+    if (b->registroSala && !b->registroSalaLido && Vector2Distance(p, b->posRegistroSala) < 50.0f)
+        return ALVO_REGISTRO_SALA;
 
     if (b->tipoSala == SALA_ATRIO) {
         if (Vector2Distance(p, POS_BYTE) < 70)                                  return ALVO_BYTE;
@@ -10757,10 +13565,14 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             else                      DialogoIniciar(dlg, &dialogoByteco, OBJ_BYTECO);
             break;
 
-        case ALVO_TERMINAL:
-            DialogoIniciar(dlg, (b->educativas == 0) ? &dialogoTerminalAlucinacao : &dialogoTerminalPraticas, OBJ_TERMINAL);
+        case ALVO_TERMINAL: {
+            // Os dois primeiros ensinam os conceitos; a partir do 3º, terminais que reforçam o que já foi visto
+            const Dialogo *d = (b->educativas == 0) ? &dialogoTerminalAlucinacao
+                             : (b->educativas == 1) ? &dialogoTerminalPraticas
+                             : ((b->educativas % 2 == 0) ? &dialogoTerminalVies : &dialogoTerminalFontes);
+            DialogoIniciar(dlg, d, OBJ_TERMINAL);
             b->educativas++;
-            break;
+        } break;
 
         case ALVO_PEDESTAL: {
             TipoArma arma = b->armaPedestal[pedestal];
@@ -10806,6 +13618,27 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             RogueLuciContexto(b, pedestal);
             break;
 
+        case ALVO_RECOMPENSA:
+            RogueUsarRecompensa(b);
+            break;
+
+        case ALVO_OBJETO_SALA:
+            b->eventoAberto = true;
+            b->eventoResolvido = false;
+            b->selecaoEvento = 0;
+            TocarSom(sfxSelecao);
+            break;
+
+        case ALVO_REGISTRO_SALA:
+            if (b->registroSalaId >= 100) {
+                int m = b->registroSalaId - 100;
+                b->memoriasVistas |= 1u << m;
+                DialogoIniciar(dlg, &dialogosMemoria[m], OBJ_REGISTRO_SALA);
+            } else {
+                DialogoIniciar(dlg, &dialogosAmeaca[b->registroSalaId], OBJ_REGISTRO_SALA);
+            }
+            break;
+
         default:
             break;
     }
@@ -10840,6 +13673,17 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         TocarSom(sfxAcerto);
         MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
         Telemetria("rogue_terminal", TextFormat("conceito %d", b->educativas), 0.0f, b->perm->fragmentos);
+    }
+    else if (obj == OBJ_REGISTRO_SALA) {
+        // Narrativa opcional: arquivo de ameaça (+1 fragmento) ou memória da Luci (estabiliza)
+        b->registroSalaLido = true;
+        if (b->registroSalaId >= 100) {
+            RogueMudarEstabilidade(b, 1, "memória recuperada");
+        } else {
+            b->perm->fragmentos += 1;
+            RogueAviso(b, "+1 FRAGMENTO DE CONHECIMENTO");
+        }
+        Telemetria("rogue_registro_sala", TextFormat("%d", b->registroSalaId), 0.0f, b->profundidade);
     }
     else if (obj == OBJ_CHEFE_INTRO) {
         b->chefe.apresentado = true;
@@ -10972,6 +13816,35 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
+    // Reformulação: escolha 1 de 3, eventos e o mapa grande (o combate espera)
+    if (b->escolhaAberta) {
+        RogueAtualizarEscolha(b);
+        return ROGUE_NADA;
+    }
+
+    if (b->eventoAberto) {
+        RogueAtualizarEvento(b, prog, dlg);
+        return ROGUE_NADA;
+    }
+
+    if (b->escolhaPendente >= 0) {
+        RogueAbrirEscolha(b, (ModoEscolha)b->escolhaPendente, true);
+        b->escolhaPendente = -1;
+        return ROGUE_NADA;
+    }
+
+    if (b->mapaAberto) {
+        if (IsKeyPressed(KEY_M) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ENTER))
+            b->mapaAberto = false;
+        return ROGUE_NADA;
+    }
+
+    if (IsKeyPressed(KEY_M) && b->noAtual >= 0 && !b->morreu) {
+        b->mapaAberto = true;
+        TocarSom(sfxSelecao);
+        return ROGUE_NADA;
+    }
+
     // Conversa do chefe guardada para quando a sala terminar de aparecer
     if (b->conversaPendente != NULL && b->fadeEntrada <= 0.0f) {
         DialogoIniciar(dlg, b->conversaPendente, b->objConversa);
@@ -11030,6 +13903,13 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->tipoSala == SALA_LUCI)
         RogueAtualizarLuciChefe(b, prog, dt);
 
+    // Reformulação: armadilhas, áreas da build e provas
+    RogueAtualizarArmadilhas(b, prog, dt);
+    RogueAtualizarAreas(b, prog, dt);
+    RogueAtualizarDesafioSala(b, prog, dt);
+    if (b->mensagemSistema > 0.0f) b->mensagemSistema -= dt;
+    if (b->marcaParede > 0.0f)     b->marcaParede -= dt;
+
     // Chegou perto do Guardião selado: o desafio abre
     for (int i = 0; i < MAX_INIMIGOS && !b->desafioAberto; i++) {
         Inimigo *e = &b->ini[i];
@@ -11049,20 +13929,9 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
-    if (b->tipoSala == SALA_COMBATE && !b->limpa && RogueInimigosVivos(b) == 0) {
-        b->limpa = true;
-        RogueSalaConcluida(b);
-
-        // Às vezes o combate deixa um upgrade passivo no meio da sala
-        int upgrade = RogueSortearItem(b, 0, true);
-        if (upgrade >= 0 && GetRandomValue(1, 100) <= CHANCE_UPGRADE_SALA)
-            RogueSoltar(b, (Vector2){ 400, 300 }, false, (TipoItem)upgrade);
-
-        AlterarPontos(prog, PONTOS_SALA_ROGUE);
-        TocarSom(sfxAcerto);
-        MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
-        Telemetria("rogue_sala_limpa", TextFormat("sala %d", b->indiceRota + 1), (float)(GetTime() - b->inicio), b->abatidos);
-    }
+    // Objetivo da sala de combate (eliminar, ondas, sobreviver, núcleos, alvo prioritário, mecanismo).
+    // Concluído, abre as portas e deixa a recompensa (ver RogueConcluirCombate).
+    RogueAtualizarObjetivo(b, prog, dt);
 
     // E: falar, ler, pegar
     int pedestal = -1;
@@ -11095,8 +13964,20 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     else if (b->tipoSala == SALA_TRANSICAO) {
         if (b->limpa && naPortaDeCima) RogueEntrarSala(b, SALA_LUCI);
     }
-    else if (b->tipoSala != SALA_CHEFE && b->tipoSala != SALA_LUCI && b->limpa && naPortaDeCima) {
-        RogueAvancar(b);
+    else if (b->noAtual >= 0 && b->limpa) {
+        // Reformulação: as portas da missão (é só andar até a escolhida)
+        for (int k = 0; k < b->numPortas; k++)
+            if (CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, b->portas[k].r)) {
+                RogueAtravessarPorta(b, k);
+                return ROGUE_NADA;
+            }
+
+        // Passagem secreta aberta: um desvio opcional
+        if (b->temParedeSecreta && b->passagemAberta &&
+            CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 4.0f, PAREDE_SECRETA_ROGUE[b->paredeSecreta])) {
+            RogueEntrarSecreta(b);
+            return ROGUE_NADA;
+        }
     }
 
     return ROGUE_NADA;
@@ -11789,6 +14670,9 @@ static void DesenharSinergiasMarcas(const Biblioteca *b, float t)
     }
 }
 
+static void DesenharNucleoCorrupcao(const Inimigo *e, float escala, float t);
+static void DesenharMarcasReformulacao(const Inimigo *e, float t);
+
 static void DesenharInimigo(const Inimigo *e)
 {
     float escala = (e->surgindo > 0.0f) ? 1.0f - e->surgindo / TEMPO_SURGINDO : 1.0f;
@@ -11815,6 +14699,7 @@ static void DesenharInimigo(const Inimigo *e)
             case INIMIGO_OVERCLOCK: DesenharOverclock(e, escala, t);       break;
             case INIMIGO_BOTNET:    DesenharBotnet(e, escala, t);          break;
             case INIMIGO_KEYLOGGER: DesenharKeylogger(e, escala, t);       break;
+            case INIMIGO_NUCLEO:    DesenharNucleoCorrupcao(e, escala, t); break;
             default:                DesenharCache(e, escala, t);           break;
         }
     }
@@ -11824,6 +14709,9 @@ static void DesenharInimigo(const Inimigo *e)
 
     if (e->selado && e->surgindo <= 0.0f)
         DesenharSelo(e, (float)GetTime());
+
+    if (e->surgindo <= 0.0f)
+        DesenharMarcasReformulacao(e, (float)GetTime());        // elite, alvo prioritário, rótulo
 
     // Barra de vida quando já levou dano (o Phisher camuflado não se entrega)
     bool semBarra = RogueInimigoPassageiro(e->tipo) || (e->tipo == INIMIGO_PHISHER && e->estado == 0);
@@ -13293,12 +16181,924 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
     }
 }
 
+// =============================================================
+// REFORMULAÇÃO DO BLOCO 2: DESENHO DOS SISTEMAS NOVOS
+//   Tudo é desenhado com formas do Raylib. Os ícones das salas podem ganhar
+//   sprites opcionais em resources/sprites/biblioteca/salas/<nome>.png
+//   (ex.: combate.png, elite.png, evento.png). Se o arquivo não existir,
+//   o ícone desenhado à mão é usado: o jogo nunca depende deles.
+// =============================================================
+
+static const char *ARQUIVOS_ICONES_SALAS[NUM_TIPOS_SALA] = {
+    "atrio", "combate", "educativa", "tesouro", "alucinador", "silogista", "nucleo", "luci",
+    "elite", "evento", "descanso", "desafio", "secreta"
+};
+static Texture2D iconesSalas[NUM_TIPOS_SALA];
+static bool iconesSalasCarregados = false;
+
+static void CarregarIconesBiblioteca(void)
+{
+    if (iconesSalasCarregados)
+        return;
+    iconesSalasCarregados = true;
+
+    for (int t = 0; t < NUM_TIPOS_SALA; t++) {
+        const char *arq = TextFormat("resources/sprites/biblioteca/salas/%s.png", ARQUIVOS_ICONES_SALAS[t]);
+        iconesSalas[t] = FileExists(arq) ? LoadTexture(arq) : (Texture2D){0};
+        if (iconesSalas[t].id > 0) SetTextureFilter(iconesSalas[t], TEXTURE_FILTER_BILINEAR);
+    }
+}
+
+static void DescarregarIconesBiblioteca(void)
+{
+    for (int t = 0; t < NUM_TIPOS_SALA; t++)
+        if (iconesSalas[t].id > 0) UnloadTexture(iconesSalas[t]);
+    memset(iconesSalas, 0, sizeof(iconesSalas));
+    iconesSalasCarregados = false;
+}
+
+// Ícone do tipo de sala (portas, mini-mapa e mapa grande). e = escala (1 = cerca de 24 px)
+static void DesenharIconeSala(TipoSalaRogue t, Vector2 c, float e, float tempo)
+{
+    Color cor = CORES_SALAS_ROGUE[t];
+
+    if (t < NUM_TIPOS_SALA && iconesSalas[t].id > 0) {
+        Texture2D tx = iconesSalas[t];
+        float lado = 24.0f * e;
+        DrawTexturePro(tx, (Rectangle){ 0, 0, (float)tx.width, (float)tx.height },
+                       (Rectangle){ c.x - lado / 2, c.y - lado / 2, lado, lado }, (Vector2){ 0, 0 }, 0.0f, WHITE);
+        return;
+    }
+
+    switch (t) {
+        case SALA_COMBATE:      // duas lâminas cruzadas
+            DrawLineEx((Vector2){ c.x - 8 * e, c.y - 8 * e }, (Vector2){ c.x + 8 * e, c.y + 8 * e }, 3 * e, cor);
+            DrawLineEx((Vector2){ c.x + 8 * e, c.y - 8 * e }, (Vector2){ c.x - 8 * e, c.y + 8 * e }, 3 * e, cor);
+            DrawLineEx((Vector2){ c.x - 9 * e, c.y + 3 * e }, (Vector2){ c.x - 3 * e, c.y + 9 * e }, 2 * e, WHITE);
+            DrawLineEx((Vector2){ c.x + 9 * e, c.y + 3 * e }, (Vector2){ c.x + 3 * e, c.y + 9 * e }, 2 * e, WHITE);
+            break;
+
+        case SALA_ELITE: {      // coroa
+            Vector2 p0 = { c.x - 10 * e, c.y + 6 * e }, p1 = { c.x + 10 * e, c.y + 6 * e };
+            DrawRectangleV((Vector2){ p0.x, p0.y - 3 * e }, (Vector2){ 20 * e, 4 * e }, GOLD);
+            DrawTriangle((Vector2){ c.x - 10 * e, c.y + 3 * e }, (Vector2){ c.x - 4 * e, c.y + 3 * e }, (Vector2){ c.x - 9 * e, c.y - 8 * e }, GOLD);
+            DrawTriangle((Vector2){ c.x - 4 * e, c.y + 3 * e }, (Vector2){ c.x + 4 * e, c.y + 3 * e }, (Vector2){ c.x, c.y - 10 * e }, GOLD);
+            DrawTriangle((Vector2){ c.x + 4 * e, c.y + 3 * e }, (Vector2){ c.x + 10 * e, c.y + 3 * e }, (Vector2){ c.x + 9 * e, c.y - 8 * e }, GOLD);
+            DrawCircleV((Vector2){ c.x, c.y - 1 * e }, 2 * e, RED);
+            (void)p1;
+        } break;
+
+        case SALA_EDUCATIVA:    // livro aberto
+            DrawRectangleV((Vector2){ c.x - 10 * e, c.y - 7 * e }, (Vector2){ 9 * e, 14 * e }, cor);
+            DrawRectangleV((Vector2){ c.x + 1 * e, c.y - 7 * e }, (Vector2){ 9 * e, 14 * e }, cor);
+            for (int k = 0; k < 3; k++) {
+                DrawLineEx((Vector2){ c.x - 8 * e, c.y - 3 * e + k * 4 * e }, (Vector2){ c.x - 3 * e, c.y - 3 * e + k * 4 * e }, 1, (Color){ 10, 30, 50, 255 });
+                DrawLineEx((Vector2){ c.x + 3 * e, c.y - 3 * e + k * 4 * e }, (Vector2){ c.x + 8 * e, c.y - 3 * e + k * 4 * e }, 1, (Color){ 10, 30, 50, 255 });
+            }
+            break;
+
+        case SALA_RECOMPENSA:   // baú
+            DrawRectangleV((Vector2){ c.x - 10 * e, c.y - 3 * e }, (Vector2){ 20 * e, 11 * e }, (Color){ 140, 90, 30, 255 });
+            DrawRectangleV((Vector2){ c.x - 10 * e, c.y - 8 * e }, (Vector2){ 20 * e, 5 * e }, cor);
+            DrawRectangleV((Vector2){ c.x - 2 * e, c.y - 4 * e }, (Vector2){ 4 * e, 5 * e }, WHITE);
+            break;
+
+        case SALA_EVENTO:       // ponto de interrogação
+            DrawCircleLines((int)c.x, (int)c.y, 10 * e, cor);
+            DrawText("?", (int)(c.x - MeasureText("?", (int)(18 * e)) / 2), (int)(c.y - 9 * e), (int)(18 * e), cor);
+            break;
+
+        case SALA_DESCANSO:     // poltrona e uma luz
+            DrawRectangleV((Vector2){ c.x - 9 * e, c.y - 8 * e }, (Vector2){ 18 * e, 8 * e }, cor);
+            DrawRectangleV((Vector2){ c.x - 11 * e, c.y }, (Vector2){ 22 * e, 6 * e }, Fade(cor, 0.8f));
+            DrawRectangleV((Vector2){ c.x - 11 * e, c.y + 6 * e }, (Vector2){ 3 * e, 4 * e }, cor);
+            DrawRectangleV((Vector2){ c.x + 8 * e, c.y + 6 * e }, (Vector2){ 3 * e, 4 * e }, cor);
+            break;
+
+        case SALA_DESAFIO:      // alvo
+            DrawCircleLines((int)c.x, (int)c.y, 10 * e, cor);
+            DrawCircleLines((int)c.x, (int)c.y, 6 * e, cor);
+            DrawCircleV(c, 2.5f * e, RED);
+            break;
+
+        case SALA_SECRETA:      // olho
+            DrawEllipse((int)c.x, (int)c.y, 11 * e, 6 * e, cor);
+            DrawCircleV(c, 4 * e, (Color){ 20, 0, 30, 255 });
+            DrawCircleV((Vector2){ c.x + 1 * e, c.y - 1 * e }, 1.5f * e, WHITE);
+            break;
+
+        case SALA_SILOGISTA:    // "portanto" (três pontos) dentro de uma engrenagem
+            for (int k = 0; k < 8; k++) {
+                float a = (float)k / 8.0f * 2.0f * PI + tempo * 0.6f;
+                DrawCircleV((Vector2){ c.x + cosf(a) * 10 * e, c.y + sinf(a) * 10 * e }, 2 * e, cor);
+            }
+            DrawCircleV((Vector2){ c.x, c.y - 4 * e }, 2 * e, WHITE);
+            DrawCircleV((Vector2){ c.x - 4 * e, c.y + 3 * e }, 2 * e, WHITE);
+            DrawCircleV((Vector2){ c.x + 4 * e, c.y + 3 * e }, 2 * e, WHITE);
+            break;
+
+        case SALA_CHEFE:        // o olho do Alucinador
+            for (int k = 0; k < 6; k++) {
+                float a = (float)k / 6.0f * 2.0f * PI + tempo;
+                DrawLineEx(c, (Vector2){ c.x + cosf(a) * 12 * e, c.y + sinf(a) * 12 * e }, 2 * e, Fade(cor, 0.7f));
+            }
+            DrawCircleV(c, 8 * e, cor);
+            DrawCircleV(c, 4 * e, WHITE);
+            DrawCircleV(c, 2 * e, BLACK);
+            break;
+
+        default:
+            DrawCircleV(c, 7 * e, cor);
+            break;
+    }
+}
+
+static void DesenharIconeRecompensa(TipoRecompensa r, Vector2 c, float e, float tempo)
+{
+    switch (r) {
+        case RECOMPENSA_MELHORIA:
+            DrawCircleV(c, 7 * e, (Color){ 0, 228, 255, 255 });
+            DrawTriangle((Vector2){ c.x, c.y - 5 * e }, (Vector2){ c.x - 4 * e, c.y + 1 * e }, (Vector2){ c.x + 4 * e, c.y + 1 * e }, WHITE);
+            DrawRectangleV((Vector2){ c.x - 1.5f * e, c.y }, (Vector2){ 3 * e, 4 * e }, WHITE);
+            break;
+        case RECOMPENSA_RARA:
+            DrawCircleV(c, 7 * e, GOLD);
+            DrawPoly(c, 5, 4.5f * e, tempo * 90.0f, WHITE);
+            break;
+        case RECOMPENSA_FRAGMENTOS:
+            DesenharFragmentoConhecimento(c, tempo);
+            break;
+        case RECOMPENSA_ARMA:
+            DrawCircleV(c, 7 * e, ORANGE);
+            DrawCircleLines((int)c.x, (int)c.y, 4 * e, WHITE);
+            DrawLineEx((Vector2){ c.x - 6 * e, c.y }, (Vector2){ c.x + 6 * e, c.y }, 1.5f, WHITE);
+            DrawLineEx((Vector2){ c.x, c.y - 6 * e }, (Vector2){ c.x, c.y + 6 * e }, 1.5f, WHITE);
+            break;
+        case RECOMPENSA_VIDA:
+            DesenharCoracao(c.x, c.y, (int)fmaxf(1.0f, 1.5f * e), RED);
+            break;
+        default:
+            break;
+    }
+}
+
+// Porta da missão: moldura na cor do tipo de sala, ícone e recompensa anunciada
+static void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float tempo)
+{
+    const NoMapa *n = &b->mapa.no[p->destino];
+    Color cor = CORES_SALAS_ROGUE[n->tipo];
+    bool aberta = b->limpa;
+    float pulso = 0.5f + 0.5f * sinf(tempo * 4.0f);
+    Rectangle r = p->r;
+
+    DrawRectangleRec(r, aberta ? Fade(cor, 0.25f + 0.15f * pulso) : (Color){ 30, 10, 20, 255 });
+    DrawRectangleLinesEx(r, 2, aberta ? Fade(cor, 0.6f + 0.4f * pulso) : MAROON);
+
+    // Placa logo na frente da porta (dentro da arena)
+    Vector2 c = CentroRetangulo(r);
+    if (p->lado == LADO_CIMA)          c.y += 34;
+    else if (p->lado == LADO_ESQUERDA) c.x += 36;
+    else                               c.x -= 36;
+
+    DrawCircleV(c, 17, Fade(BLACK, 0.65f));
+    DrawCircleLines((int)c.x, (int)c.y, 17, aberta ? cor : Fade(cor, 0.5f));
+    DesenharIconeSala(n->tipo, c, 0.85f, tempo);
+
+    if (n->recompensa != RECOMPENSA_NENHUMA) {
+        Vector2 rc = { c.x + 14, c.y + 12 };
+        DrawCircleV(rc, 9, Fade(BLACK, 0.85f));
+        DesenharIconeRecompensa(n->recompensa, rc, 0.8f, tempo);
+    }
+
+    if (!aberta) {      // cadeado
+        DrawRectangle((int)c.x - 6, (int)c.y - 2, 12, 9, MAROON);
+        DrawRing(c, 3, 5, 180, 360, 10, MAROON);
+    }
+
+    const char *nome = PLACAS_SALAS_ROGUE[n->tipo];
+    const char *rec = NOMES_RECOMPENSA[n->recompensa];
+    int w1 = MeasureText(nome, 10), w2 = MeasureText(rec, 10);
+    Color corTexto = aberta ? cor : Fade(cor, 0.6f);
+
+    if (p->lado == LADO_CIMA) {
+        DrawText(nome, (int)c.x - w1 / 2, (int)c.y + 21, 10, corTexto);
+        if (rec[0]) DrawText(rec, (int)c.x - w2 / 2, (int)c.y + 32, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
+    } else if (p->lado == LADO_ESQUERDA) {
+        DrawText(nome, (int)c.x + 22, (int)c.y - 10, 10, corTexto);
+        if (rec[0]) DrawText(rec, (int)c.x + 22, (int)c.y + 2, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
+    } else {
+        DrawText(nome, (int)c.x - 22 - w1, (int)c.y - 10, 10, corTexto);
+        if (rec[0]) DrawText(rec, (int)c.x - 22 - w2, (int)c.y + 2, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
+    }
+}
+
+// Parede corrompida (passagem secreta), a marca do scanner e a entrada por onde o jogador veio
+static void DesenharParedesMissao(const Biblioteca *b, float tempo)
+{
+    // Entrada (selada atrás do jogador)
+    static const Rectangle entradas[NUM_LADOS] = { { 370, 60, 60, 14 }, { 40, 260, 14, 70 }, { 746, 260, 14, 70 }, { 370, 516, 60, 14 } };
+    Rectangle en = entradas[b->ladoEntrada];
+    DrawRectangleRec(en, (Color){ 14, 12, 26, 255 });
+    DrawRectangleLinesEx(en, 1, Fade(GRAY, 0.35f));
+
+    if (b->temParedeSecreta) {
+        Rectangle r = PAREDE_SECRETA_ROGUE[b->paredeSecreta];
+
+        if (b->passagemAberta) {
+            Color cor = CORES_SALAS_ROGUE[SALA_SECRETA];
+            float pulso = 0.5f + 0.5f * sinf(tempo * 5.0f);
+            DrawRectangleRec(r, b->limpa ? Fade(cor, 0.3f + 0.3f * pulso) : (Color){ 30, 10, 30, 255 });
+            DrawRectangleLinesEx(r, 2, b->limpa ? cor : Fade(cor, 0.5f));
+            const char *t = b->limpa ? "ARQUIVO OCULTO" : "OCULTO (TRANCADO)";
+            int w = MeasureText(t, 10);
+            int x = (r.width > r.height) ? (int)(r.x + r.width / 2) - w / 2 : ((r.x < 400) ? (int)(r.x + r.width) + 6 : (int)r.x - w - 6);
+            int y = (r.width > r.height) ? (int)(r.y + r.height) + 4 : (int)(r.y + r.height / 2) - 5;
+            DrawText(t, x, y, 10, cor);
+        } else {
+            // Rachaduras que aumentam com os tiros (sutis no começo: é preciso reparar)
+            float dano = 1.0f - b->hpParede / PAREDE_SECRETA_HP;
+            float brilho = 0.18f + 0.5f * dano + ((((int)(tempo * 7.0f)) % 9 == 0) ? 0.25f : 0.0f);
+            Vector2 c = CentroRetangulo(r);
+            for (int k = 0; k < 5 + (int)(dano * 6); k++) {
+                unsigned int h = Ruido((unsigned int)(b->paredeSecreta * 31 + k * 7));
+                float ox = (float)((int)(h % 40) - 20) * (r.width > r.height ? 1.0f : 0.25f);
+                float oy = (float)((int)((h >> 8) % 40) - 20) * (r.width > r.height ? 0.25f : 1.0f);
+                DrawLineEx((Vector2){ c.x + ox * 0.3f, c.y + oy * 0.3f }, (Vector2){ c.x + ox, c.y + oy }, 1.5f, Fade(MAGENTA, brilho));
+            }
+        }
+    }
+
+    // Scanner: a marca "PASSAGEM?" (alucinando, pode estar na parede errada)
+    if (b->marcaParede > 0.0f && b->paredeMarcada >= 0 && !b->passagemAberta) {
+        Rectangle r = PAREDE_SECRETA_ROGUE[b->paredeMarcada];
+        Vector2 c = CentroRetangulo(r);
+        float dx = b->scannerErrou ? (float)GetRandomValue(-2, 2) : 0.0f;
+        Vector2 t = { c.x + dx + ((r.width > r.height) ? 0.0f : ((c.x < 400) ? 46.0f : -46.0f)), c.y + ((r.width > r.height) ? 26.0f : 0.0f) };
+        const char *txt = "PASSAGEM?";
+        int w = MeasureText(txt, 10);
+        DrawRectangle((int)t.x - w / 2 - 4, (int)t.y - 7, w + 8, 14, Fade(BLACK, 0.7f));
+        DrawRectangleLines((int)t.x - w / 2 - 4, (int)t.y - 7, w + 8, 14, (Color){ 0, 228, 255, 255 });
+        DrawText(txt, (int)t.x - w / 2, (int)t.y - 5, 10, (Color){ 0, 228, 255, 255 });
+        DrawRectangleLinesEx((Rectangle){ r.x - 3, r.y - 3, r.width + 6, r.height + 6 }, 1, Fade((Color){ 0, 228, 255, 255 }, 0.6f));
+    }
+}
+
+static void DesenharArmadilhas(const Biblioteca *b, float tempo)
+{
+    bool desligadas = b->limpa && !(b->tipoSala == SALA_DESAFIO && b->estadoDesafio == 1);
+    float apaga = desligadas ? 0.25f : 1.0f;
+    bool pisca = ((int)(tempo * 10.0f)) % 2 == 0;
+
+    for (int i = 0; i < MAX_ARMADILHAS; i++) {
+
+        const Armadilha *a = &b->arm[i];
+        if (!a->ativo) continue;
+
+        switch (a->tipo) {
+
+            case ARM_FEIXE: {
+                Color cor = (Color){ 0, 228, 255, 255 };
+                Vector2 p0, p1;
+                if (a->vertical) { p0 = (Vector2){ a->r.x + a->r.width / 2, a->r.y }; p1 = (Vector2){ p0.x, a->r.y + a->r.height }; }
+                else             { p0 = (Vector2){ a->r.x, a->r.y + a->r.height / 2 }; p1 = (Vector2){ a->r.x + a->r.width, p0.y }; }
+
+                // Emissores nas paredes
+                DrawRectangle((int)p0.x - 6, (int)p0.y - 6, 12, 12, Fade((Color){ 40, 60, 90, 255 }, apaga));
+                DrawRectangle((int)p1.x - 6, (int)p1.y - 6, 12, 12, Fade((Color){ 40, 60, 90, 255 }, apaga));
+
+                if (desligadas || a->fase == 0) {
+                    DrawLineEx(p0, p1, 1, Fade(cor, 0.12f * apaga));
+                } else if (a->fase == 1) {
+                    DrawLineEx(p0, p1, pisca ? 3.0f : 1.0f, Fade(RED, pisca ? 0.8f : 0.4f));       // aviso: vai disparar
+                    DrawRectangleRec(a->r, Fade(RED, 0.08f));
+                } else {
+                    DrawRectangleRec(a->r, Fade(cor, 0.35f));
+                    DrawLineEx(p0, p1, a->vertical ? a->r.width * 0.5f : a->r.height * 0.5f, Fade(WHITE, 0.85f));
+                }
+            } break;
+
+            case ARM_ZONA: {
+                Color cor = (Color){ 190, 33, 255, 255 };
+                if (desligadas || a->fase == 0) {
+                    DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, Fade(cor, 0.25f * apaga));
+                } else if (a->fase == 1) {
+                    DrawCircleV(a->pos, a->raio, Fade(cor, pisca ? 0.18f : 0.06f));
+                    DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, Fade(RED, 0.8f));
+                } else {
+                    DrawCircleV(a->pos, a->raio, Fade(cor, 0.30f));
+                    DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, cor);
+                    for (int k = 0; k < 6; k++) {       // bolhas de dados corrompidos
+                        unsigned int h = Ruido((unsigned int)(i * 97 + k * 13 + (int)(tempo * 3.0f)));
+                        float ang = (float)(h % 360) * DEG2RAD, d = (float)((h >> 9) % (unsigned int)a->raio);
+                        DrawCircleV((Vector2){ a->pos.x + cosf(ang) * d, a->pos.y + sinf(ang) * d }, 3, Fade(MAGENTA, 0.7f));
+                    }
+                }
+            } break;
+
+            case ARM_TORRE: {
+                Vector2 d = Vector2Subtract(b->j.pos, a->pos);
+                d = (Vector2Length(d) > 1.0f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
+                DrawRectangle((int)a->pos.x - 14, (int)a->pos.y - 14, 28, 28, Fade((Color){ 50, 40, 70, 255 }, apaga));
+                DrawRectangleLines((int)a->pos.x - 14, (int)a->pos.y - 14, 28, 28, Fade(ORANGE, 0.7f * apaga));
+                DrawLineEx(a->pos, Vector2Add(a->pos, Vector2Scale(d, 18)), 5, Fade(GRAY, apaga));
+                if (!desligadas && a->fase == 1) {
+                    float k = 1.0f - a->timer / TORRE_PREPARO;
+                    DrawCircleV(a->pos, 6 + 6 * k, Fade(ORANGE, 0.6f));                          // aviso: carregando
+                    DrawLineEx(a->pos, Vector2Add(a->pos, Vector2Scale(d, 120)), 1, Fade(RED, 0.5f * k));
+                } else {
+                    DrawCircleV(a->pos, 5, Fade(ORANGE, 0.5f * apaga));
+                }
+            } break;
+
+            case ARM_EXPLOSAO:
+                if (!desligadas && a->fase == 1) {
+                    float k = 1.0f - a->timer / EXPLOSAO_AVISO;
+                    DrawCircleV(a->pos, a->raio, Fade(RED, 0.10f));
+                    DrawCircleSector(a->pos, a->raio * k, 0, 360, 24, Fade(RED, 0.18f));
+                    DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, pisca ? RED : ORANGE);
+                    DrawText("!", (int)a->pos.x - 3, (int)a->pos.y - 10, 20, YELLOW);
+                }
+                break;
+
+            case ARM_BARREIRA: {
+                Color cor = (Color){ 0, 228, 48, 255 };
+                DrawRectangleRec(a->r, Fade((Color){ 10, 50, 20, 255 }, 0.9f));
+                for (int k = 0; k < 6; k++) {
+                    float f = fmodf(tempo * 1.5f + (float)k / 6.0f, 1.0f);
+                    if (a->vertical) DrawLine((int)a->r.x, (int)(a->r.y + f * a->r.height), (int)(a->r.x + a->r.width), (int)(a->r.y + f * a->r.height), Fade(cor, 0.5f));
+                    else             DrawLine((int)(a->r.x + f * a->r.width), (int)a->r.y, (int)(a->r.x + f * a->r.width), (int)(a->r.y + a->r.height), Fade(cor, 0.5f));
+                }
+                DrawRectangleLinesEx(a->r, 2, cor);
+                // Seta para onde ela está indo
+                if (!desligadas) {
+                    Vector2 c = CentroRetangulo(a->r);
+                    Vector2 dir = a->vertical ? (Vector2){ (a->vel > 0) ? 1.0f : -1.0f, 0 } : (Vector2){ 0, (a->vel > 0) ? 1.0f : -1.0f };
+                    Vector2 ponta = Vector2Add(c, Vector2Scale(dir, 26));
+                    DrawLineEx(c, ponta, 2, Fade(WHITE, 0.6f));
+                    DrawCircleV(ponta, 3, Fade(WHITE, 0.6f));
+                }
+            } break;
+
+            case ARM_BLOQUEIO:
+                if (desligadas || a->fase == 0) {
+                    DrawRectangleLinesEx(a->r, 1, Fade(RED, 0.2f * apaga));
+                } else if (a->fase == 1) {
+                    DrawRectangleRec(a->r, Fade(RED, pisca ? 0.22f : 0.08f));                    // aviso: vai fechar
+                    DrawRectangleLinesEx(a->r, 2, RED);
+                    DrawText("!", (int)(a->r.x + a->r.width / 2) - 3, (int)(a->r.y + a->r.height / 2) - 10, 20, YELLOW);
+                } else {
+                    DrawRectangleRec(a->r, (Color){ 70, 15, 30, 255 });
+                    DrawRectangleLinesEx(a->r, 2, (Color){ 255, 60, 90, 255 });
+                    DrawLineEx((Vector2){ a->r.x, a->r.y }, (Vector2){ a->r.x + a->r.width, a->r.y + a->r.height }, 2, Fade(RED, 0.6f));
+                    DrawLineEx((Vector2){ a->r.x + a->r.width, a->r.y }, (Vector2){ a->r.x, a->r.y + a->r.height }, 2, Fade(RED, 0.6f));
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+}
+
+static void DesenharAreas(const Biblioteca *b)
+{
+    for (int i = 0; i < MAX_AREAS; i++) {
+        const AreaDano *a = &b->areas[i];
+        if (!a->ativo) continue;
+
+        if (a->atraso > 0.0f) {
+            DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, Fade(a->cor, 0.7f));
+            DrawCircleV(a->pos, a->raio * 0.3f, Fade(a->cor, 0.4f));
+        } else if (a->dps > 0.0f) {
+            float k = a->vida / a->vidaMax;
+            DrawCircleV(a->pos, a->raio, Fade(a->cor, 0.22f * k));
+            DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, Fade(a->cor, 0.6f * k));
+        }
+    }
+}
+
+// Objetos da sala: recompensa, altar/poltrona/console, consoles do mecanismo e arquivos
+static void DesenharObjetosSala(const Biblioteca *b, float tempo)
+{
+    // Consoles do mecanismo corrompido
+    for (int k = 0; k < b->numMecanismos; k++) {
+        Vector2 c = b->posMecanismo[k];
+        bool feito = b->mecanismoDesligado[k];
+        Color cor = feito ? LIME : MAGENTA;
+        DrawRectangle((int)c.x - 16, (int)c.y - 14, 32, 26, (Color){ 30, 22, 46, 255 });
+        DrawRectangleLines((int)c.x - 16, (int)c.y - 14, 32, 26, cor);
+        DrawRectangle((int)c.x - 11, (int)c.y - 9, 22, 12, Fade(cor, feito ? 0.6f : 0.3f + 0.3f * sinf(tempo * 6.0f + k)));
+        if (!feito) {
+            DrawCircleLines((int)c.x, (int)c.y, MECANISMO_RAIO, Fade(cor, 0.25f));
+            if (b->progressoMecanismo[k] > 0.0f)
+                DrawRing(c, MECANISMO_RAIO - 4, MECANISMO_RAIO, -90, -90 + 360.0f * b->progressoMecanismo[k] / MECANISMO_TEMPO, 32, (Color){ 0, 228, 255, 255 });
+        }
+    }
+
+    // Altar do evento / poltrona / console do desafio
+    if (b->tipoSala == SALA_EVENTO || b->tipoSala == SALA_DESCANSO || b->tipoSala == SALA_DESAFIO) {
+        Vector2 c = b->posObjetoSala;
+        float usado = b->eventoUsado ? 0.4f : 1.0f;
+        float flutua = sinf(tempo * 2.0f) * 3.0f;
+        Color cor = CORES_SALAS_ROGUE[b->tipoSala];
+
+        DrawEllipse((int)c.x, (int)c.y + 22, 34, 9, Fade(cor, 0.15f * usado));
+        if (b->tipoSala == SALA_EVENTO) {
+            DrawRectangle((int)c.x - 18, (int)c.y + 4, 36, 16, Fade((Color){ 60, 40, 90, 255 }, usado));
+            DrawRectangle((int)c.x - 12, (int)c.y - 4, 24, 8, Fade((Color){ 80, 60, 120, 255 }, usado));
+            if (!b->eventoUsado) {
+                DrawCircleV((Vector2){ c.x, c.y - 22 + flutua }, 14, Fade(cor, 0.25f));
+                DesenharIconeSala(SALA_EVENTO, (Vector2){ c.x, c.y - 22 + flutua }, 1.0f, tempo);
+            }
+        } else if (b->tipoSala == SALA_DESCANSO) {
+            DrawRectangle((int)c.x - 22, (int)c.y - 16, 44, 18, Fade((Color){ 40, 110, 60, 255 }, usado));
+            DrawRectangle((int)c.x - 28, (int)c.y + 2, 56, 14, Fade((Color){ 30, 90, 50, 255 }, usado));
+            DrawRectangle((int)c.x - 28, (int)c.y - 6, 8, 20, Fade((Color){ 30, 80, 45, 255 }, usado));
+            DrawRectangle((int)c.x + 20, (int)c.y - 6, 8, 20, Fade((Color){ 30, 80, 45, 255 }, usado));
+            DrawCircleV((Vector2){ c.x + 44, c.y - 30 }, 18, Fade(YELLOW, 0.08f * usado));           // abajur
+            DrawLine((int)c.x + 44, (int)c.y - 30, (int)c.x + 44, (int)c.y + 14, Fade(GRAY, usado));
+            DrawTriangle((Vector2){ c.x + 36, c.y - 28 }, (Vector2){ c.x + 52, c.y - 28 }, (Vector2){ c.x + 44, c.y - 38 }, Fade(GOLD, usado));
+        } else {
+            DrawRectangle((int)c.x - 20, (int)c.y - 18, 40, 32, Fade((Color){ 40, 40, 20, 255 }, usado));
+            DrawRectangleLines((int)c.x - 20, (int)c.y - 18, 40, 32, Fade(cor, usado));
+            DesenharIconeSala(SALA_DESAFIO, (Vector2){ c.x, c.y - 2 }, 0.9f, tempo);
+            if (b->estadoDesafio == 1) {
+                float total = (b->desafioSala == DESAFIO_SALA_ECOS) ? DESAFIO_ECOS_TEMPO : DESAFIO_INTEG_TEMPO;
+                DrawRing(c, 26, 30, -90, -90 + 360.0f * fmaxf(0.0f, b->tempoDesafioSala) / total, 32, cor);
+            }
+        }
+    }
+
+    // Arquivo de ameaça ou memória
+    if (b->registroSala) {
+        DesenharTerminal(b->posRegistroSala, b->registroSalaLido, tempo);
+        const char *nome = (b->registroSalaId >= 100) ? "MEMÓRIA" : "ARQUIVO DE AMEAÇA";
+        DrawText(nome, (int)b->posRegistroSala.x - MeasureText(nome, 10) / 2, (int)b->posRegistroSala.y + 26, 10,
+                 b->registroSalaLido ? GRAY : ((b->registroSalaId >= 100) ? MAGENTA : (Color){ 0, 228, 255, 255 }));
+    }
+
+    // Recompensa no chão
+    if (b->recompensaAtiva) {
+        Vector2 c = { b->recompensaPos.x, b->recompensaPos.y + sinf(tempo * 3.0f) * 3.0f };
+        Color cor = (b->recompensaTipo == RECOMPENSA_RARA) ? GOLD : ((b->recompensaTipo == RECOMPENSA_ARMA) ? ORANGE :
+                    ((b->recompensaTipo == RECOMPENSA_VIDA) ? LIME : (Color){ 0, 228, 255, 255 }));
+        DrawCircleV(c, 24, Fade(cor, 0.12f + 0.06f * sinf(tempo * 4.0f)));
+        DrawRing(c, 17, 20, tempo * 120.0f, tempo * 120.0f + 270.0f, 24, cor);
+        DrawCircleV(c, 13, Fade(BLACK, 0.7f));
+        DesenharIconeRecompensa(b->recompensaTipo, c, 1.5f, tempo);
+        const char *nome = (b->recompensaTipo == RECOMPENSA_MELHORIA) ? "NÚCLEO DE MELHORIA" :
+                           (b->recompensaTipo == RECOMPENSA_RARA)     ? "NÚCLEO RARO" : NOMES_RECOMPENSA[b->recompensaTipo];
+        DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)c.y + 26, 10, cor);
+    }
+}
+
+// Mini-mapa no canto de cima: as camadas da esquerda para a direita
+static Vector2 RoguePosMiniMapa(const Biblioteca *b, const NoMapa *n)
+{
+    float y = 7.0f + n->x * 28.0f;
+    if (n->tipo == SALA_SECRETA && n->pai >= 0) y = 7.0f + b->mapa.no[n->pai].x * 28.0f + 6.0f;
+    return (Vector2){ 14.0f + (float)n->prof * 16.0f + ((n->tipo == SALA_SECRETA) ? 6.0f : 0.0f), y };
+}
+
+static void DesenharMiniMapa(const Biblioteca *b, float tempo)
+{
+    const MapaRogue *m = &b->mapa;
+    const NoMapa *atual = &m->no[b->noAtual];
+
+    DrawRectangle(4, 2, 138, 38, Fade(BLACK, 0.6f));
+    DrawRectangleLines(4, 2, 138, 38, Fade(PURPLE, 0.6f));
+
+    for (int i = 0; i < m->numNos; i++) {
+        const NoMapa *n = &m->no[i];
+        if (n->escondida) continue;
+        Vector2 a = RoguePosMiniMapa(b, n);
+        for (int k = 0; k < n->numSaidas; k++) {
+            const NoMapa *d = &m->no[n->saida[k]];
+            bool caminho = n->visitado && d->visitado;
+            DrawLineEx(a, RoguePosMiniMapa(b, d), 1, Fade(caminho ? WHITE : GRAY, caminho ? 0.7f : 0.25f));
+        }
+    }
+
+    for (int i = 0; i < m->numNos; i++) {
+        const NoMapa *n = &m->no[i];
+        if (n->escondida) continue;
+
+        Vector2 p = RoguePosMiniMapa(b, n);
+        Color cor = CORES_SALAS_ROGUE[n->tipo];
+        float lado = (n->tipo == SALA_CHEFE) ? 9.0f : ((n->tipo == SALA_SECRETA) ? 5.0f : 6.0f);
+        Rectangle r = { p.x - lado / 2, p.y - lado / 2, lado, lado };
+
+        bool proxima = false;
+        for (int k = 0; k < atual->numSaidas; k++) if (atual->saida[k] == i) proxima = true;
+
+        if (n->visitado) DrawRectangleRec(r, Fade(cor, (i == b->noAtual) ? 1.0f : 0.45f));
+        DrawRectangleLinesEx(r, 1, proxima ? Fade(cor, 0.6f + 0.4f * sinf(tempo * 6.0f)) : Fade(cor, n->visitado ? 0.9f : 0.45f));
+
+        if (i == b->noAtual)
+            DrawRectangleLinesEx((Rectangle){ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, 1, Fade(WHITE, 0.6f + 0.4f * sinf(tempo * 5.0f)));
+    }
+}
+
+// Mapa grande (M): o caminho todo, as recompensas das próximas portas e a build
+static void DesenharMapaGrande(const Biblioteca *b, float tempo)
+{
+    const MapaRogue *m = &b->mapa;
+    const NoMapa *atual = &m->no[b->noAtual];
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.75f));
+    Rectangle painel = { 30, 30, 740, 520 };
+    DrawRectangleRec(painel, (Color){ 16, 13, 28, 255 });
+    DrawRectangleLinesEx(painel, 3, PURPLE);
+    DrawText("MAPA DA BIBLIOTECA", (int)painel.x + 20, (int)painel.y + 14, 22, (Color){ 200, 122, 255, 255 });
+    DrawText(TextFormat("Tentativa %d  -  sala %d", b->perm->tentativas, b->indiceRota + 1), (int)painel.x + 20, (int)painel.y + 40, 12, GRAY);
+
+    // Grafo: de baixo (entrada) para cima (Alucinador)
+    Rectangle area = { painel.x + 20, painel.y + 62, 430, 420 };
+    DrawRectangleRec(area, Fade((Color){ 30, 24, 50, 255 }, 0.6f));
+
+    #define POS_NO(n) ((Vector2){ area.x + 40.0f + (n)->x * (area.width - 80.0f) + (((n)->tipo == SALA_SECRETA) ? 34.0f : 0.0f), \
+                                  area.y + area.height - 26.0f - (float)(n)->prof * ((area.height - 52.0f) / (float)PROF_CHEFE) - (((n)->tipo == SALA_SECRETA) ? 18.0f : 0.0f) })
+
+    for (int i = 0; i < m->numNos; i++) {
+        const NoMapa *n = &m->no[i];
+        if (n->escondida) continue;
+        Vector2 a = POS_NO(n);
+        for (int k = 0; k < n->numSaidas; k++) {
+            const NoMapa *d = &m->no[n->saida[k]];
+            if (d->escondida) continue;
+            bool caminho = n->visitado && d->visitado;
+            bool opcao = (i == b->noAtual);
+            DrawLineEx(a, POS_NO(d), caminho ? 3.0f : 2.0f, opcao ? Fade(GOLD, 0.8f) : Fade(caminho ? WHITE : GRAY, caminho ? 0.8f : 0.3f));
+        }
+        if (n->tipo == SALA_SECRETA && n->pai >= 0) {
+            Vector2 pai = POS_NO(&m->no[n->pai]);
+            for (int s = 0; s < 6; s++) {
+                Vector2 q0 = Vector2Lerp(pai, a, (float)s / 6.0f), q1 = Vector2Lerp(pai, a, ((float)s + 0.5f) / 6.0f);
+                DrawLineEx(q0, q1, 2, Fade(CORES_SALAS_ROGUE[SALA_SECRETA], 0.8f));
+            }
+        }
+    }
+
+    for (int i = 0; i < m->numNos; i++) {
+        const NoMapa *n = &m->no[i];
+        if (n->escondida) continue;
+
+        Vector2 c = POS_NO(n);
+        Color cor = CORES_SALAS_ROGUE[n->tipo];
+        float raio = (n->tipo == SALA_CHEFE) ? 20.0f : ((n->tipo == SALA_SILOGISTA) ? 17.0f : 14.0f);
+        bool proxima = false;
+        for (int k = 0; k < atual->numSaidas; k++) if (atual->saida[k] == i) proxima = true;
+
+        DrawCircleV(c, raio, n->visitado ? Fade(cor, 0.35f) : (Color){ 20, 16, 34, 255 });
+        DrawCircleLines((int)c.x, (int)c.y, raio, proxima ? GOLD : Fade(cor, n->visitado ? 1.0f : 0.6f));
+        DesenharIconeSala(n->tipo, c, (n->tipo == SALA_CHEFE) ? 1.1f : 0.75f, tempo);
+
+        if (i == b->noAtual)
+            DrawCircleLines((int)c.x, (int)c.y, raio + 5 + 2 * sinf(tempo * 5.0f), WHITE);
+
+        // Recompensa: só das próximas salas (dá para planejar, mas não tudo)
+        if (proxima && n->recompensa != RECOMPENSA_NENHUMA) {
+            Vector2 rc = { c.x + raio, c.y - raio + 2 };
+            DrawCircleV(rc, 8, Fade(BLACK, 0.85f));
+            DesenharIconeRecompensa(n->recompensa, rc, 0.8f, tempo);
+        }
+        if (proxima || n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA) {
+            const char *nome = PLACAS_SALAS_ROGUE[n->tipo];
+            DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)(c.y + raio + 3), 10, proxima ? GOLD : cor);
+        }
+    }
+    #undef POS_NO
+
+    // A build desta tentativa
+    int x = (int)(area.x + area.width) + 18, y = (int)area.y;
+    DrawText("SUA BUILD", x, y, 16, GOLD);
+    y += 22;
+    DesenharIconeArma(RogueArmaAtual(&b->j), (Vector2){ (float)x + 8, (float)y + 6 }, 0.7f, tempo);
+    DrawText((b->j.armaExtra != ARMA_DISPARADOR) ? DEF_ARMAS[b->j.armaExtra].nome : "Só o Disparador", x + 20, y + 1, 10, WHITE);
+    y += 18;
+
+    int linhas = 0;
+    for (int u = 0; u < NUM_UPGRADES && y < (int)(painel.y + painel.height) - 90; u++) {
+        if (b->j.up[u] <= 0) continue;
+        Color c = CORES_RARIDADE[UPGRADES[u].raridade];
+        DrawRectangle(x, y + 2, 6, 6, CORES_CATEGORIA_UP[UPGRADES[u].categoria]);
+        DrawText(TextFormat("%s %s", UPGRADES[u].nome, (UPGRADES[u].maxNivel > 1) ? TextFormat("%d/%d", b->j.up[u], UPGRADES[u].maxNivel) : ""), x + 10, y, 10, c);
+        y += 13;
+        linhas++;
+    }
+    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS && y < (int)(painel.y + painel.height) - 90; i++) {
+        if (b->j.itens[i] <= 0) continue;
+        DrawText(TextFormat("%s x%d", ITENS[i].nome, RogueQtd(&b->j, (TipoItem)i)), x + 10, y, 10, LIGHTGRAY);
+        y += 13;
+        linhas++;
+    }
+    if (linhas == 0) { DrawText("Nenhuma melhoria ainda.", x, y, 10, GRAY); y += 13; }
+
+    for (int p = 0; p < 3; p++)
+        if (b->j.penalidade & (1 << p)) { DrawText(TextFormat("! %s", NOMES_PENALIDADE[p]), x, y, 10, RED); y += 13; }
+
+    // Legenda
+    static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA };
+    int ly = (int)(painel.y + painel.height) - 82;
+    for (int i = 0; i < 8; i++) {
+        int lx = x + (i % 2) * 130, yy = ly + (i / 2) * 18;
+        DesenharIconeSala(legenda[i], (Vector2){ (float)lx + 7, (float)yy + 6 }, 0.5f, tempo);
+        DrawText(PLACAS_SALAS_ROGUE[legenda[i]], lx + 18, yy + 1, 10, CORES_SALAS_ROGUE[legenda[i]]);
+    }
+
+    const char *ajuda = "Portas douradas: as próximas salas.   M ou ENTER - fechar";
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 16, 10, GRAY);
+}
+
+// Ícone da categoria da melhoria (cartas e HUD)
+static void DesenharIconeUpgrade(const Biblioteca *b, OpcaoEscolha o, Vector2 c, float e, float tempo)
+{
+    if (o.tipo == OPC_ITEM)       { DesenharIconeItem((TipoItem)o.id, c, e, tempo); return; }
+    if (o.tipo == OPC_ARMA)       { DesenharIconeArma((TipoArma)o.id, c, e * 1.2f, tempo); return; }
+    if (o.tipo == OPC_FRAGMENTOS) { DesenharFragmentoConhecimento(c, tempo); return; }
+
+    const DefUpgrade *d = &UPGRADES[o.id];
+    Color cor = CORES_CATEGORIA_UP[d->categoria];
+    (void)b;
+
+    switch (d->categoria) {
+        case CAT_ATRIBUTO:
+            DrawTriangle((Vector2){ c.x, c.y - 12 * e }, (Vector2){ c.x - 9 * e, c.y }, (Vector2){ c.x + 9 * e, c.y }, cor);
+            DrawRectangleV((Vector2){ c.x - 4 * e, c.y }, (Vector2){ 8 * e, 10 * e }, cor);
+            break;
+        case CAT_DISPARO:
+            for (int k = 0; k < 3; k++)
+                DrawCircleV((Vector2){ c.x - 8 * e + k * 8 * e, c.y + ((k == 1) ? -4.0f : 4.0f) * e }, 4 * e, cor);
+            DrawLineEx((Vector2){ c.x - 12 * e, c.y + 10 * e }, (Vector2){ c.x + 12 * e, c.y - 10 * e }, 2, Fade(WHITE, 0.6f));
+            break;
+        case CAT_HABILIDADE:      // raio
+            DrawTriangle((Vector2){ c.x + 2 * e, c.y - 13 * e }, (Vector2){ c.x - 8 * e, c.y + 2 * e }, (Vector2){ c.x + 1 * e, c.y + 2 * e }, cor);
+            DrawTriangle((Vector2){ c.x - 1 * e, c.y - 2 * e }, (Vector2){ c.x - 2 * e, c.y + 13 * e }, (Vector2){ c.x + 8 * e, c.y - 2 * e }, cor);
+            break;
+        case CAT_ESPECIAL:
+            DrawPoly(c, 5, 12 * e, tempo * 40.0f, cor);
+            DrawPoly(c, 5, 6 * e, -tempo * 40.0f, WHITE);
+            break;
+        case CAT_APRIMORAMENTO:
+            DesenharIconeArma((d->arma >= 0) ? (TipoArma)d->arma : ARMA_DISPARADOR, c, e * 1.2f, tempo);
+            DrawCircleLines((int)c.x, (int)c.y, 14 * e, cor);
+            break;
+        default:                  // sinergia: dois anéis entrelaçados
+            DrawRing((Vector2){ c.x - 5 * e, c.y }, 6 * e, 9 * e, 0, 360, 24, cor);
+            DrawRing((Vector2){ c.x + 5 * e, c.y }, 6 * e, 9 * e, 0, 360, 24, WHITE);
+            break;
+    }
+}
+
+// A tela "escolha 1 de 3": cartas com nome, raridade, categoria, nível, efeito e pré-requisitos
+static void DesenharEscolha(const Biblioteca *b, float tempo)
+{
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.72f));
+
+    const char *titulo = (b->modoEscolha == ESCOLHA_RARA) ? "MELHORIA RARA: ESCOLHA UMA"
+                       : (b->modoEscolha == ESCOLHA_ARMA) ? "ARSENAL: ESCOLHA UMA" : "ESCOLHA UMA MELHORIA";
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 24) / 2, 70, 24, GOLD);
+    const char *sub = "Ela vale até o fim desta tentativa. Combine melhorias para abrir SINERGIAS.";
+    DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 12) / 2, 100, 12, LIGHTGRAY);
+
+    float entrada = fminf(1.0f, b->animEscolha / 0.3f);
+
+    for (int i = 0; i < b->numOpcoes; i++) {
+
+        OpcaoEscolha o = b->opcoes[i];
+        Rectangle r = RogueCartaEscolha(i, b->numOpcoes);
+        bool marcada = (i == b->selecaoEscolha);
+        r.y += (1.0f - entrada) * 60.0f - (marcada ? 8.0f : 0.0f);
+
+        const char *nome, *efeito, *categoria;
+        Raridade rar;
+        Color corCat;
+        char nivel[48] = "", requisito[120] = "";
+
+        if (o.tipo == OPC_UPGRADE) {
+            const DefUpgrade *d = &UPGRADES[o.id];
+            nome = d->nome; efeito = d->efeito; rar = d->raridade;
+            categoria = NOMES_CATEGORIA_UP[d->categoria]; corCat = CORES_CATEGORIA_UP[d->categoria];
+            if (b->j.up[o.id] == 0 && d->maxNivel > 1) snprintf(nivel, sizeof(nivel), "NOVA  (máx. %d)", d->maxNivel);
+            else if (b->j.up[o.id] == 0)                snprintf(nivel, sizeof(nivel), "NOVA");
+            else                    snprintf(nivel, sizeof(nivel), "NÍVEL %d -> %d  (máx. %d)", b->j.up[o.id], b->j.up[o.id] + 1, d->maxNivel);
+
+            if (d->categoria == CAT_SINERGIA) {
+                int a = -1, c2 = -1;
+                for (int k = 0; k < NUM_UPGRADES; k++)
+                    if (d->requer & BIT_UP(k)) { if (a < 0) a = k; else c2 = k; }
+                snprintf(requisito, sizeof(requisito), "COMBINA: %s + %s", (a >= 0) ? UPGRADES[a].nome : "?", (c2 >= 0) ? UPGRADES[c2].nome : "?");
+            } else if (d->arma >= 0) {
+                snprintf(requisito, sizeof(requisito), "REQUER: %s", DEF_ARMAS[d->arma].nome);
+            } else {
+                snprintf(requisito, sizeof(requisito), "Sem pré-requisitos");
+            }
+        } else if (o.tipo == OPC_ITEM) {
+            nome = ITENS[o.id].nome; efeito = ITENS[o.id].efeito; rar = ITENS[o.id].raridade;
+            categoria = "UPGRADE PASSIVO"; corCat = (Color){ 0, 228, 255, 255 };
+            snprintf(nivel, sizeof(nivel), "TEM %d DE %d", b->j.itens[o.id], ITENS[o.id].maxPilha);
+            snprintf(requisito, sizeof(requisito), "Sem pré-requisitos");
+        } else if (o.tipo == OPC_ARMA) {
+            nome = DEF_ARMAS[o.id].nome; efeito = DEF_ARMAS[o.id].efeito; rar = DEF_ARMAS[o.id].raridade;
+            categoria = "ARMA"; corCat = DEF_ARMAS[o.id].cor;
+            snprintf(nivel, sizeof(nivel), "%s", NOMES_ALCANCE[DEF_ARMAS[o.id].alcanceTipo]);
+            if (b->j.armaExtra != ARMA_DISPARADOR) snprintf(requisito, sizeof(requisito), "SUBSTITUI: %s", DEF_ARMAS[b->j.armaExtra].nome);
+            else                                   snprintf(requisito, sizeof(requisito), "Vira a sua arma extra (TAB)");
+        } else {
+            nome = "RESERVA DE CONHECIMENTO"; efeito = "Não há melhorias novas para você agora: leve Fragmentos de Conhecimento.";
+            rar = RARIDADE_COMUM; categoria = "FRAGMENTOS"; corCat = (Color){ 0, 228, 255, 255 };
+            snprintf(nivel, sizeof(nivel), "+%d FRAGMENTOS", FC_OPCAO_RESERVA);
+        }
+
+        Color corRar = CORES_RARIDADE[rar];
+        if (marcada)
+            DrawRectangleRec((Rectangle){ r.x - 6, r.y - 6, r.width + 12, r.height + 12 }, Fade(corRar, 0.18f + 0.08f * sinf(tempo * 5.0f)));
+        DrawRectangleRec(r, (Color){ 20, 16, 34, 255 });
+        DrawRectangleLinesEx(r, marcada ? 3.0f : 2.0f, marcada ? corRar : Fade(corRar, 0.6f));
+
+        // Faixa da categoria
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, 20, Fade(corCat, 0.25f));
+        DrawText(categoria, (int)r.x + 8, (int)r.y + 5, 10, corCat);
+        DrawText(TextFormat("[%d]", i + 1), (int)(r.x + r.width) - 26, (int)r.y + 5, 10, GRAY);
+
+        // Ícone
+        Vector2 ic = { r.x + r.width / 2, r.y + 58 };
+        DrawCircleV(ic, 26, Fade(corCat, 0.15f));
+        DrawCircleLines((int)ic.x, (int)ic.y, 26, Fade(corRar, 0.8f));
+        DesenharIconeUpgrade(b, o, ic, 1.1f, tempo);
+
+        // Nome, raridade e nível
+        char linhas[256];
+        QuebrarTexto(nome, (int)r.width - 20, 16, linhas, (int)sizeof(linhas));
+        int ny = (int)r.y + 94;
+        int n = DesenharTextoLinhas(linhas, (int)r.x + 10, ny, 16, 18, marcada ? YELLOW : WHITE);
+        ny += n * 18 + 2;
+        DrawText(NOMES_RARIDADE[rar], (int)r.x + 10, ny, 10, corRar);
+        DrawText(nivel, (int)r.x + 10 + MeasureText(NOMES_RARIDADE[rar], 10) + 10, ny, 10, LIGHTGRAY);
+        ny += 18;
+
+        // Efeito
+        QuebrarTexto(efeito, (int)r.width - 20, 12, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)r.x + 10, ny, 12, 15, (Color){ 220, 220, 230, 255 });
+
+        // Pré-requisitos
+        if (requisito[0]) {
+            QuebrarTexto(requisito, (int)r.width - 20, 10, linhas, (int)sizeof(linhas));
+            int nl = ContarLinhas(linhas);
+            DrawLine((int)r.x + 10, (int)(r.y + r.height) - 16 - nl * 12, (int)(r.x + r.width) - 10, (int)(r.y + r.height) - 16 - nl * 12, Fade(corRar, 0.3f));
+            DesenharTextoLinhas(linhas, (int)r.x + 10, (int)(r.y + r.height) - 10 - nl * 12, 10, 12,
+                                (o.tipo == OPC_UPGRADE && UPGRADES[o.id].categoria == CAT_SINERGIA) ? CORES_CATEGORIA_UP[CAT_SINERGIA] : GRAY);
+        }
+    }
+
+    const char *ajuda = TextFormat("A/D, 1-3 ou mouse: escolher     E / clique: confirmar     BACKSPACE: recusar (+%d FC)", FC_RECUSAR_ESCOLHA);
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 462, 10, GRAY);
+}
+
+// Janela dos eventos (o mesmo visual do desafio educativo)
+static void DesenharEvento(const Biblioteca *b, float tempo)
+{
+    TelaEvento t;
+    RogueMontarTelaEvento(b, &t);
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.65f));
+    Rectangle painel = { 70, 80, 660, 420 };
+    Color cor = CORES_SALAS_ROGUE[b->tipoSala];
+    DrawRectangleRec(painel, (Color){ 18, 15, 30, 255 });
+    DrawRectangleLinesEx(painel, 4, cor);
+
+    int x = (int)painel.x + 24, y = (int)painel.y + 18;
+    DesenharIconeSala(b->tipoSala, (Vector2){ (float)x + 12, (float)y + 10 }, 1.0f, tempo);
+    DrawText(t.titulo, x + 34, y, 22, cor);
+    y += 40;
+
+    char linhas[640];
+    QuebrarTexto(b->eventoResolvido ? b->resultadoEvento : t.texto, (int)painel.width - 48, 16, linhas, (int)sizeof(linhas));
+    int n = DesenharTextoLinhas(linhas, x, y, 16, 22, WHITE);
+    y += n * 22 + 18;
+
+    if (b->eventoResolvido) {
+        if (((int)(tempo * 2.0f)) % 2 == 0)
+            DrawText("ENTER >", (int)(painel.x + painel.width) - 90, (int)(painel.y + painel.height) - 28, 14, GOLD);
+        return;
+    }
+
+    for (int i = 0; i < t.numOpcoes; i++) {
+        bool marcada = (i == b->selecaoEvento);
+        bool pode = t.disponivel[i];
+        Color corOp = !pode ? DARKGRAY : (marcada ? YELLOW : WHITE);
+
+        QuebrarTexto(TextFormat("%d) %s", i + 1, t.rotulo[i]), (int)painel.width - 90, 16, linhas, (int)sizeof(linhas));
+        int nr = ContarLinhas(linhas);
+        char ef[300] = "";
+        if (t.efeito[i][0]) QuebrarTexto(t.efeito[i], (int)painel.width - 100, 12, ef, (int)sizeof(ef));
+        int ne = ef[0] ? ContarLinhas(ef) : 0;
+        int alt = nr * 20 + ne * 15 + 10;
+
+        if (marcada) {
+            DrawRectangle(x - 10, y - 5, (int)painel.width - 28, alt, Fade(cor, 0.15f));
+            DesenharCoracao((float)x, (float)y + 8, 2, RED);
+        }
+        DesenharTextoLinhas(linhas, x + 18, y, 16, 20, corOp);
+        if (ne > 0) DesenharTextoLinhas(ef, x + 30, y + nr * 20, 12, 15, pode ? LIGHTGRAY : DARKGRAY);
+        if (!pode)  DrawText("(indisponível)", (int)(painel.x + painel.width) - 120, y + 2, 10, RED);
+        y += alt + 6;
+    }
+
+    const char *ajuda = "W/S escolher     E confirmar     BACKSPACE sair";
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
+}
+
+// Núcleo de corrupção: cristal que gira e brilha antes do anel de balas
+static void DesenharNucleoCorrupcao(const Inimigo *e, float escala, float t)
+{
+    Color cor = DEF_INIMIGOS[INIMIGO_NUCLEO].cor;
+    float r = e->raio * escala;
+    float aviso = (e->estado == 1) ? 1.0f - e->timer / NUCLEO_PREPARO : 0.0f;
+
+    DrawCircleV(e->pos, r + 10 + 8 * aviso, Fade(cor, 0.12f + 0.25f * aviso));
+    DrawPoly(e->pos, 4, r, t * 50.0f, (Color){ 60, 10, 70, 255 });
+    DrawPolyLines(e->pos, 4, r, t * 50.0f, cor);
+    DrawPoly(e->pos, 4, r * 0.55f, -t * 80.0f, Fade(cor, 0.8f));
+    DrawCircleV(e->pos, r * 0.25f, WHITE);
+    for (int k = 0; k < 3; k++) {
+        float a = t * 2.0f + (float)k * 2.0f * PI / 3.0f;
+        DrawCircleV((Vector2){ e->pos.x + cosf(a) * (r + 8), e->pos.y + sinf(a) * (r + 8) }, 3, Fade(cor, 0.8f));
+    }
+}
+
+// Aura de elite, marca do alvo prioritário e rótulo (desenhados junto com o inimigo)
+static void DesenharMarcasReformulacao(const Inimigo *e, float t)
+{
+    if (e->elite) {
+        for (int k = 0; k < 8; k++) {
+            float a = t * 1.5f + (float)k * PI / 4.0f;
+            Vector2 p = { e->pos.x + cosf(a) * (e->raio + 9), e->pos.y + sinf(a) * (e->raio + 9) };
+            DrawCircleV(p, 2, GOLD);
+        }
+        // Coroa pequena sobre a cabeça
+        Vector2 c = { e->pos.x, e->pos.y - e->raio - 18 };
+        DrawTriangle((Vector2){ c.x - 7, c.y + 4 }, (Vector2){ c.x - 2, c.y + 4 }, (Vector2){ c.x - 6, c.y - 4 }, GOLD);
+        DrawTriangle((Vector2){ c.x - 3, c.y + 4 }, (Vector2){ c.x + 3, c.y + 4 }, (Vector2){ c.x, c.y - 6 }, GOLD);
+        DrawTriangle((Vector2){ c.x + 2, c.y + 4 }, (Vector2){ c.x + 7, c.y + 4 }, (Vector2){ c.x + 6, c.y - 4 }, GOLD);
+    }
+
+    if (e->prioritario) {
+        float r = e->raio + 16;
+        for (int k = 0; k < 4; k++) {
+            float a = t * 2.0f + (float)k * PI / 2.0f;
+            DrawLineEx((Vector2){ e->pos.x + cosf(a) * r, e->pos.y + sinf(a) * r },
+                       (Vector2){ e->pos.x + cosf(a) * (r - 8), e->pos.y + sinf(a) * (r - 8) }, 3, RED);
+        }
+        const char *txt = "ALVO PRIORITÁRIO";
+        DrawText(txt, (int)e->pos.x - MeasureText(txt, 10) / 2, (int)(e->pos.y + e->raio + 18), 10, RED);
+    }
+
+    if (e->rotulo > 0.0f) {
+        Vector2 c = { e->pos.x + e->raio + 4, e->pos.y - e->raio - 4 };
+        DrawRectangle((int)c.x - 5, (int)c.y - 5, 10, 10, (Color){ 255, 109, 194, 255 });
+        DrawText("R", (int)c.x - 3, (int)c.y - 4, 8, BLACK);
+    }
+}
+
+// Coluna da build no HUD (abaixo dos upgrades passivos)
+static void DesenharHudBuild(const Biblioteca *b, int yInicio, float tempo)
+{
+    int y = yInicio;
+    int mostrados = 0, total = 0;
+
+    for (int u = 0; u < NUM_UPGRADES; u++)
+        if (b->j.up[u] > 0) total++;
+
+    for (int u = 0; u < NUM_UPGRADES && y < 470; u++) {
+        if (b->j.up[u] <= 0) continue;
+        OpcaoEscolha o = { OPC_UPGRADE, u };
+        Color cor = CORES_RARIDADE[UPGRADES[u].raridade];
+        DrawRectangle(770, y - 11, 22, 22, Fade(BLACK, 0.6f));
+        DrawRectangleLines(770, y - 11, 22, 22, Fade(cor, 0.8f));
+        DesenharIconeUpgrade(b, o, (Vector2){ 781, (float)y }, 0.55f, tempo);
+        if (UPGRADES[u].maxNivel > 1)
+            DrawText(TextFormat("%d", b->j.up[u]), 785, y + 2, 8, WHITE);
+        y += 26;
+        mostrados++;
+    }
+
+    if (total > mostrados)
+        DrawText(TextFormat("+%d", total - mostrados), 772, y - 6, 10, GOLD);
+
+    if (b->j.penalidade) {
+        DrawRectangle(770, y + 4, 22, 14, Fade(RED, 0.4f));
+        DrawText("BETA", 771, y + 7, 8, WHITE);
+    }
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
     const JogadorRogue *j = &b->j;
     bool atrio = (b->tipoSala == SALA_ATRIO);
 
+    CarregarIconesBiblioteca();         // sprites opcionais dos ícones das salas (só na 1ª vez)
     ClearBackground((Color){ 8, 6, 18, 255 });
 
     // A tela só treme quando o jogador toma dano
@@ -13333,7 +17133,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     DrawRectangleLinesEx(ARENA_ROGUE, 4, Fade(PURPLE, 0.6f));
 
     // Estantes (no átrio, o Byte e o Byteco também ocupam lugar, mas são desenhados à parte)
-    for (int i = 0; i < b->numObst; i++)
+    for (int i = 0; i < b->numObstFixos; i++)        // as barreiras das armadilhas são desenhadas à parte
         if (!atrio || i < 2)
             DesenharEstante(b->obst[i], tempo);
 
@@ -13356,11 +17156,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     } else if (b->tipoSala == SALA_LUCI) {
         DesenharAvisoMetade(b, tempo);
         DesenharContextoLuci(b, tempo);
-    } else if (b->tipoSala != SALA_CHEFE) {
-        int proxima = b->indiceRota + 1;
-        const char *nome = (proxima < SALAS_POR_MISSAO) ? TextFormat("PRÓXIMA: %s", NOMES_SALAS_ROGUE[b->rota[proxima]])
-                                                        : "PRÓXIMA: ALUCINADOR";
-        DesenharPortaRogue(PORTA_PROXIMA_ROGUE, b->limpa, nome, tempo);
+    } else if (b->noAtual >= 0) {
+        // Reformulação: as portas da missão (cada uma mostra o tipo da sala e a recompensa)
+        DesenharParedesMissao(b, tempo);
+        for (int k = 0; k < b->numPortas; k++)
+            DesenharPortaMissao(b, &b->portas[k], tempo);
     }
 
     // Personagens e objetos de cada tipo de sala
@@ -13399,6 +17199,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             DesenharAtaquesSilogista(s, tempo);
     }
 
+    // Reformulação: armadilhas, poças da build e objetos das salas novas
+    DesenharArmadilhas(b, tempo);
+    DesenharAreas(b);
+    DesenharObjetosSala(b, tempo);
+
     // Coisas no chão
     for (int i = 0; i < MAX_COLETAVEIS; i++) {
         const Coletavel *c = &b->col[i];
@@ -13414,8 +17219,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     // Pulso de Integridade: anel se abrindo
     if (j->efeitoPulso > 0.0f) {
         float k = 1.0f - j->efeitoPulso / 0.4f;
-        DrawCircleV(j->pos, PULSO_RAIO * k, Fade(SKYBLUE, 0.15f * (1.0f - k)));
-        DrawCircleLines((int)j->pos.x, (int)j->pos.y, PULSO_RAIO * k, Fade(SKYBLUE, 1.0f - k));
+        DrawCircleV(j->pos, RogueRaioPulso(j) * k, Fade(SKYBLUE, 0.15f * (1.0f - k)));
+        DrawCircleLines((int)j->pos.x, (int)j->pos.y, RogueRaioPulso(j) * k, Fade(SKYBLUE, 1.0f - k));
     }
 
     DesenharSinergiasChao(b, tempo);
@@ -13518,6 +17323,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             Vector2 c = (pedestal < 0) ? NUCLEO_LUCI : b->luci.posContexto[pedestal];
             DesenharTeclaE((Vector2){ c.x, c.y - 34 }, tempo);
         }
+        else if (alvo == ALVO_RECOMPENSA)    DesenharTeclaE((Vector2){ b->recompensaPos.x, b->recompensaPos.y - 40 }, tempo);
+        else if (alvo == ALVO_OBJETO_SALA)   DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 52 }, tempo);
+        else if (alvo == ALVO_REGISTRO_SALA) DesenharTeclaE((Vector2){ b->posRegistroSala.x, b->posRegistroSala.y - 36 }, tempo);
         else if (alvo == ALVO_PEDESTAL) {
             Vector2 c = POS_PEDESTAIS[pedestal];
             DesenharTeclaE((Vector2){ c.x, c.y - 42 }, tempo);
@@ -13532,10 +17340,17 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         }
     }
 
+    // Mecanismo corrompido: "SEGURE E" perto de um console
+    for (int k = 0; k < b->numMecanismos && !b->morreu; k++)
+        if (!b->mecanismoDesligado[k] && Vector2Distance(j->pos, b->posMecanismo[k]) < MECANISMO_RAIO) {
+            const char *t = "SEGURE E";
+            DrawText(t, (int)b->posMecanismo[k].x - MeasureText(t, 10) / 2, (int)b->posMecanismo[k].y - 32, 10, (Color){ 0, 228, 255, 255 });
+        }
+
     EndMode2D();
 
     // Mira do mouse (só onde dá para atirar)
-    if (!j->miraSetas && !b->morreu && !atrio && !b->lojaAberta && !b->desafioAberto) {
+    if (!j->miraSetas && !b->morreu && !atrio && !b->lojaAberta && !b->desafioAberto && !b->escolhaAberta && !b->eventoAberto && !b->mapaAberto) {
         Vector2 m = GetMousePosition();
         DrawCircleLines((int)m.x, (int)m.y, 9, SKYBLUE);
         DrawLine((int)m.x - 13, (int)m.y, (int)m.x - 5, (int)m.y, SKYBLUE);
@@ -13553,20 +17368,57 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
                                                    : b->perm->bloco3Liberado ? "Uma porta nova se abriu à direita: BLOCO 3"
                                                                              : "Entre na Biblioteca pela porta de cima (Byteco: loja)");
             break;
-        case SALA_COMBATE: {
+        case SALA_COMBATE:
+        case SALA_ELITE: {
             bool selado = false;
             for (int i = 0; i < MAX_INIMIGOS; i++)
                 if (b->ini[i].ativo && b->ini[i].selado) selado = true;
 
-            if (b->limpa)       snprintf(o.texto, sizeof(o.texto), "Sala limpa! Siga pela porta de cima");
-            else if (selado)    snprintf(o.texto, sizeof(o.texto), "Chegue perto do Guardião SELADO e quebre o selo");
-            else                snprintf(o.texto, sizeof(o.texto), "Elimine os dados corrompidos (%d)", RogueInimigosVivos(b));
+            int vivos = RogueInimigosVivos(b);
+            if (b->limpa)        snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "Sala limpa! Pegue a recompensa (E) e escolha uma porta"
+                                                                                           : "Sala limpa! Escolha uma porta");
+            else if (b->avisoOnda > 0.0f) snprintf(o.texto, sizeof(o.texto), "Prepare-se: onda %d/%d chegando!", b->ondaAtual + 2, b->numOndas);
+            else if (b->objetivoSala == OBJC_SOBREVIVER)
+                snprintf(o.texto, sizeof(o.texto), "SOBREVIVA aos reforços: %d s", (int)ceilf(fmaxf(0.0f, b->tempoObjetivo)));
+            else if (b->objetivoSala == OBJC_NUCLEOS)
+                snprintf(o.texto, sizeof(o.texto), "Destrua os NÚCLEOS DE CORRUPÇÃO (%d restantes)", RogueContarTipo(b, INIMIGO_NUCLEO));
+            else if (b->objetivoSala == OBJC_PRIORITARIO)
+                snprintf(o.texto, sizeof(o.texto), "%s", (b->alvoPrioritario >= 0) ? "Derrube o RETRANSMISSOR para parar os reforços"
+                                                                                   : TextFormat("Reforços parados! Elimine o resto (%d)", vivos));
+            else if (b->objetivoSala == OBJC_MECANISMO) {
+                int feitos = 0;
+                for (int k = 0; k < b->numMecanismos; k++) if (b->mecanismoDesligado[k]) feitos++;
+                snprintf(o.texto, sizeof(o.texto), "Desligue os consoles corrompidos (segure E): %d/%d", feitos, b->numMecanismos);
+            }
+            else if (selado)     snprintf(o.texto, sizeof(o.texto), "Chegue perto do Guardião SELADO e quebre o selo");
+            else if (b->numOndas > 1) snprintf(o.texto, sizeof(o.texto), "Elimine os dados corrompidos (%d)  -  onda %d/%d", vivos, b->ondaAtual + 1, b->numOndas);
+            else                 snprintf(o.texto, sizeof(o.texto), "Elimine os dados corrompidos (%d)", vivos);
         } break;
         case SALA_EDUCATIVA:
-            snprintf(o.texto, sizeof(o.texto), "%s", b->terminalLido ? "Siga pela porta de cima" : "Leia o terminal de conhecimento");
+            snprintf(o.texto, sizeof(o.texto), "%s", b->terminalLido ? "Escolha uma porta (o arquivo de ameaça é opcional)" : "Leia o terminal de conhecimento");
             break;
         case SALA_RECOMPENSA:
-            snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaPega ? "Siga pela porta de cima" : "Escolha 1 recompensa (E) ou siga em frente");
+            snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaPega ? "Escolha uma porta" : "Escolha 1 recompensa (E) ou siga em frente");
+            break;
+        case SALA_EVENTO:
+            if (b->eventoCombate && !b->limpa) snprintf(o.texto, sizeof(o.texto), "Estabilize o banco: derrote os elites (%d)", RogueInimigosVivos(b));
+            else if (b->recompensaAtiva)      snprintf(o.texto, sizeof(o.texto), "Pegue a recompensa (E) e escolha uma porta");
+            else snprintf(o.texto, sizeof(o.texto), "%s", b->eventoUsado ? "Escolha uma porta" : "Examine o evento (E) ou escolha uma porta");
+            break;
+        case SALA_DESCANSO:
+            snprintf(o.texto, sizeof(o.texto), "%s", b->eventoUsado ? "Escolha uma porta" : "Sala de leitura: use a poltrona (E) ou siga");
+            break;
+        case SALA_DESAFIO:
+            if (b->estadoDesafio == 0)      snprintf(o.texto, sizeof(o.texto), "Desafio opcional: use o console (E) ou escolha uma porta");
+            else if (b->estadoDesafio == 1 && b->desafioSala == DESAFIO_SALA_ECOS)
+                snprintf(o.texto, sizeof(o.texto), "Destrua os ecos: %d/%d  (%d s)", b->contadorDesafio, DESAFIO_ECOS_META, (int)ceilf(fmaxf(0.0f, b->tempoDesafioSala)));
+            else if (b->estadoDesafio == 1)
+                snprintf(o.texto, sizeof(o.texto), "Sobreviva: %d s  (golpes %d/%d)", (int)ceilf(fmaxf(0.0f, b->tempoDesafioSala)), b->j.golpesSofridos, DESAFIO_INTEG_GOLPES);
+            else if (b->estadoDesafio == 2) snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "Desafio vencido! Pegue a recompensa (E)" : "Desafio vencido! Escolha uma porta");
+            else                            snprintf(o.texto, sizeof(o.texto), "Desafio falhou. Escolha uma porta");
+            break;
+        case SALA_SECRETA:
+            snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "ARQUIVO OCULTO! Pegue a recompensa rara (E)" : "Escolha uma porta");
             break;
         case SALA_TRANSICAO: {
             int lidos = ((b->registrosLidos & 1) != 0) + ((b->registrosLidos & 2) != 0) + ((b->registrosLidos & 4) != 0);
@@ -13584,7 +17436,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         } break;
         case SALA_SILOGISTA: {
             const Silogista *s = &b->silogista;
-            if (b->limpa)                          snprintf(o.texto, sizeof(o.texto), "Câmara vencida! Siga pela porta de cima");
+            if (b->limpa)                          snprintf(o.texto, sizeof(o.texto), "Câmara vencida! Escolha uma porta");
             else if (!s->ativo || !s->apresentado) snprintf(o.texto, sizeof(o.texto), "O SILOGISTA");
             else if (s->etapa == SIL_MONTAGEM)     snprintf(o.texto, sizeof(o.texto), "%s", (s->carregando >= 0) ? "Leve o fragmento até P1, P2 ou C (E encaixa)"
                                                                                                                : "Pegue os fragmentos (E) e monte o silogismo");
@@ -13607,6 +17459,27 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     DesenharObjetivoHUD(&o);
 
+    // Reformulação: barra do tempo (sobreviver / desafio) e a mensagem de sistema corrompido
+    {
+        float frac = -1.0f;
+        if ((b->tipoSala == SALA_COMBATE || b->tipoSala == SALA_ELITE) && !b->limpa && b->objetivoSala == OBJC_SOBREVIVER && b->tempoObjetivoMax > 0.0f)
+            frac = b->tempoObjetivo / b->tempoObjetivoMax;
+        if (b->tipoSala == SALA_DESAFIO && b->estadoDesafio == 1)
+            frac = b->tempoDesafioSala / ((b->desafioSala == DESAFIO_SALA_ECOS) ? DESAFIO_ECOS_TEMPO : DESAFIO_INTEG_TEMPO);
+        if (frac >= 0.0f) {
+            DrawRectangle(300, 40, 200, 5, Fade(BLACK, 0.7f));
+            DrawRectangle(300, 40, (int)(200 * Clamp(frac, 0.0f, 1.0f)), 5, GOLD);
+        }
+
+        if (b->mensagemSistema > 0.0f && !b->chefe.ativo && !b->silogista.ativo) {
+            float k = fminf(1.0f, b->mensagemSistema / 0.5f);
+            int dx = (((int)(tempo * 15.0f)) % 11 == 0) ? GetRandomValue(-3, 3) : 0;
+            int w = MeasureText(b->textoSistema, 10);
+            DrawRectangle(LARGURA_TELA / 2 - w / 2 - 6, 47, w + 12, 13, Fade(BLACK, 0.6f * k));
+            DrawText(b->textoSistema, LARGURA_TELA / 2 - w / 2 + dx, 49, 10, Fade(MAGENTA, k));
+        }
+    }
+
     if (b->contradicao > 0.0f && ((int)(tempo * 12.0f)) % 9 == 0) {
         const char *t = TextFormat("OBJETIVO:  %s", o.texto);
         DrawText(t, LARGURA_TELA / 2 - MeasureText(t, 14) / 2 + 2, 18, 14, Fade(MAGENTA, 0.7f));
@@ -13627,18 +17500,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DesenharFaixaLuci(b, tempo);
     }
 
-    // Caminho da missão (canto de cima): uma casinha por sala
-    if (!atrio && b->indiceRota >= 0) {
-        for (int i = 0; i <= SALAS_POR_MISSAO; i++) {
-            TipoSalaRogue t = (i < SALAS_POR_MISSAO) ? b->rota[i] : SALA_CHEFE;
-            Rectangle r = { 14.0f + i * 13.0f, 18, 10, 10 };
-            Color cor = CORES_SALAS_ROGUE[t];
-
-            if (i < b->indiceRota)       DrawRectangleRec(r, Fade(cor, 0.35f));
-            else if (i == b->indiceRota) DrawRectangleRec(r, cor);
-            DrawRectangleLinesEx(r, 1, cor);
-        }
-    }
+    // Mapa de progressão (canto de cima): o grafo da tentativa; M abre o mapa grande
+    if (!atrio && b->noAtual >= 0)
+        DesenharMiniMapa(b, tempo);
 
     // HUD de baixo: vida, energia, recargas, pontos, fragmentos e mochila
     int yHud = 542;
@@ -13662,8 +17526,10 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     DesenharRecargaRogue(278, yHud + 15, j->recargaPulso, PULSO_RECARGA, "Q", SKYBLUE, j->ep >= PULSO_CUSTO_EP);
     DrawText("PULSO", 263, yHud + 32, 8, LIGHTGRAY);
-    DesenharRecargaRogue(324, yHud + 15, j->recargaEsquiva, ESQUIVA_RECARGA, "ESP", LIME, true);
+    DesenharRecargaRogue(324, yHud + 15, j->recargaEsquiva, RogueRecargaEsquiva(j), "ESP", LIME, true);
     DrawText("ESQUIVA", 305, yHud + 32, 8, LIGHTGRAY);
+    if (RogueUp(j, UP_ESQUIVA_DUPLA) > 0)        // Buffer de Esquiva: a 2ª carga
+        DrawCircle(340, yHud + 2, 4, (j->recargaEsquiva2 <= 0.0f) ? LIME : DARKGRAY);
 
     DrawText(TextFormat("PONTOS: %d", pontos), 360, yHud + 2, 14, GOLD);
     DesenharFragmentoConhecimento((Vector2){ 366, (float)yHud + 26 }, tempo);
@@ -13684,6 +17550,14 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (!atrio)
         DesenharHudLuci(b, tempo);
 
+    // A build (melhorias escolhidas) continua a coluna dos upgrades passivos
+    {
+        int uy = 76;
+        for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS; i++)
+            if (j->itens[i] > 0) uy += 26;
+        DesenharHudBuild(b, uy, tempo);
+    }
+
     // Mochila: as teclas dos itens de usar e os passivos
     for (int i = 0; i < NUM_ITENS_LOJA; i++) {
 
@@ -13703,7 +17577,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     const char *controles = atrio ? "WASD andar    E falar, comprar e ler a enciclopédia    porta de cima: missão    porta da esquerda: corredor"
-                                  : "WASD andar  MOUSE mirar/atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar a Luci  E usar";
+                                  : "WASD andar  MOUSE atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar  M mapa  E usar";
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, 10) / 2, ALTURA_TELA - 14, 10, GRAY);
 
     // Mensagem curta no meio da tela
@@ -13723,6 +17597,16 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     if (b->desafioAberto)
         DesenharDesafioRogue(b, tempo);
+
+    // Reformulação: janelas novas
+    if (b->eventoAberto)
+        DesenharEvento(b, tempo);
+
+    if (b->escolhaAberta)
+        DesenharEscolha(b, tempo);
+
+    if (b->mapaAberto)
+        DesenharMapaGrande(b, tempo);
 
     if (b->resultadoAberto)
         DesenharResultadoFinal(b, tempo);
@@ -15018,7 +18902,8 @@ int main(void) {
         AjustarMouseAJanela();
 
         // Na Biblioteca a mira desenhada substitui o cursor do sistema
-        bool esconderCursor = (tela == BIBLIOTECA && !pausado && biblioteca.tipoSala != SALA_ATRIO && !biblioteca.lojaAberta && !biblioteca.desafioAberto);
+        bool esconderCursor = (tela == BIBLIOTECA && !pausado && biblioteca.tipoSala != SALA_ATRIO && !biblioteca.lojaAberta && !biblioteca.desafioAberto &&
+                               !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto);
         if (esconderCursor != IsCursorHidden()) {
             if (esconderCursor) HideCursor();
             else                ShowCursor();
@@ -15038,7 +18923,7 @@ int main(void) {
                 fundoPausa = (Texture2D){0};
 
             } else if ((tela == JOGANDO || tela == CORREDOR || tela == BATALHA || tela == BATALHA_B2 ||
-                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta)) && !transicao.ativa) {
+                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta && !biblioteca.mapaAberto)) && !transicao.ativa) {
 
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 capturarPausa = true;
@@ -16483,6 +20368,7 @@ int main(void) {
 
     UnloadTexture(imagem_titulo);
     DescarregarLuci();
+    DescarregarIconesBiblioteca();       // Bloco 2: ícones opcionais das salas
     for (int i = 0; i < NUM_DIRECOES; i++)
         if (!spritesJogador[i].emprestada)
             UnloadTexture(spritesJogador[i].textura);

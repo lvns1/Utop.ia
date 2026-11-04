@@ -5241,13 +5241,86 @@ static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }
 typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE, SALA_SILOGISTA, SALA_TRANSICAO, SALA_LUCI,
                SALA_ELITE, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_SECRETA,
                SALA_LABORATORIO,    // expansão educativa: os cinco laboratórios (a categoria fica no nó do mapa)
+               SALA_ESPECIAL,       // expansão da progressão: elites e mini-chefe obrigatórios (o tipo fica no nó)
                NUM_TIPOS_SALA } TipoSalaRogue;
+
+// =============================================================
+// EXPANSÃO DA PROGRESSÃO: OS ENCONTROS ESPECIAIS DO BLOCO 2
+// =============================================================
+// Três encontros obrigatórios (cada um numa camada de largura 1 do mapa, que todo caminho cruza):
+//   SENTINELA DE ATENÇÃO (elite A) só ataca o que VÊ. Com linha de visão, o foco enche e vira um
+//       feixe que atravessa a sala até bater numa estante. Estantes quebram a visão; perder a visão
+//       a deixa DISTRAÍDA e, depois do feixe, ela RECALCULA: nos dois casos leva dano dobrado.
+//   RETROPROPAGADOR (elite B) guarda de ONDE veio cada golpe que leva (marcas no chão) e, na volta,
+//       devolve um projétil para cada marca: o erro volta pelo caminho. Atirar parado é punido;
+//       atirar e trocar de lugar, não. Depois da volta ele RECALIBRA e fica vulnerável.
+//   JANELA DE CONTEXTO (mini-chefe) tem uma janela de contexto visível (barra no topo). A instrução
+//       PROTEGER, no começo da janela, mantém o escudo. Golpes no escudo viram RUÍDO e ocupam espaço;
+//       os dados dourados que voam até ela são o que ela sabe sobre a posição do jogador. Passando do
+//       limite, o mais antigo é esquecido: sem PROTEGER, o escudo cai; sem dados, a mira se perde.
+
+#define SENTINELA_HP             260.0f
+#define SENTINELA_RAIO           19.0f
+#define SENTINELA_VELOCIDADE     70.0f
+#define SENTINELA_FOCO_TEMPO     1.7f     // segundos com linha de visão até travar
+#define SENTINELA_PERDE_FOCO     0.9f     // foco perdido por segundo sem visão
+#define SENTINELA_TRAVA          0.55f    // aviso: a direção do feixe já não muda
+#define SENTINELA_FEIXE          0.30f
+#define SENTINELA_FEIXE_LARGURA  16.0f
+#define SENTINELA_FEIXE_DANO     20.0f
+#define SENTINELA_RECALCULA      1.7f     // depois do feixe: vulnerável
+#define SENTINELA_DISTRAIDA      1.4f     // depois de perder a visão: vulnerável
+#define SENTINELA_INTERVALO      0.8f
+#define SENTINELA_DANO_BLINDADA  0.55f    // focada: a lente protege
+#define SENTINELA_DANO_VULNERAVEL 2.0f
+
+#define RETRO_HP                 300.0f
+#define RETRO_RAIO               21.0f
+#define RETRO_VELOCIDADE         80.0f
+#define RETRO_FORWARD            4.2f     // passagem "para frente": registra os golpes
+#define RETRO_AVISO              0.9f     // as linhas até as marcas acendem
+#define RETRO_RECALIBRA          1.8f     // depois da volta: vulnerável
+#define RETRO_MAX_REGISTROS      10
+#define RETRO_REGISTRO_INTERVALO 0.14f    // um registro por rajada (tiros múltiplos não lotam)
+#define RETRO_TIRO_VEL           235.0f
+#define RETRO_TIRO_DANO          8.0f
+#define RETRO_DANO_RECALIBRANDO  1.7f
+
+#define JANELA_HP                1000.0f
+#define JANELA_RAIO              30.0f
+#define JANELA_MAX_SLOTS         9
+#define JANELA_DANO_POR_RUIDO    40.0f    // dano batendo no escudo que vira 1 bloco de ruído
+#define JANELA_VULNERAVEL        4.0f
+#define JANELA_DANO_VULNERAVEL   1.25f
+#define JANELA_FASE2             0.66f
+#define JANELA_FASE3             0.33f
+#define TOKEN_RAIO               9.0f
+
+static const int   JANELA_CAPACIDADE[3]  = { 5, 6, 7 };
+static const float JANELA_EMISSAO[3]     = { 2.4f, 2.0f, 1.8f };   // um dado dourado (dois na fase 3)
+static const float JANELA_RESPOSTA[3]    = { 3.0f, 2.6f, 2.2f };
+static const float JANELA_RESUMO[3]      = { 99.0f, 6.0f, 5.0f };  // a partir da fase 2 ela resume o ruído
+static const float TOKEN_VELOCIDADE[3]   = { 70.0f, 85.0f, 95.0f };
+
+// Encontros especiais (o tipo fica no nó do mapa)
+enum { ESP_SENTINELA, ESP_RETRO, ESP_JANELA, NUM_ESPECIAIS };
+static const char *NOMES_ESPECIAIS[NUM_ESPECIAIS]  = { "SENTINELA DE ATENÇÃO", "RETROPROPAGADOR", "JANELA DE CONTEXTO" };
+static const char *PLACAS_ESPECIAIS[NUM_ESPECIAIS] = { "ELITE: SENTINELA", "ELITE: RETROPROPAGADOR", "MINI-CHEFE: JANELA" };
+static const char *FALAS_LUCI_ESPECIAL[NUM_ESPECIAIS] = {
+    "Luci: Ela só ataca o que consegue VER. Use as estantes!",
+    "Luci: Ele guarda de onde veio cada golpe. Atire e mude de lugar!",
+    "Luci: Esse aí só lembra do que cabe na janela dele...",
+};
 
 typedef enum {
     INIMIGO_FRAGMENTO, INIMIGO_GUARDIAO, INIMIGO_ECO,
     INIMIGO_SPAMMER, INIMIGO_SPAM, INIMIGO_PHISHER, INIMIGO_ISCA, INIMIGO_FIREWALL,
     INIMIGO_OVERCLOCK, INIMIGO_BOTNET, INIMIGO_KEYLOGGER, INIMIGO_CACHE,
     INIMIGO_NUCLEO,             // reformulação: núcleo de corrupção (objetivo "destrua os núcleos")
+    INIMIGO_SENTINELA,          // expansão da progressão: elite A (linha de visão)
+    INIMIGO_RETRO,              // expansão da progressão: elite B (devolve os golpes)
+    INIMIGO_JANELA,             // expansão da progressão: mini-chefe (janela de contexto)
+    INIMIGO_TOKEN,              // dado dourado que voa até a Janela
     NUM_TIPOS_INIMIGO
 } TipoInimigo;
 
@@ -5278,6 +5351,10 @@ static const DefInimigo DEF_INIMIGOS[NUM_TIPOS_INIMIGO] = {
     { "KEYLOGGER",             30.0f, 14.0f,  95.0f,  0.0f,  1.0f,    3,  60, { 200, 200, 200, 255 }, 1.1f },
     { "CACHE",                 70.0f, 18.0f,  50.0f,  8.0f,  0.5f,    3,  70, { 0, 228, 48, 255 },    0.7f },
     { "NÚCLEO DE CORRUPÇÃO",  130.0f, 22.0f,   0.0f,  0.0f,  0.0f,    4, 100, { 230, 41, 255, 255 },  0.5f },
+    { "SENTINELA DE ATENÇÃO", SENTINELA_HP, SENTINELA_RAIO, SENTINELA_VELOCIDADE, 8.0f, 0.4f, 12, 100, { 140, 230, 255, 255 }, 0.6f },
+    { "RETROPROPAGADOR",      RETRO_HP, RETRO_RAIO, RETRO_VELOCIDADE, 10.0f, 0.3f, 14, 100, { 255, 110, 50, 255 }, 0.55f },
+    { "JANELA DE CONTEXTO",   JANELA_HP, JANELA_RAIO, 45.0f, 10.0f, 0.0f, 30, 100, { 150, 140, 255, 255 }, 0.4f },
+    { "DADO DOURADO",           1.0f, TOKEN_RAIO, 80.0f, 0.0f, 0.0f, 0, 0, { 255, 203, 0, 255 }, 2.0f },
 };
 
 typedef enum {
@@ -5495,12 +5572,22 @@ enum { PEN_FRAGIL = 1, PEN_LENTO = 2, PEN_VIDA = 4 };
 
 // =============================================================
 // REFORMULAÇÃO DO BLOCO 2: MAPA PROCEDURAL RAMIFICADO
-//   Cada tentativa sorteia um grafo em camadas (profundidades):
+//   Cada tentativa sorteia um grafo em camadas (profundidades). Expansão da progressão:
+//   o caminho até o Alucinador passou de 7 para 15 salas (8 camadas novas, marcadas com *):
 //     0        : 1 sala de combate (sempre)
 //     1, 2     : 2 ou 3 salas por camada (escolha de caminho)
-//     3        : CÂMARA DA INFERÊNCIA (todos os caminhos se reencontram)
-//     4, 5, 6  : 2 ou 3 salas por camada
-//     7        : ALUCINADOR
+//     3*       : 2 ou 3 salas
+//     4*       : ELITE: SENTINELA DE ATENÇÃO (obrigatória: a camada tem uma sala só)
+//     5*       : 2 salas (respiro: descanso, tesouro ou evento contra uma luta)
+//     6        : CÂMARA DA INFERÊNCIA (todos os caminhos se reencontram)
+//     7, 8*    : 2 ou 3 salas por camada
+//     9*       : ELITE: RETROPROPAGADOR (obrigatória)
+//     10, 11*  : 2 ou 3 / 2 salas
+//     12*      : MINI-CHEFE: JANELA DE CONTEXTO (obrigatória)
+//     13*, 14  : 2 salas (recuperação antes do chefe)
+//     15       : ALUCINADOR
+//   A dificuldade dos inimigos usa a profundidade EQUIVALENTE (PROF_DIFICULDADE): a curva
+//   continua indo de 0 a 7, só que em mais salas.
 //   Cada sala liga a 1 ou 2 salas da camada seguinte (vizinhas no mapa), e
 //   toda sala da camada seguinte recebe pelo menos uma ligação: não existe
 //   caminho sem saída e sempre se chega à Câmara e ao chefe. Algumas salas
@@ -5515,11 +5602,17 @@ typedef enum { RECOMPENSA_NENHUMA, RECOMPENSA_MELHORIA, RECOMPENSA_RARA, RECOMPE
 
 static const char *NOMES_RECOMPENSA[NUM_TIPOS_RECOMPENSA] = { "", "MELHORIA", "MELHORIA RARA", "FRAGMENTOS", "ARSENAL", "RESTAURAÇÃO", "DESAFIO OPCIONAL" };
 
-#define MAPA_PROFUNDIDADES       8
-#define PROF_SILOGISTA           3
-#define PROF_CHEFE               7
+#define MAPA_PROFUNDIDADES       16
+#define PROF_SILOGISTA           6
+#define PROF_CHEFE               15
+#define PROF_ESPECIAL_A          4        // Sentinela de Atenção
+#define PROF_ESPECIAL_B          9        // Retropropagador
+#define PROF_MINICHEFE           12       // Janela de Contexto
 #define MAPA_LARGURA_MAX         3
-#define MAPA_MAX_NOS             26
+#define MAPA_MAX_NOS             40
+
+// Profundidade equivalente (a escala antiga, de 0 a 7) de cada camada: decide a dificuldade
+static const float PROF_DIFICULDADE[16] = { 0.0f, 1.0f, 1.5f, 2.0f, 2.4f, 2.6f, 3.0f, 3.6f, 4.1f, 4.5f, 5.0f, 5.4f, 5.8f, 6.1f, 6.5f, 7.0f };
 #define MAX_SAIDAS               3        // 3 só quando a sala é a única origem da camada seguinte (ex.: a Câmara)
 #define MAX_SECRETAS             2
 
@@ -5535,6 +5628,7 @@ typedef struct {
     int secreta;                // sala secreta escondida nesta sala (-1 = nenhuma)
     int pai;                    // sala secreta: a sala onde ela estava escondida
     int lab;                    // laboratório: a categoria (TipoLab)
+    int especial;               // encontro especial: ESP_SENTINELA, ESP_RETRO ou ESP_JANELA
 } NoMapa;
 
 typedef struct {
@@ -5564,7 +5658,8 @@ typedef enum { OBJC_ELIMINAR, OBJC_SOBREVIVER, OBJC_NUCLEOS, OBJC_PRIORITARIO, O
 
 static const char *NOMES_OBJC[NUM_OBJC] = { "ELIMINAR", "SOBREVIVER", "NÚCLEOS DE CORRUPÇÃO", "ALVO PRIORITÁRIO", "MECANISMO CORROMPIDO" };
 
-#define SOBREVIVER_TEMPO_BASE    30.0f    // + 2,5 s por profundidade
+#define SOBREVIVER_TEMPO_BASE    24.0f    // + 2,5 s por profundidade (era 30: o caminho ficou mais longo)
+#define MAX_ONDAS_SALA           2        // expansão da progressão: encontros de 3 ondas param na 2ª
 #define REFORCO_INTERVALO        6.5f
 #define REFORCO_LIMITE_VIVOS     9        // reforços não passam disso (inimigos vivos)
 #define NUM_NUCLEOS              3
@@ -5800,22 +5895,24 @@ typedef struct {
 #define MAX_ANEIS 8
 
 static const char *NOMES_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI",
-                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA", "LABORATÓRIO" };
+                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA", "LABORATÓRIO", "ESPECIAL" };
 static const Color CORES_SALAS_ROGUE[NUM_TIPOS_SALA] = {
     { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 },
     { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 },
     { 255, 120, 20, 255 }, { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 190, 33, 255, 255 },
-    { 40, 220, 170, 255 }
+    { 40, 220, 170, 255 }, { 255, 70, 100, 255 }
 };
 // Nome que aparece na porta (o que o jogador vai encontrar)
 static const char *PLACAS_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "TERMINAL", "TESOURO", "ALUCINADOR", "CÂMARA DA INFERÊNCIA", "NÚCLEO", "LUCI",
-                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO", "LABORATÓRIO" };
+                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO", "LABORATÓRIO", "ENCONTRO ESPECIAL" };
 
 // Placa de um nó do mapa (o laboratório mostra a categoria)
 static const char *RoguePlacaNo(const NoMapa *n)
 {
     if (n->tipo == SALA_LABORATORIO && n->lab >= 0 && n->lab < NUM_LABS)
         return PLACAS_LAB[n->lab];
+    if (n->tipo == SALA_ESPECIAL && n->especial >= 0 && n->especial < NUM_ESPECIAIS)
+        return PLACAS_ESPECIAIS[n->especial];
     return PLACAS_SALAS_ROGUE[n->tipo];
 }
 
@@ -5868,6 +5965,16 @@ typedef struct {
     bool desafio;               // eco da sala de desafio (conta para a meta, não repara a Luci)
     float rotulo;               // Rotulagem de Dados: > 0 = leva mais dano
     bool atingidoEsquiva;       // Passo Fantasma: já foi ferido nesta esquiva
+
+    // Expansão da progressão: encontros especiais (cada tipo usa só os seus)
+    float foco;                 // Sentinela: atenção acumulada (0 a 1)
+    bool visao;                 // Sentinela: enxerga o jogador (nenhuma estante no caminho)
+    float distraida;            // Sentinela: > 0 = acabou de perder o jogador de vista (vulnerável)
+    Vector2 fimFeixe;           // Sentinela: onde o feixe para (estante ou parede)
+    bool feixeAcertou;
+    Vector2 registro[RETRO_MAX_REGISTROS];  // Retropropagador: de onde vieram os golpes
+    int numRegistros, excesso;
+    Vector2 memoria;            // dado dourado: onde o jogador estava quando ele saiu
 } Inimigo;
 
 typedef struct {
@@ -6365,6 +6472,30 @@ typedef struct {
     int total;
 } IndiceFinal;
 
+// Mini-chefe JANELA DE CONTEXTO: o que está na janela dele (slot[0] = o mais antigo)
+enum { CTX_SISTEMA, CTX_RELEVANTE, CTX_RUIDO };
+
+typedef struct {
+    bool ativo;
+    int indice;                 // o mini-chefe no vetor de inimigos
+    int fase;                   // 1 a 3 (a janela cresce e ele fica mais esperto)
+    int capacidade;
+    int num;
+    unsigned char slot[JANELA_MAX_SLOTS + 1];
+    Vector2 memoria[JANELA_MAX_SLOTS + 1];  // dado relevante: onde o jogador estava
+    float ruidoAcumulado;       // dano no escudo que ainda não virou um bloco
+    float vulneravel;           // > 0: a instrução PROTEGER foi esquecida (escudo aberto)
+    float emissor;              // próximo dado dourado
+    float resumo;               // próximo resumo (fase 2 em diante)
+    float esquecidoAnim;        // o bloco que acabou de sair da janela
+    int esquecidoTipo;
+    float entrouAnim;
+    int ciclos;                 // quantas vezes o escudo caiu
+    int estouros;               // blocos esquecidos
+    char dica[128];             // uma linha curta embaixo da janela (muda com a fase)
+    bool recompensaDada;
+} JanelaContexto;
+
 typedef struct {
     JogadorRogue j;
     ProgressoBiblioteca *perm;  // o que não se perde (fica no main e vai para o save)
@@ -6551,6 +6682,9 @@ typedef struct {
     unsigned int labVistas[NUM_LABS];   // missões já sorteadas (evita repetição recente)
     unsigned int labIntroVista;         // categorias já apresentadas
     int labFeitos, labEstrelas;         // desempenho nos laboratórios (ajusta a dificuldade)
+
+    // Expansão da progressão: o mini-chefe Janela de Contexto (só existe na sala dele)
+    JanelaContexto janela;
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -7802,6 +7936,11 @@ static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo)
 static int RogueChanceLuciErrar(const Biblioteca *b);
 static void RogueRecadoLuci(Biblioteca *b, const char *texto);
 static void LabPreparar(Biblioteca *b, TipoLab tipo);
+static void RogueMontarSalaEspecial(Biblioteca *b);
+static void RogueJanelaRuido(Biblioteca *b, float dano);
+static void RogueJanelaDerrotada(Biblioteca *b, ProgressoCorredor *prog);
+static void RogueRetroRegistrar(Biblioteca *b, Inimigo *e);
+static bool RogueSentinelaVulneravel(const Inimigo *e);
 
 // Uma sala da missão (reformulação) usa portas nos lados: nada pode ficar na frente delas
 static bool RogueSalaDaMissao(const Biblioteca *b)
@@ -7972,6 +8111,10 @@ static void RogueMontarEncontro(Biblioteca *b, const LayoutSala *l, int id)
             if (enc->grupo[g].onda + 1 > b->numOndas)
                 b->numOndas = enc->grupo[g].onda + 1;
 
+    // Expansão da progressão: com o dobro de salas, no máximo 2 ondas por sala (a 3ª onda não vem)
+    if (b->numOndas > MAX_ONDAS_SALA)
+        b->numOndas = MAX_ONDAS_SALA;
+
     RogueSurgirOnda(b, 0);
 
     RogueAviso(b, TextFormat("ENCONTRO: %s", enc->nome));
@@ -8033,6 +8176,8 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->mensagemSistema = 0.0f;
     b->mapaAberto = false;
     memset(&b->lab, 0, sizeof(b->lab));        // expansão educativa: o laboratório não passa de uma sala para outra
+    memset(&b->janela, 0, sizeof(b->janela));  // expansão da progressão: o mini-chefe também não
+    b->janela.indice = -1;
 
     // Bloco 3: impacto e parry não passam de uma sala para outra
     b->tremorForte = 0.0f;
@@ -8087,7 +8232,7 @@ static void RoguePrepararPortas(Biblioteca *b)
         // Câmara e chefe: sempre pela porta de cima (as duas arenas foram feitas para entrar por baixo)
         LadoPorta lado = LADO_CIMA;
         TipoSalaRogue t = b->mapa.no[dest[0]].tipo;
-        if (t != SALA_SILOGISTA && t != SALA_CHEFE && GetRandomValue(0, 2) == 0) {
+        if (t != SALA_SILOGISTA && t != SALA_CHEFE && t != SALA_ESPECIAL && GetRandomValue(0, 2) == 0) {
             LadoPorta lat = (GetRandomValue(0, 1) == 0) ? LADO_ESQUERDA : LADO_DIREITA;
             if (lat == b->ladoEntrada) lat = RogueLadoOposto(lat);
             lado = lat;
@@ -8254,7 +8399,7 @@ static void RogueMontarObjetivo(Biblioteca *b, const LayoutSala *l)
     switch (b->objetivoSala) {
 
         case OBJC_SOBREVIVER:
-            b->tempoObjetivoMax = b->tempoObjetivo = fminf(45.0f, SOBREVIVER_TEMPO_BASE + 2.5f * (float)b->profundidade);
+            b->tempoObjetivoMax = b->tempoObjetivo = fminf(38.0f, SOBREVIVER_TEMPO_BASE + 2.5f * (float)b->profundidade);
             b->reforco = REFORCO_INTERVALO * 0.6f;
             break;
 
@@ -8474,6 +8619,10 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
             b->luciMsgTempo = 4.5f;
         }
     }
+    else if (tipo == SALA_ESPECIAL) {
+        // Expansão da progressão: elite ou mini-chefe obrigatório
+        RogueMontarSalaEspecial(b);
+    }
     else if (tipo == SALA_LABORATORIO) {
         // Expansão educativa: o console do laboratório no meio da sala
         RogueUsarLayout(b, &LAYOUT_EVENTO);
@@ -8577,11 +8726,19 @@ static TipoSalaRogue RogueSortearTipoSala(int prof, unsigned int jaNaCamada)
         {  1,  0,  0,  0,  0,  0,  0,  0 },     // 0
         { 40,  0, 30, 20,  0, 12, 14, 22 },     // 1
         { 35, 25, 25, 20,  0, 15, 10, 22 },     // 2
-        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 3 (Câmara)
-        { 35, 20, 25, 20,  0, 15, 10, 22 },     // 4
-        { 35, 25,  0, 20, 15, 15,  0, 22 },     // 5
-        { 30, 30,  0,  0, 30,  0, 15, 15 },     // 6 (antes do chefe: risco x descanso)
-        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 7 (chefe)
+        { 40, 15, 20, 25,  0, 15, 10, 22 },     // 3 (nova)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 4 (Sentinela)
+        { 25,  0, 10, 20, 35,  0, 25, 10 },     // 5 (nova: respiro depois do elite)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 6 (Câmara)
+        { 35, 20, 25, 20,  0, 15, 10, 22 },     // 7
+        { 40, 25, 15, 20,  0, 15, 10, 22 },     // 8 (nova)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 9 (Retropropagador)
+        { 35, 25,  0, 20, 15, 15,  0, 22 },     // 10
+        { 25, 10,  0, 20, 35, 10, 15, 15 },     // 11 (nova: preparação para o mini-chefe)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 12 (Janela de Contexto)
+        { 30, 10,  0, 20, 30,  0, 25, 10 },     // 13 (nova: recuperação)
+        { 30, 30,  0,  0, 30,  0, 15, 15 },     // 14 (antes do chefe: risco x descanso)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 15 (chefe)
     };
     static const TipoSalaRogue tipos[8] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA,
                                             SALA_LABORATORIO };
@@ -8604,6 +8761,27 @@ static TipoSalaRogue RogueSortearTipoSala(int prof, unsigned int jaNaCamada)
     return SALA_COMBATE;
 }
 
+// Encontro especial de uma camada (-1 = nenhum)
+static int RogueEspecialDaCamada(int d)
+{
+    return (d == PROF_ESPECIAL_A) ? ESP_SENTINELA : ((d == PROF_ESPECIAL_B) ? ESP_RETRO : ((d == PROF_MINICHEFE) ? ESP_JANELA : -1));
+}
+
+// Camada em que o jogador escolhe o caminho (nem a 1ª, nem a Câmara, nem um encontro especial, nem o chefe)
+static bool RogueCamadaComEscolha(int d)
+{
+    return d > 0 && d < PROF_CHEFE && d != PROF_SILOGISTA && RogueEspecialDaCamada(d) < 0;
+}
+
+// Uma camada com escolha entre d1 e d2, sorteada (-1 = nenhuma)
+static int RogueSortearCamadaComEscolha(int d1, int d2)
+{
+    int cand[MAPA_PROFUNDIDADES], n = 0;
+    for (int d = d1; d <= d2 && d < MAPA_PROFUNDIDADES; d++)
+        if (RogueCamadaComEscolha(d)) cand[n++] = d;
+    return (n > 0) ? cand[GetRandomValue(0, n - 1)] : -1;
+}
+
 // Categoria de um laboratório pela camada (os básicos cedo, os especiais mais fundo), sem repetir na tentativa
 static int RogueSortearLab(int prof, unsigned int usados)
 {
@@ -8612,11 +8790,19 @@ static int RogueSortearLab(int prof, unsigned int usados)
         {  0,  0,  0,  0,  0 },     // 0
         { 55, 45,  0,  0,  0 },     // 1
         { 30, 30, 30, 15,  0 },     // 2
-        {  0,  0,  0,  0,  0 },     // 3 (Câmara)
-        { 20, 20, 30, 30, 25 },     // 4
-        { 15, 15, 25, 30, 30 },     // 5
-        { 10, 10, 20, 30, 35 },     // 6
-        {  0,  0,  0,  0,  0 },     // 7 (chefe)
+        { 25, 30, 30, 20, 10 },     // 3
+        {  0,  0,  0,  0,  0 },     // 4 (Sentinela)
+        { 20, 20, 25, 25, 20 },     // 5
+        {  0,  0,  0,  0,  0 },     // 6 (Câmara)
+        { 20, 20, 30, 30, 25 },     // 7
+        { 15, 15, 25, 30, 30 },     // 8
+        {  0,  0,  0,  0,  0 },     // 9 (Retropropagador)
+        { 15, 15, 25, 30, 30 },     // 10
+        { 10, 10, 20, 30, 35 },     // 11
+        {  0,  0,  0,  0,  0 },     // 12 (Janela)
+        { 10, 10, 20, 30, 35 },     // 13
+        { 10, 10, 20, 30, 35 },     // 14
+        {  0,  0,  0,  0,  0 },     // 15 (chefe)
     };
 
     int total = 0, peso[NUM_LABS];
@@ -8655,7 +8841,9 @@ static void RogueGerarMapa(Biblioteca *b)
     memset(m, 0, sizeof(*m));
 
     // Na versão bullet-hell a camada da Câmara tem 2 salas: a Câmara (opcional) e um caminho que a evita
-    int larg[MAPA_PROFUNDIDADES] = { 1, 2, GetRandomValue(2, 3), SILOGISTA_BH ? 2 : 1, GetRandomValue(2, 3), GetRandomValue(2, 3), 2, 1 };
+    // Expansão da progressão: camadas de largura 1 para os encontros especiais (ninguém passa sem eles)
+    int larg[MAPA_PROFUNDIDADES] = { 1, 2, GetRandomValue(2, 3), GetRandomValue(2, 3), 1, 2, SILOGISTA_BH ? 2 : 1,
+                                     GetRandomValue(2, 3), GetRandomValue(2, 3), 1, GetRandomValue(2, 3), 2, 1, 2, 2, 1 };
     int colunaSilogista = GetRandomValue(0, larg[PROF_SILOGISTA] - 1);
 
     // Nós
@@ -8728,19 +8916,20 @@ static void RogueGerarMapa(Biblioteca *b)
             else if (d == PROF_SILOGISTA) n->tipo = (!SILOGISTA_BH || c == colunaSilogista) ? SALA_SILOGISTA
                                                    : ((GetRandomValue(1, 100) <= 60) ? SALA_COMBATE : ((GetRandomValue(0, 1) == 0) ? SALA_EVENTO : SALA_DESCANSO));
             else if (d == PROF_CHEFE)     n->tipo = SALA_CHEFE;
+            else if (RogueEspecialDaCamada(d) >= 0) { n->tipo = SALA_ESPECIAL; n->especial = RogueEspecialDaCamada(d); }
             else                          n->tipo = RogueSortearTipoSala(d, naCamada);
             naCamada |= 1u << n->tipo;
         }
 
         // Camadas com escolha: sempre há pelo menos um caminho com luta (mais recompensa)
-        if (d != 0 && d != PROF_SILOGISTA && d != PROF_CHEFE &&
+        if (RogueCamadaComEscolha(d) &&
             !(naCamada & ((1u << SALA_COMBATE) | (1u << SALA_ELITE))))
             RogueNo(b, d, GetRandomValue(0, larg[d] - 1))->tipo = SALA_COMBATE;
 
         for (int c = 0; c < larg[d]; c++) {
             NoMapa *n = RogueNo(b, d, c);
-            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate(d, ultimaRec);
-            else if (n->tipo == SALA_ELITE || n->tipo == SALA_DESAFIO) n->recompensa = RECOMPENSA_RARA;
+            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate((int)PROF_DIFICULDADE[d], ultimaRec);
+            else if (n->tipo == SALA_ELITE || n->tipo == SALA_DESAFIO || n->tipo == SALA_ESPECIAL) n->recompensa = RECOMPENSA_RARA;
             else if (n->tipo == SALA_SILOGISTA && SILOGISTA_BH)       n->recompensa = RECOMPENSA_SELO;
             if (d == 0)                       n->recompensa = RECOMPENSA_MELHORIA;    // começa sempre com uma melhoria
         }
@@ -8748,13 +8937,13 @@ static void RogueGerarMapa(Biblioteca *b)
 
     // O conteúdo educativo continua presente: uma sala educativa antes e uma depois da Câmara
     for (int metade = 0; metade < 2; metade++) {
-        int d1 = (metade == 0) ? 1 : 4, d2 = d1 + 1;
+        int d1 = (metade == 0) ? 1 : PROF_SILOGISTA + 1, d2 = (metade == 0) ? 3 : PROF_ESPECIAL_B - 1;
         bool tem = false;
         for (int d = d1; d <= d2; d++)
             for (int c = 0; c < larg[d]; c++) if (RogueNo(b, d, c)->tipo == SALA_EDUCATIVA) tem = true;
-        if (!tem) {
+        int d = RogueSortearCamadaComEscolha(d1, d2);
+        if (!tem && d >= 0) {
             // Troca uma sala que não é de luta (ou, se não houver, a 2ª de combate da camada)
-            int d = GetRandomValue(d1, d2);
             for (int c = 0; c < larg[d]; c++) {
                 NoMapa *n = RogueNo(b, d, c);
                 bool luta = (n->tipo == SALA_COMBATE || n->tipo == SALA_ELITE);
@@ -8768,13 +8957,14 @@ static void RogueGerarMapa(Biblioteca *b)
     // Expansão educativa: um laboratório antes da Câmara e um depois (sem tirar o único caminho
     // com luta nem a sala educativa da camada)
     for (int metade = 0; metade < 2; metade++) {
-        int d1 = (metade == 0) ? 1 : 4, d2 = (metade == 0) ? 2 : 6;
+        int d1 = (metade == 0) ? 1 : PROF_SILOGISTA + 1, d2 = (metade == 0) ? PROF_SILOGISTA - 1 : PROF_CHEFE - 1;
         bool tem = false;
         for (int d = d1; d <= d2; d++)
             for (int c = 0; c < larg[d]; c++) if (RogueNo(b, d, c)->tipo == SALA_LABORATORIO) tem = true;
 
         for (int tentativa = 0; tentativa < 8 && !tem; tentativa++) {
-            int d = GetRandomValue(d1, d2);
+            int d = RogueSortearCamadaComEscolha(d1, d2);
+            if (d < 0) break;
             int lutas = 0;
             for (int k = 0; k < larg[d]; k++) { TipoSalaRogue t = RogueNo(b, d, k)->tipo; if (t == SALA_COMBATE || t == SALA_ELITE) lutas++; }
             int c0 = GetRandomValue(0, larg[d] - 1);
@@ -8802,14 +8992,14 @@ static void RogueGerarMapa(Biblioteca *b)
         }
     }
 
-    // Salas secretas: escondidas em salas de luta das camadas 1, 2, 4 e 5
+    // Salas secretas: escondidas em salas de luta das camadas com escolha (menos as duas antes do chefe)
     int secretas = GetRandomValue(1, MAX_SECRETAS);
     for (int s = 0; s < secretas && m->numNos < MAPA_MAX_NOS; s++) {
         int candidatos[MAPA_MAX_NOS], n = 0;
         for (int i = 0; i < m->numNos; i++) {
             const NoMapa *no = &m->no[i];
             if (no->secreta >= 0 || no->pai >= 0) continue;
-            if (no->prof != 1 && no->prof != 2 && no->prof != 4 && no->prof != 5) continue;
+            if (!RogueCamadaComEscolha(no->prof) || no->prof >= PROF_CHEFE - 2) continue;
             if (no->tipo != SALA_COMBATE && no->tipo != SALA_ELITE) continue;
             candidatos[n++] = i;
         }
@@ -8835,17 +9025,18 @@ static void RogueEntrarNo(Biblioteca *b, int no, LadoPorta ladoEntrada)
     NoMapa *n = &b->mapa.no[no];
 
     b->noAtual = no;
-    b->profundidade = n->prof;
+    b->profundidade = (int)(PROF_DIFICULDADE[n->prof] + 0.5f);      // escala antiga (0 a 7)
     b->ladoEntrada = ladoEntrada;
     b->indiceRota++;
     n->visitado = true;
     n->escondida = false;
 
     // A dificuldade cresce com a profundidade (os chefes já têm o próprio equilíbrio)
-    bool chefe = (n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA);
-    b->fatorVidaInimigos  = chefe ? 1.0f : 1.0f + DIFICULDADE_VIDA_PROF * (float)n->prof;
-    b->fatorRitmoInimigos = chefe ? 1.0f : 1.0f + DIFICULDADE_RITMO_PROF * (float)n->prof;
-    b->fatorDanoSala      = chefe ? 1.0f : 1.0f + DIFICULDADE_DANO_PROF * (float)n->prof;
+    bool chefe = (n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA || (n->tipo == SALA_ESPECIAL && n->especial == ESP_JANELA));
+    float eq = PROF_DIFICULDADE[n->prof];
+    b->fatorVidaInimigos  = chefe ? 1.0f : 1.0f + DIFICULDADE_VIDA_PROF * eq;
+    b->fatorRitmoInimigos = chefe ? 1.0f : 1.0f + DIFICULDADE_RITMO_PROF * eq;
+    b->fatorDanoSala      = chefe ? 1.0f : 1.0f + DIFICULDADE_DANO_PROF * eq;
 
     Telemetria("rogue_sala", NOMES_SALAS_ROGUE[n->tipo], (float)n->prof, b->indiceRota);
     RogueEntrarSala(b, n->tipo);
@@ -9257,7 +9448,7 @@ static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float 
 // Inimigo que nasce de outro e some sozinho (não recebe bônus nem protege ninguém)
 static bool RogueInimigoPassageiro(TipoInimigo t)
 {
-    return t == INIMIGO_ECO || t == INIMIGO_SPAM || t == INIMIGO_ISCA;
+    return t == INIMIGO_ECO || t == INIMIGO_SPAM || t == INIMIGO_ISCA || t == INIMIGO_TOKEN;
 }
 
 // Está dentro do escudo de rede de algum Firewall (sem contar ele mesmo)?
@@ -9471,6 +9662,19 @@ static float RogueFatorDanoInimigo(const Biblioteca *b, const Inimigo *e, Vector
         if (deFrente > cosf(FIREWALL_ANGULO_FRENTE * DEG2RAD)) { f *= FIREWALL_FRENTE; *protegido = true; }
         else if (deFrente < -0.5f)                              f *= FIREWALL_COSTAS;
     }
+    else if (e->tipo == INIMIGO_SENTINELA) {
+        // A lente protege enquanto ela está focada; distraída ou recalculando, leva o dobro
+        if (RogueSentinelaVulneravel(e)) f *= SENTINELA_DANO_VULNERAVEL;
+        else                             { f *= SENTINELA_DANO_BLINDADA; *protegido = true; }
+    }
+    else if (e->tipo == INIMIGO_RETRO) {
+        if (e->estado == 3) f *= RETRO_DANO_RECALIBRANDO;
+    }
+    else if (e->tipo == INIMIGO_JANELA) {
+        // Com a instrução PROTEGER na janela, o golpe não fere: vira ruído (ver RogueJanelaRuido)
+        if (b->janela.vulneravel > 0.0f) f *= JANELA_DANO_VULNERAVEL;
+        else                             { f = 0.0f; *protegido = true; }
+    }
     else if (e->tipo == INIMIGO_OVERCLOCK) {
         if (e->estado == 1) f *= OVERCLOCK_DANO_CARREGANDO;
         if (e->estado == 3) f *= 1.0f + (OVERCLOCK_DANO_QUENTE - 1.0f) * (0.5f + 0.5f * RogueCargaOverclock(e));
@@ -9592,6 +9796,12 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
     if (e->tipo == INIMIGO_PHISHER && e->estado == 0)
         RogueRevelarPhisher(b, e, false);                   // descoberto antes da hora
 
+    // Expansão da progressão: o Retropropagador guarda de onde veio o golpe; a Janela vira ruído
+    if (e->tipo == INIMIGO_RETRO)
+        RogueRetroRegistrar(b, e);
+    if (e->tipo == INIMIGO_JANELA && b->janela.vulneravel <= 0.0f)
+        RogueJanelaRuido(b, dano);
+
     if (e->tipo == INIMIGO_CACHE) {
         e->energia = fminf(CACHE_ENERGIA_MAX, e->energia + dano * fator * CACHE_ARMAZENA);
         e->semDano = 0.0f;
@@ -9611,7 +9821,7 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
 
     e->ativo = false;
     b->abatidos++;
-    if (tipo != INIMIGO_SPAM && tipo != INIMIGO_ISCA)
+    if (tipo != INIMIGO_SPAM && tipo != INIMIGO_ISCA && tipo != INIMIGO_TOKEN)
         b->pausaImpacto = 0.04f;
 
     RogueParticulas(b, onde, def->cor, (tipo == INIMIGO_SPAM) ? 6 : 18, 220);
@@ -9628,7 +9838,7 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
     if (tipo == INIMIGO_ECO && ++b->ecosDestruidos % ECOS_PARA_REPARO == 0)
         RogueMudarEstabilidade(b, 1, "ecos falsos verificados");
 
-    if (tipo == INIMIGO_ECO || tipo == INIMIGO_SPAM)
+    if (tipo == INIMIGO_ECO || tipo == INIMIGO_SPAM || tipo == INIMIGO_TOKEN)
         return;
 
     if (tipo == INIMIGO_ISCA) {
@@ -9645,6 +9855,10 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
             }
 
     AlterarPontos(prog, def->pontos);
+
+    // Expansão da progressão: o mini-chefe derrotado (recompensa uma vez e a explicação)
+    if (tipo == INIMIGO_JANELA)
+        RogueJanelaDerrotada(b, prog);
 
     // Reformulação: efeitos da build ao derrotar um inimigo
     JogadorRogue *jg = &b->j;
@@ -11871,7 +12085,8 @@ static int RogueContradicaoPossivel(const Biblioteca *b)
 {
     switch (b->tipoSala) {
         case SALA_COMBATE:
-        case SALA_ELITE:      return b->limpa ? 1 : 0;
+        case SALA_ELITE:
+        case SALA_ESPECIAL:   return b->limpa ? 1 : 0;
         case SALA_EDUCATIVA:  return b->terminalLido ? -1 : 2;
         case SALA_RECOMPENSA: return b->recompensaPega ? -1 : 3;
         case SALA_SILOGISTA:  return (b->silogista.ativo && b->silogista.apresentado && b->silogista.etapa != SIL_VULNERAVEL) ? 4 : -1;
@@ -13273,6 +13488,614 @@ static void RogueMoverPhisher(Inimigo *e, Vector2 dir, float vel, float dt)
     }
 }
 
+// =============================================================
+// EXPANSÃO DA PROGRESSÃO: LÓGICA DOS ENCONTROS ESPECIAIS
+// =============================================================
+
+// Salas dos encontros especiais: a da Sentinela tem estantes para se esconder; a do
+// Retropropagador, pilares baixos; a da Janela é aberta (o espaço é para desviar)
+static const LayoutSala LAYOUTS_ESPECIAIS[NUM_ESPECIAIS] = {
+    { 5, { {190, 190, 34, 100}, {576, 190, 34, 100}, {290, 390, 90, 28}, {420, 390, 90, 28}, {372, 250, 56, 30} }, 4,
+      { {150, 430}, {650, 430}, {140, 160}, {660, 160} } },
+    { 4, { {190, 160, 30, 30}, {580, 160, 30, 30}, {190, 420, 30, 30}, {580, 420, 30, 30} }, 6,
+      { {150, 300}, {650, 300}, {260, 140}, {540, 140}, {260, 460}, {540, 460} } },
+    { 0, { {0} }, 0, { {0} } },
+};
+
+static const Dialogo dialogoJanelaIntro = {
+    .paginas = {
+        "* ENCONTRO ESPECIAL // JANELA DE CONTEXTO",
+        "Luci: Thomas, a barra no topo é a janela de contexto dele: ele só considera o que cabe ali.",
+        "Luci: A instrução do começo, PROTEGER, mantém o escudo. Cada golpe no escudo vira RUÍDO e ocupa espaço.",
+        "Luci: Passou do limite, o mais antigo é esquecido. E os dados dourados são o que ele sabe sobre você: sem eles, ele mira no passado."
+    },
+    .numPaginas = 4
+};
+
+static const Dialogo dialogoJanelaVitoria = {
+    .paginas = {
+        "* JANELA DE CONTEXTO // O QUE ACONTECEU",
+        "* Um modelo de IA só consegue considerar uma quantidade limitada de informação de cada vez: a JANELA DE CONTEXTO.",
+        "* Você encheu a janela com ruído. Quando ela passou do limite, o que estava no começo (a instrução PROTEGER) ficou de fora e foi esquecido.",
+        "* Quando os dados dourados não chegavam, ele respondia sem contexto relevante e errava o alvo: menos informação útil, pior a resposta.",
+        "* E quando ele resumia o ruído ou repetia a instrução no fim, ficava mais difícil: organizar o contexto preserva o que importa.",
+        "Luci: Por isso, em conversas longas, vale repetir o essencial e cortar o que não ajuda. (Os blocos da barra são uma simplificação: tokens não são exatamente palavras.)"
+    },
+    .numPaginas = 6
+};
+
+// ---------- Utilidades de linha de visão ----------
+
+// Nenhuma estante entre a e c (amostras a cada 8 px)
+static bool RogueLinhaLivre(const Biblioteca *b, Vector2 a, Vector2 c)
+{
+    float dist = Vector2Distance(a, c);
+    int passos = (int)(dist / 8.0f);
+
+    for (int k = 1; k < passos; k++) {
+        Vector2 p = Vector2Lerp(a, c, (float)k / (float)passos);
+        for (int i = 0; i < b->numObst; i++)
+            if (CheckCollisionPointRec(p, b->obst[i]))
+                return false;
+    }
+    return true;
+}
+
+// Onde um feixe que sai de "origem" na direção "dir" para: na primeira estante ou na parede
+static Vector2 RogueFimFeixe(const Biblioteca *b, Vector2 origem, Vector2 dir)
+{
+    Vector2 p = origem;
+
+    for (int k = 0; k < 200; k++) {
+        Vector2 q = Vector2Add(p, Vector2Scale(dir, 6.0f));
+        if (!CheckCollisionPointRec(q, ARENA_ROGUE))
+            return q;
+        for (int i = 0; i < b->numObst; i++)
+            if (CheckCollisionPointRec(q, b->obst[i]))
+                return q;
+        p = q;
+    }
+    return p;
+}
+
+// O ponto está dentro do feixe (segmento a-c com a largura do feixe)?
+static bool RogueNoFeixe(Vector2 a, Vector2 c, Vector2 p, float largura)
+{
+    Vector2 ac = Vector2Subtract(c, a);
+    float l2 = Vector2DotProduct(ac, ac);
+    if (l2 < 1.0f)
+        return false;
+    float t = Clamp(Vector2DotProduct(Vector2Subtract(p, a), ac) / l2, 0.0f, 1.0f);
+    return Vector2Distance(p, Vector2Add(a, Vector2Scale(ac, t))) < largura / 2.0f + RAIO_CORPO_JOGADOR;
+}
+
+// ---------- ELITE A: SENTINELA DE ATENÇÃO ----------
+// estado 0 = focando/procurando, 1 = travada (aviso), 2 = feixe, 3 = recalculando (vulnerável)
+static void RogueAtualizarSentinela(Biblioteca *b, Inimigo *e, Vector2 dir, float dist, float dt)
+{
+    JogadorRogue *j = &b->j;
+    const float vel = DEF_INIMIGOS[INIMIGO_SENTINELA].velocidade;
+    bool visao = RogueLinhaLivre(b, e->pos, j->pos);
+    bool tinhaVisao = e->visao;
+
+    e->visao = visao;
+    e->miraPrevista = j->pos;                      // para o desenho da linha de atenção
+    if (e->distraida > 0.0f) e->distraida -= dt;
+
+    switch (e->estado) {
+
+        case 0:
+            if (visao) {
+                // Com o jogador à vista, para e concentra a atenção
+                e->foco = fminf(1.0f, e->foco + dt / SENTINELA_FOCO_TEMPO);
+                e->vel = (dist > 300.0f) ? Vector2Scale(dir, vel * 0.5f) : (Vector2){0};
+            } else {
+                // Perdeu o jogador de vista: fica distraída e procura uma linha livre andando de lado
+                if (tinhaVisao && e->foco > 0.2f) {
+                    e->distraida = SENTINELA_DISTRAIDA;
+                    RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 30 }, "PERDEU O FOCO", GOLD);
+                }
+                e->foco = fmaxf(0.0f, e->foco - dt * SENTINELA_PERDE_FOCO);
+                Vector2 lado = { -dir.y * e->lado, dir.x * e->lado };
+                e->vel = Vector2Scale(Vector2Normalize(Vector2Add(Vector2Scale(dir, 0.5f), lado)), vel);
+                if (fmodf(e->anim, 3.0f) < dt) e->lado = -e->lado;
+            }
+
+            if (e->foco >= 1.0f && e->recarga <= 0.0f && visao) {
+                e->estado = 1;
+                e->timer = SENTINELA_TRAVA;
+                e->alvo = dir;
+                e->fimFeixe = RogueFimFeixe(b, e->pos, dir);
+                e->vel = (Vector2){0};
+                TocarSomTom(sfxAvisoParry, 0.8f);
+            }
+            break;
+
+        case 1:     // travada: a direção não muda mais (dá para sair da linha ou se esconder)
+            e->vel = (Vector2){0};
+            e->timer -= dt;
+            if (e->timer <= 0.0f) {
+                e->estado = 2;
+                e->timer = SENTINELA_FEIXE;
+                e->feixeAcertou = false;
+                TocarSomTom(sfxTiro, 0.4f);
+            }
+            break;
+
+        case 2:     // feixe de atenção: atravessa a sala até a primeira estante
+            e->vel = (Vector2){0};
+            e->timer -= dt;
+            if (!e->feixeAcertou && RogueNoFeixe(e->pos, e->fimFeixe, j->pos, SENTINELA_FEIXE_LARGURA)) {
+                RogueFerirJogador(b, SENTINELA_FEIXE_DANO);
+                e->feixeAcertou = true;
+            }
+            if (GetRandomValue(0, 1) == 0) RogueParticulas(b, e->fimFeixe, (Color){ 140, 230, 255, 255 }, 2, 120);
+            if (e->timer <= 0.0f) {
+                e->estado = 3;
+                e->timer = SENTINELA_RECALCULA;
+                e->foco = 0.0f;
+                RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 30 }, "RECALCULANDO PESOS", (Color){ 140, 230, 255, 255 });
+            }
+            break;
+
+        default:    // recalculando: parada e vulnerável
+            e->vel = (Vector2){0};
+            e->timer -= dt;
+            if (GetRandomValue(0, 4) == 0) RogueParticulas(b, e->pos, (Color){ 140, 230, 255, 255 }, 1, 60);
+            if (e->timer <= 0.0f) { e->estado = 0; e->recarga = SENTINELA_INTERVALO; }
+            break;
+    }
+}
+
+static bool RogueSentinelaVulneravel(const Inimigo *e)
+{
+    return e->estado == 3 || e->distraida > 0.0f;
+}
+
+// ---------- ELITE B: RETROPROPAGADOR ----------
+// estado 0 = para frente (registra os golpes), 1 = aviso, 2 = volta (devolve), 3 = recalibrando (vulnerável)
+static void RogueAtualizarRetro(Biblioteca *b, Inimigo *e, Vector2 dir, float dist, float ritmo, float dt)
+{
+    const float vel = DEF_INIMIGOS[INIMIGO_RETRO].velocidade;
+
+    if (e->habilidade > 0.0f) e->habilidade -= dt;
+
+    switch (e->estado) {
+
+        case 0:
+            e->vel = RogueManterDistancia(e, dir, dist, 120.0f, 220.0f, vel, dt);
+            e->timer += dt * ritmo;
+            if (e->timer >= RETRO_FORWARD) {
+                e->timer = 0.0f;
+                if (e->numRegistros > 0) {
+                    e->estado = 1;
+                    e->timer = RETRO_AVISO;
+                    TocarSomTom(sfxErro, 1.3f);
+                    RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 32 }, "RETROPROPAGANDO...", ORANGE);
+                } else {
+                    // Gradiente zero: ninguém o feriu, então só um anel lento e uma pausa curta
+                    for (int k = 0; k < 8; k++) {
+                        float a = (2.0f * PI / 8.0f) * k + e->anim;
+                        RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 140.0f, RETRO_TIRO_DANO * 0.75f, 6.0f, false);
+                    }
+                    e->estado = 3;
+                    e->timer = RETRO_RECALIBRA * 0.5f;
+                }
+            }
+            break;
+
+        case 1:
+            e->vel = (Vector2){0};
+            e->timer -= dt;
+            if (e->timer <= 0.0f) { e->estado = 2; e->tiros = 0; e->timer = 0.0f; }
+            break;
+
+        case 2: {
+            // Um projétil para cada marca, em sequência (golpes demais deixam a volta mais rápida)
+            e->vel = (Vector2){0};
+            e->timer -= dt;
+            float rapidez = 1.0f + 0.08f * (float)((e->excesso < 6) ? e->excesso : 6);
+            while (e->timer <= 0.0f && e->tiros < e->numRegistros) {
+                Vector2 d = Vector2Subtract(e->registro[e->tiros], e->pos);
+                d = (Vector2Length(d) > 1.0f) ? Vector2Normalize(d) : dir;
+                RogueDisparar(b, e->pos, d, RETRO_TIRO_VEL * rapidez, RETRO_TIRO_DANO, 7.0f, false);
+                TocarSomTom(sfxTiro, 0.8f);
+                e->tiros++;
+                e->timer += 0.06f;
+            }
+            if (e->tiros >= e->numRegistros) {
+                e->numRegistros = 0;
+                e->excesso = 0;
+                e->estado = 3;
+                e->timer = RETRO_RECALIBRA;
+                RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 32 }, "RECALIBRANDO", LIGHTGRAY);
+            }
+        } break;
+
+        default:
+            e->vel = Vector2Scale(dir, vel * 0.2f);
+            e->timer -= dt;
+            if (GetRandomValue(0, 5) == 0) RogueParticulas(b, e->pos, GRAY, 1, 50);
+            if (e->timer <= 0.0f) { e->estado = 0; e->timer = 0.0f; }
+            break;
+    }
+}
+
+// Golpe recebido na passagem "para frente": guarda de onde o jogador atacou
+static void RogueRetroRegistrar(Biblioteca *b, Inimigo *e)
+{
+    if (e->estado != 0 || e->habilidade > 0.0f)
+        return;
+
+    if (e->numRegistros < RETRO_MAX_REGISTROS) e->registro[e->numRegistros++] = b->j.pos;
+    else                                       e->excesso++;
+    e->habilidade = RETRO_REGISTRO_INTERVALO;
+}
+
+// ---------- MINI-CHEFE: JANELA DE CONTEXTO ----------
+
+static Inimigo *RogueJanelaChefe(Biblioteca *b)
+{
+    JanelaContexto *jc = &b->janela;
+    if (!jc->ativo || jc->indice < 0 || jc->indice >= MAX_INIMIGOS)
+        return NULL;
+    Inimigo *e = &b->ini[jc->indice];
+    return (e->ativo && e->tipo == INIMIGO_JANELA) ? e : NULL;
+}
+
+static int RogueJanelaContar(const JanelaContexto *jc, int tipo)
+{
+    int n = 0;
+    for (int i = 0; i < jc->num; i++) if (jc->slot[i] == tipo) n++;
+    return n;
+}
+
+static void RogueJanelaDica(Biblioteca *b, const char *texto)
+{
+    snprintf(b->janela.dica, sizeof(b->janela.dica), "%s", texto);
+}
+
+// A instrução PROTEGER saiu da janela: o escudo cai
+static void RogueJanelaAbrir(Biblioteca *b)
+{
+    JanelaContexto *jc = &b->janela;
+    Inimigo *e = RogueJanelaChefe(b);
+
+    jc->vulneravel = JANELA_VULNERAVEL;
+    jc->ciclos++;
+    if (e != NULL) {
+        e->estado = 3;
+        e->timer = 0.0f;
+        RogueParticulas(b, e->pos, (Color){ 150, 140, 255, 255 }, 30, 260);
+        RogueAnel(b, e->pos, 90.0f, (Color){ 150, 140, 255, 255 });
+    }
+    RogueAviso(b, "INSTRUÇÃO ESQUECIDA! O escudo caiu: ataque!");
+    TocarSomTom(sfxAcerto, 0.7f);
+    if (jc->ciclos == 1)
+        RogueJanelaDica(b, "A janela passou do limite e o bloco mais antigo (PROTEGER) foi esquecido.");
+}
+
+// Tira o bloco mais antigo da janela
+static void RogueJanelaEsquecer(Biblioteca *b)
+{
+    JanelaContexto *jc = &b->janela;
+    if (jc->num <= 0)
+        return;
+
+    int tipo = jc->slot[0];
+    for (int i = 1; i < jc->num; i++) { jc->slot[i - 1] = jc->slot[i]; jc->memoria[i - 1] = jc->memoria[i]; }
+    jc->num--;
+    jc->esquecidoTipo = tipo;
+    jc->esquecidoAnim = 0.9f;
+    jc->estouros++;
+
+    Inimigo *e = RogueJanelaChefe(b);
+    if (tipo == CTX_SISTEMA) {
+        RogueJanelaAbrir(b);
+    } else if (tipo == CTX_RELEVANTE && jc->fase >= 3 && e != NULL && jc->vulneravel <= 0.0f) {
+        // Fase 3: perder um dado o deixa nervoso (um anel curto)
+        for (int k = 0; k < 8; k++) {
+            float a = (2.0f * PI / 8.0f) * k + e->anim;
+            RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 150.0f, 6.0f, 6.0f, false);
+        }
+        RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 40 }, "PERDEU O FIO", GOLD);
+    }
+}
+
+// Um bloco entra no fim da janela; se passar do limite, o mais antigo sai
+static void RogueJanelaInserir(Biblioteca *b, int tipo, Vector2 memoria)
+{
+    JanelaContexto *jc = &b->janela;
+
+    if (jc->num >= JANELA_MAX_SLOTS + 1)
+        RogueJanelaEsquecer(b);
+    jc->slot[jc->num] = (unsigned char)tipo;
+    jc->memoria[jc->num] = memoria;
+    jc->num++;
+    jc->entrouAnim = 0.35f;
+
+    while (jc->num > jc->capacidade)
+        RogueJanelaEsquecer(b);
+}
+
+// Golpe no escudo: o dano vira ruído na janela (prompt inundado)
+static void RogueJanelaRuido(Biblioteca *b, float dano)
+{
+    JanelaContexto *jc = &b->janela;
+    Inimigo *e = RogueJanelaChefe(b);
+
+    if (e == NULL || jc->vulneravel > 0.0f)
+        return;
+
+    jc->ruidoAcumulado += dano;
+    while (jc->ruidoAcumulado >= JANELA_DANO_POR_RUIDO && jc->vulneravel <= 0.0f) {
+        jc->ruidoAcumulado -= JANELA_DANO_POR_RUIDO;
+        RogueTextoFlutuante(b, (Vector2){ e->pos.x + (float)GetRandomValue(-20, 20), e->pos.y - 36 }, "+RUÍDO", LIGHTGRAY);
+        RogueJanelaInserir(b, CTX_RUIDO, (Vector2){0});
+    }
+}
+
+// Fim do escudo aberto: ela relê as instruções (na fase 3, repete PROTEGER no FIM da janela)
+static void RogueJanelaReler(Biblioteca *b)
+{
+    JanelaContexto *jc = &b->janela;
+    Inimigo *e = RogueJanelaChefe(b);
+
+    jc->num = 0;
+    jc->vulneravel = 0.0f;
+    jc->ruidoAcumulado = 0.0f;
+    if (jc->fase < 3) {
+        RogueJanelaInserir(b, CTX_SISTEMA, (Vector2){0});
+        RogueJanelaInserir(b, CTX_RELEVANTE, b->j.pos);
+    } else {
+        RogueJanelaInserir(b, CTX_RELEVANTE, b->j.pos);
+        RogueJanelaInserir(b, CTX_SISTEMA, (Vector2){0});
+    }
+    if (e != NULL) { e->estado = 0; e->recarga = 1.2f; }
+    RogueAviso(b, (jc->fase < 3) ? "Ela releu as instruções. Encha a janela de novo!" : "Agora ela repete PROTEGER no FIM da janela!");
+}
+
+// Um dado dourado nasce na borda da sala e voa até a Janela (carrega a posição do jogador)
+static void RogueJanelaEmitir(Biblioteca *b)
+{
+    Vector2 p = { 400, 80 };
+    for (int t = 0; t < 8; t++) {
+        int lado = GetRandomValue(0, 3);
+        p = (lado == 0) ? (Vector2){ (float)GetRandomValue(80, 720), 76 } :
+            (lado == 1) ? (Vector2){ (float)GetRandomValue(80, 720), 514 } :
+            (lado == 2) ? (Vector2){ 56, (float)GetRandomValue(100, 490) } : (Vector2){ 744, (float)GetRandomValue(100, 490) };
+        if (Vector2Distance(p, b->j.pos) > 130.0f) break;
+    }
+    Inimigo *t = RogueCriarInimigo(b, INIMIGO_TOKEN, p);
+    if (t != NULL) { t->surgindo = 0.25f; t->memoria = b->j.pos; }
+}
+
+static bool RogueAtualizarToken(Biblioteca *b, Inimigo *e, float dt)
+{
+    Inimigo *chefe = RogueJanelaChefe(b);
+    (void)dt;
+
+    if (chefe == NULL) {
+        e->ativo = false;
+        return false;
+    }
+
+    Vector2 d = Vector2Subtract(chefe->pos, e->pos);
+    float l = Vector2Length(d);
+    if (l < chefe->raio + e->raio) {
+        RogueJanelaInserir(b, CTX_RELEVANTE, e->memoria);
+        RogueParticulas(b, e->pos, GOLD, 6, 100);
+        e->ativo = false;
+        return false;
+    }
+
+    e->vel = Vector2Scale(d, TOKEN_VELOCIDADE[b->janela.fase - 1] / l);
+    return true;
+}
+
+// estado 0 = livre, 1 = preparando a resposta, 2 = resumindo, 3 = escudo esquecido (vulnerável)
+static void RogueAtualizarJanela(Biblioteca *b, Inimigo *e, Vector2 dir, float dist, float dt)
+{
+    JanelaContexto *jc = &b->janela;
+    (void)dir; (void)dist;
+
+    e->empurrao = (Vector2){0};
+    if (jc->esquecidoAnim > 0.0f) jc->esquecidoAnim -= dt;
+    if (jc->entrouAnim > 0.0f)    jc->entrouAnim -= dt;
+
+    // Fases: a janela cresce e ele aprende a se organizar
+    float frac = e->hp / e->hpMax;
+    int fase = (frac <= JANELA_FASE3) ? 3 : ((frac <= JANELA_FASE2) ? 2 : 1);
+    if (fase > jc->fase) {
+        jc->fase = fase;
+        jc->capacidade = JANELA_CAPACIDADE[fase - 1];
+        jc->resumo = JANELA_RESUMO[fase - 1];
+        if (fase == 2) {
+            RogueAviso(b, "JANELA MAIOR! E agora ele RESUME o ruído.");
+            RogueJanelaDica(b, "Janela maior: precisa de mais ruído. Encha mais rápido do que ele resume!");
+        } else {
+            RogueAviso(b, "ÚLTIMA FASE: ele repete a instrução no fim!");
+            RogueJanelaDica(b, "Dados dourados também ocupam espaço: deixá-los entrar enche a janela, mas melhora a mira dele.");
+        }
+    }
+
+    // Deriva devagar pela sala
+    Vector2 alvo = { 400.0f + sinf(e->anim * 0.45f) * 150.0f, 250.0f + sinf(e->anim * 0.8f) * 60.0f };
+    Vector2 ate = Vector2Subtract(alvo, e->pos);
+    float veloc = DEF_INIMIGOS[INIMIGO_JANELA].velocidade;
+    e->vel = (e->estado == 0 && Vector2Length(ate) > 8.0f) ? Vector2Scale(Vector2Normalize(ate), veloc) : (Vector2){0};
+
+    // Dados dourados (o que ele sabe sobre o jogador)
+    jc->emissor -= dt;
+    if (jc->emissor <= 0.0f) {
+        jc->emissor = JANELA_EMISSAO[jc->fase - 1];
+        for (int k = 0; k < ((jc->fase >= 3) ? 2 : 1); k++)
+            RogueJanelaEmitir(b);
+    }
+
+    switch (e->estado) {
+
+        case 3:     // escudo esquecido
+            jc->vulneravel -= dt;
+            if (GetRandomValue(0, 2) == 0) RogueParticulas(b, e->pos, MAGENTA, 1, 80);
+            if (jc->vulneravel <= 0.0f) RogueJanelaReler(b);
+            break;
+
+        case 2: {   // resumindo: descarta os 2 blocos de ruído mais antigos
+            e->timer -= dt;
+            if (e->timer <= 0.0f) {
+                int tirados = 0;
+                for (int i = 0; i < jc->num && tirados < 2; ) {
+                    if (jc->slot[i] == CTX_RUIDO) {
+                        for (int k = i + 1; k < jc->num; k++) { jc->slot[k - 1] = jc->slot[k]; jc->memoria[k - 1] = jc->memoria[k]; }
+                        jc->num--;
+                        tirados++;
+                    } else i++;
+                }
+                RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 40 }, TextFormat("RESUMO: -%d RUÍDO", tirados), (Color){ 150, 140, 255, 255 });
+                e->estado = 0;
+                if (e->recarga < 0.8f) e->recarga = 0.8f;
+            }
+        } break;
+
+        case 1:     // preparando a resposta (linhas até o alvo)
+            e->timer -= dt;
+            if (e->timer <= 0.0f) {
+                int nRel = e->tiros;
+                if (e->carga > 0.5f) {
+                    // Sem contexto relevante: resposta genérica (um anel espalhado e fraco)
+                    float giro = (float)GetRandomValue(0, 360) * DEG2RAD;
+                    for (int k = 0; k < 8; k++) {
+                        float a = giro + (2.0f * PI / 8.0f) * k;
+                        RogueDisparar(b, e->pos, (Vector2){ cosf(a), sinf(a) }, 150.0f, 6.0f, 6.0f, false);
+                    }
+                    RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 40 }, "SEM CONTEXTO: ???", LIGHTGRAY);
+                } else {
+                    // Com contexto: um leque mirado no que ele LEMBRA (mais dados = mais balas e mais precisão)
+                    Vector2 d = Vector2Subtract(e->alvo, e->pos);
+                    d = (Vector2Length(d) > 1.0f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
+                    int balas = 3 + 2 * nRel;
+                    if (balas > 11) balas = 11;
+                    float arco = (50.0f / (1.0f + 0.4f * (float)nRel)) * DEG2RAD;
+                    for (int k = 0; k < balas; k++) {
+                        float a = (balas > 1) ? ((float)k / (float)(balas - 1) - 0.5f) * arco : 0.0f;
+                        RogueDisparar(b, e->pos, Vector2Rotate(d, a), 200.0f + 12.0f * (float)nRel, 8.0f, 6.0f, false);
+                    }
+                }
+                TocarSomTom(sfxTiro, 0.6f);
+                e->estado = 0;
+                e->recarga = JANELA_RESPOSTA[jc->fase - 1];
+            }
+            break;
+
+        default:
+            if (jc->fase >= 2) {
+                jc->resumo -= dt;
+                if (jc->resumo <= 0.0f) {
+                    jc->resumo = JANELA_RESUMO[jc->fase - 1];
+                    if (RogueJanelaContar(jc, CTX_RUIDO) >= 2) {
+                        e->estado = 2;
+                        e->timer = 1.3f;
+                        RogueTextoFlutuante(b, (Vector2){ e->pos.x, e->pos.y - 40 }, "RESUMINDO...", (Color){ 150, 140, 255, 255 });
+                        break;
+                    }
+                }
+            }
+            if (e->recarga <= 0.0f) {
+                // Mira no dado mais recente que ainda está na janela
+                int nRel = RogueJanelaContar(jc, CTX_RELEVANTE);
+                e->tiros = nRel;
+                e->carga = (nRel == 0) ? 1.0f : 0.0f;
+                e->alvo = e->pos;
+                for (int i = jc->num - 1; i >= 0; i--)
+                    if (jc->slot[i] == CTX_RELEVANTE) { e->alvo = jc->memoria[i]; break; }
+                e->estado = 1;
+                e->timer = 0.8f;
+            }
+            break;
+    }
+}
+
+// Derrotada: os dados somem, a recompensa sai uma vez e a explicação aparece
+static void RogueJanelaDerrotada(Biblioteca *b, ProgressoCorredor *prog)
+{
+    JanelaContexto *jc = &b->janela;
+
+    jc->ativo = false;
+    jc->vulneravel = 0.0f;
+    for (int i = 0; i < MAX_INIMIGOS; i++)
+        if (b->ini[i].ativo && b->ini[i].tipo == INIMIGO_TOKEN) {
+            b->ini[i].ativo = false;
+            RogueParticulas(b, b->ini[i].pos, GOLD, 4, 80);
+        }
+
+    if (jc->recompensaDada)
+        return;
+    jc->recompensaDada = true;
+
+    b->perm->fragmentos += 10;
+    AlterarPontos(prog, 20);
+    RogueMudarEstabilidade(b, 1, "contexto organizado");
+    RogueAviso(b, "JANELA DE CONTEXTO DERROTADA! +10 FRAGMENTOS");
+    b->conversaPendente = &dialogoJanelaVitoria;
+    b->objConversa = OBJ_NENHUM;
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
+    Telemetria("rogue_minichefe", "janela", (float)(GetTime() - b->inicio), jc->ciclos);
+}
+
+// Monta a sala de um encontro especial (objetivo: derrotar o especial e quem vier com ele)
+static void RogueMontarSalaEspecial(Biblioteca *b)
+{
+    int esp = (b->noAtual >= 0) ? b->mapa.no[b->noAtual].especial : ESP_SENTINELA;
+    if (esp < 0 || esp >= NUM_ESPECIAIS) esp = ESP_SENTINELA;
+
+    const LayoutSala *l = &LAYOUTS_ESPECIAIS[esp];
+    RogueUsarLayout(b, l);
+    layoutCombateAtual = (l->numPontos > 0) ? l : &LAYOUTS_COMBATE[0];
+    b->combates++;
+    b->objetivoSala = OBJC_ELIMINAR;
+    b->ondaAtual = 0;
+    b->numOndas = 1;
+    b->encontro = -1;
+
+    Vector2 topo = { 400, 170 };
+    if (esp == ESP_SENTINELA) {
+        Inimigo *e = RogueCriarInimigo(b, INIMIGO_SENTINELA, RogueLugarSurgir(b, topo, SENTINELA_RAIO));
+        if (e != NULL) e->elite = true;
+        for (int k = 0; k < 3; k++)
+            RogueCriarInimigo(b, INIMIGO_FRAGMENTO, RogueLugarSurgir(b, l->pontos[k % l->numPontos], FRAGMENTO_RAIO));
+    } else if (esp == ESP_RETRO) {
+        Inimigo *e = RogueCriarInimigo(b, INIMIGO_RETRO, RogueLugarSurgir(b, topo, RETRO_RAIO));
+        if (e != NULL) e->elite = true;
+        for (int k = 0; k < 4; k++)
+            RogueCriarInimigo(b, INIMIGO_SPAMMER, RogueLugarSurgir(b, l->pontos[k % l->numPontos], 10.0f));
+        RogueCriarInimigo(b, INIMIGO_GUARDIAO, RogueLugarSurgir(b, l->pontos[4], GUARDIAO_RAIO));
+    } else {
+        Inimigo *e = RogueCriarInimigo(b, INIMIGO_JANELA, RogueLugarSurgir(b, (Vector2){ 400, 210 }, JANELA_RAIO));
+        JanelaContexto *jc = &b->janela;
+        memset(jc, 0, sizeof(*jc));
+        if (e != NULL) {
+            jc->ativo = true;
+            jc->indice = (int)(e - b->ini);
+            jc->fase = 1;
+            jc->capacidade = JANELA_CAPACIDADE[0];
+            jc->emissor = 2.5f;
+            jc->resumo = JANELA_RESUMO[0];
+            e->recarga = 2.5f;
+            RogueJanelaInserir(b, CTX_SISTEMA, (Vector2){0});
+            RogueJanelaInserir(b, CTX_RELEVANTE, b->j.pos);
+            RogueJanelaDica(b, "Golpes no escudo viram RUÍDO. Encha a janela: o bloco mais antigo é esquecido.");
+        }
+        b->conversaPendente = &dialogoJanelaIntro;
+        b->objConversa = OBJ_NENHUM;
+    }
+
+    RogueAviso(b, TextFormat("ENCONTRO ESPECIAL: %s", NOMES_ESPECIAIS[esp]));
+    RogueRecadoLuci(b, FALAS_LUCI_ESPECIAL[esp]);
+    b->luciMsgTempo = 4.5f;
+    Telemetria("rogue_especial", NOMES_ESPECIAIS[esp], 0.0f, b->indiceRota);
+}
+
 static void RogueAtualizarInimigos(Biblioteca *b, float dt)
 {
     JogadorRogue *j = &b->j;
@@ -13636,6 +14459,13 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
                 }
             } break;
 
+            case INIMIGO_SENTINELA: RogueAtualizarSentinela(b, e, dir, dist, dt);     break;
+            case INIMIGO_RETRO:     RogueAtualizarRetro(b, e, dir, dist, ritmo, dt); break;
+            case INIMIGO_JANELA:    RogueAtualizarJanela(b, e, dir, dist, dt);      break;
+            case INIMIGO_TOKEN:
+                if (!RogueAtualizarToken(b, e, dt)) continue;
+                break;
+
             case INIMIGO_NUCLEO:
                 // Núcleo de corrupção: parado; de tempos em tempos pulsa um anel de balas (brilha antes)
                 e->vel = (Vector2){0};
@@ -13688,7 +14518,8 @@ static void RogueAtualizarInimigos(Biblioteca *b, float dt)
             float dist = Vector2Length(d), min = e1->raio + e2->raio;
 
             // O núcleo de corrupção não sai do lugar: só o outro é empurrado
-            float w1 = (e1->tipo == INIMIGO_NUCLEO) ? 0.0f : 1.0f, w2 = (e2->tipo == INIMIGO_NUCLEO) ? 0.0f : 1.0f;
+            float w1 = (e1->tipo == INIMIGO_NUCLEO || e1->tipo == INIMIGO_JANELA) ? 0.0f : 1.0f;
+            float w2 = (e2->tipo == INIMIGO_NUCLEO || e2->tipo == INIMIGO_JANELA) ? 0.0f : 1.0f;
             if (dist < min && dist > 0.01f && w1 + w2 > 0.0f) {
                 Vector2 empurra = Vector2Scale(d, (min - dist) / dist / (w1 + w2));
                 e1->pos = Vector2Subtract(e1->pos, Vector2Scale(empurra, w1));
@@ -13967,7 +14798,7 @@ static void RogueConcluirCombate(Biblioteca *b, ProgressoCorredor *prog)
     if (b->objetivoSala != OBJC_ELIMINAR && !b->eventoCombate)
         RogueAviso(b, "OBJETIVO CUMPRIDO!");
 
-    AlterarPontos(prog, PONTOS_SALA_ROGUE + ((b->tipoSala == SALA_ELITE) ? 8 : 0));
+    AlterarPontos(prog, PONTOS_SALA_ROGUE + ((b->tipoSala == SALA_ELITE) ? 8 : 0) + ((b->tipoSala == SALA_ESPECIAL) ? 12 : 0));
     TocarSom(sfxAcerto);
     MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
     Telemetria("rogue_sala_limpa", TextFormat("sala %d %s", b->indiceRota + 1, NOMES_OBJC[b->objetivoSala]), (float)(GetTime() - b->inicio), b->abatidos);
@@ -13975,7 +14806,8 @@ static void RogueConcluirCombate(Biblioteca *b, ProgressoCorredor *prog)
 
 static void RogueAtualizarObjetivo(Biblioteca *b, ProgressoCorredor *prog, float dt)
 {
-    bool combate = (b->tipoSala == SALA_COMBATE || b->tipoSala == SALA_ELITE || (b->tipoSala == SALA_EVENTO && b->eventoCombate));
+    bool combate = (b->tipoSala == SALA_COMBATE || b->tipoSala == SALA_ELITE || b->tipoSala == SALA_ESPECIAL ||
+                    (b->tipoSala == SALA_EVENTO && b->eventoCombate));
     if (!combate || b->limpa || b->desafioAberto)
         return;
 
@@ -18317,6 +19149,246 @@ static void DesenharSinergiasMarcas(const Biblioteca *b, float t)
 static void DesenharNucleoCorrupcao(const Inimigo *e, float escala, float t);
 static void DesenharMarcasReformulacao(const Inimigo *e, float t);
 
+// =============================================================
+// EXPANSÃO DA PROGRESSÃO: DESENHO DOS ENCONTROS ESPECIAIS
+// =============================================================
+
+// SENTINELA DE ATENÇÃO: lente (olho) num casco hexagonal, com três "cabeças de atenção" em órbita.
+// A linha de atenção engrossa com o foco; travada, vira uma faixa vermelha; no disparo, um feixe branco.
+static void DesenharSentinela(const Inimigo *e, float escala, float t)
+{
+    Color cor = DEF_INIMIGOS[INIMIGO_SENTINELA].cor;
+    float r = e->raio * escala;
+    bool vulneravel = (e->estado == 3 || e->distraida > 0.0f);
+
+    // Linha de atenção (só quando vê o jogador) e a mira que fecha em volta dele
+    if (e->estado == 0 && e->visao && e->foco > 0.02f) {
+        DrawLineEx(e->pos, e->miraPrevista, 1.0f + 3.0f * e->foco, Fade(cor, 0.25f + 0.5f * e->foco));
+        float rm = 12.0f + 30.0f * (1.0f - e->foco);
+        DrawCircleLines((int)e->miraPrevista.x, (int)e->miraPrevista.y, rm, Fade(RED, 0.4f + 0.5f * e->foco));
+        for (int k = 0; k < 4; k++) {
+            float a = (float)k * PI / 2.0f + t;
+            DrawLineEx((Vector2){ e->miraPrevista.x + cosf(a) * rm, e->miraPrevista.y + sinf(a) * rm },
+                       (Vector2){ e->miraPrevista.x + cosf(a) * (rm + 6), e->miraPrevista.y + sinf(a) * (rm + 6) }, 2, Fade(RED, 0.7f));
+        }
+    }
+    // Travada: faixa vermelha piscando no caminho do feixe (até a estante)
+    if (e->estado == 1) {
+        bool pisca = ((int)(t * 14.0f)) % 2 == 0;
+        Vector2 n = { -e->alvo.y, e->alvo.x };
+        Vector2 a1 = Vector2Add(e->pos, Vector2Scale(n, SENTINELA_FEIXE_LARGURA / 2)), a2 = Vector2Add(e->fimFeixe, Vector2Scale(n, SENTINELA_FEIXE_LARGURA / 2));
+        Vector2 b1 = Vector2Subtract(e->pos, Vector2Scale(n, SENTINELA_FEIXE_LARGURA / 2)), b2 = Vector2Subtract(e->fimFeixe, Vector2Scale(n, SENTINELA_FEIXE_LARGURA / 2));
+        DrawLineEx(e->pos, e->fimFeixe, SENTINELA_FEIXE_LARGURA, Fade(RED, pisca ? 0.22f : 0.10f));
+        DrawLineEx(a1, a2, 1, Fade(RED, 0.8f));
+        DrawLineEx(b1, b2, 1, Fade(RED, 0.8f));
+    }
+    // O feixe
+    if (e->estado == 2) {
+        DrawLineEx(e->pos, e->fimFeixe, SENTINELA_FEIXE_LARGURA + 6, Fade(cor, 0.35f));
+        DrawLineEx(e->pos, e->fimFeixe, SENTINELA_FEIXE_LARGURA * 0.6f, Fade(WHITE, 0.9f));
+        DrawCircleV(e->fimFeixe, 10, Fade(WHITE, 0.6f));
+    }
+
+    // Cabeças de atenção em órbita (mais rápidas quanto mais foco)
+    for (int k = 0; k < 3; k++) {
+        float a = t * (1.2f + 3.0f * e->foco) + (float)k * 2.0f * PI / 3.0f;
+        Vector2 c = { e->pos.x + cosf(a) * (r + 12), e->pos.y + sinf(a) * (r + 12) };
+        DrawTriangle((Vector2){ c.x - 5, c.y + 4 }, (Vector2){ c.x + 5, c.y + 4 }, (Vector2){ c.x, c.y - 6 }, vulneravel ? GRAY : cor);
+    }
+
+    // Casco e lente
+    DrawPoly(e->pos, 6, r, t * 20.0f, (Color){ 30, 40, 60, 255 });
+    DrawPolyLinesEx(e->pos, 6, r, t * 20.0f, 2, vulneravel ? GOLD : cor);
+    Vector2 olhar = (e->distraida > 0.0f) ? (Vector2){ sinf(t * 6.0f), 0 } : e->alvo;
+    if (e->estado == 0 && e->visao) olhar = Vector2Normalize(Vector2Subtract(e->miraPrevista, e->pos));
+    if (e->estado == 3) {
+        DrawLineEx((Vector2){ e->pos.x - r * 0.5f, e->pos.y }, (Vector2){ e->pos.x + r * 0.5f, e->pos.y }, 3, GRAY);   // lente fechada
+    } else {
+        DrawCircleV(e->pos, r * 0.55f, (Color){ 230, 245, 255, 255 });
+        DrawCircleV((Vector2){ e->pos.x + olhar.x * r * 0.25f, e->pos.y + olhar.y * r * 0.25f }, r * 0.28f,
+                    (e->estado == 1 || e->estado == 2) ? RED : (Color){ 20, 90, 160, 255 });
+    }
+    if (vulneravel) {
+        DrawCircleLines((int)e->pos.x, (int)e->pos.y, r + 4 + 2 * sinf(t * 12.0f), GOLD);
+        DrawText((e->distraida > 0.0f && e->estado != 3) ? "?" : "!", (int)e->pos.x - 3, (int)(e->pos.y - r - 30), 16, GOLD);
+    }
+}
+
+// RETROPROPAGADOR: um "nabla" (triângulo invertido) com camadas de neurônios.
+// As marcas no chão mostram para onde os golpes vão voltar.
+static void DesenharRetro(const Inimigo *e, float escala, float t)
+{
+    Color cor = DEF_INIMIGOS[INIMIGO_RETRO].cor;
+    float r = e->raio * escala;
+    bool recalibrando = (e->estado == 3);
+
+    // Marcas: de onde vieram os golpes
+    for (int k = 0; k < e->numRegistros; k++) {
+        Vector2 m = e->registro[k];
+        float pulso = (e->estado == 1) ? 0.5f + 0.5f * sinf(t * 20.0f) : 0.6f;
+        DrawLineEx((Vector2){ m.x - 7, m.y - 7 }, (Vector2){ m.x + 7, m.y + 7 }, 2, Fade(RED, pulso));
+        DrawLineEx((Vector2){ m.x + 7, m.y - 7 }, (Vector2){ m.x - 7, m.y + 7 }, 2, Fade(RED, pulso));
+        DrawCircleLines((int)m.x, (int)m.y, 10, Fade(cor, 0.5f * pulso));
+        if (e->estado == 1)
+            DrawLineEx(e->pos, m, 2, Fade(RED, 0.25f + 0.4f * pulso));     // o caminho de volta
+    }
+
+    // Corpo: nabla com três camadas de pontos ligadas
+    Color corpo = recalibrando ? (Color){ 90, 70, 60, 255 } : (Color){ 70, 25, 15, 255 };
+    Vector2 a = { e->pos.x - r, e->pos.y - r * 0.7f }, b2 = { e->pos.x + r, e->pos.y - r * 0.7f }, c = { e->pos.x, e->pos.y + r };
+    DrawTriangle(a, c, b2, corpo);
+    DrawTriangleLines(a, c, b2, recalibrando ? GRAY : cor);
+    for (int camada = 0; camada < 3; camada++) {
+        int n = 3 - camada;
+        float y = e->pos.y - r * 0.45f + camada * r * 0.45f;
+        for (int k = 0; k < n; k++) {
+            float x = e->pos.x + ((float)k - (n - 1) / 2.0f) * r * 0.5f;
+            float brilho = (e->estado == 2) ? 1.0f : 0.5f + 0.5f * sinf(t * 4.0f + camada + k);
+            DrawCircleV((Vector2){ x, y }, 2.5f, Fade(recalibrando ? GRAY : ORANGE, brilho));
+        }
+    }
+
+    // Contador de golpes guardados
+    if (e->numRegistros > 0 && !recalibrando) {
+        const char *txt = TextFormat("%d%s", e->numRegistros, (e->excesso > 0) ? "+" : "");
+        DrawText(txt, (int)e->pos.x - MeasureText(txt, 12) / 2, (int)(e->pos.y - r - 26), 12, RED);
+    }
+    if (recalibrando)
+        DrawCircleLines((int)e->pos.x, (int)e->pos.y, r + 5 + 2 * sinf(t * 12.0f), GOLD);
+}
+
+// JANELA DE CONTEXTO: uma janela de aplicativo com linhas de texto correndo. Com PROTEGER, escudo
+// hexagonal; sem ele, a moldura racha e o núcleo aparece.
+static void DesenharJanelaChefe(const Inimigo *e, float escala, float t)
+{
+    Color cor = DEF_INIMIGOS[INIMIGO_JANELA].cor;
+    bool aberta = (e->estado == 3);
+    float w = 70.0f * escala, h = 52.0f * escala;
+    Vector2 p = { e->pos.x, e->pos.y + sinf(t * 1.6f) * 3.0f };
+    Rectangle r = { p.x - w / 2, p.y - h / 2, w, h };
+
+    // Telegrafia da resposta: linhas até onde ele LEMBRA que o jogador estava
+    if (e->estado == 1) {
+        bool pisca = ((int)(t * 12.0f)) % 2 == 0;
+        if (e->carga > 0.5f) {
+            DrawText("?", (int)p.x - 6, (int)(r.y - 30), 24, Fade(LIGHTGRAY, pisca ? 1.0f : 0.5f));
+        } else {
+            DrawLineEx(p, e->alvo, 2, Fade(GOLD, pisca ? 0.8f : 0.3f));
+            DrawCircleLines((int)e->alvo.x, (int)e->alvo.y, 14, Fade(GOLD, 0.8f));
+            DrawText("LEMBRA DAQUI", (int)e->alvo.x - MeasureText("LEMBRA DAQUI", 8) / 2, (int)e->alvo.y + 16, 8, GOLD);
+        }
+    }
+
+    DrawEllipse((int)p.x, (int)(r.y + h + 10), w * 0.5f, 7, Fade(BLACK, 0.4f));
+
+    if (!aberta) {
+        float pulso = 0.5f + 0.5f * sinf(t * 3.0f);
+        DrawPoly(p, 6, w * 0.78f, t * 10.0f, Fade((Color){ 0, 228, 255, 255 }, 0.08f + 0.06f * pulso));
+        DrawPolyLinesEx(p, 6, w * 0.78f, t * 10.0f, 2, Fade((Color){ 0, 228, 255, 255 }, 0.6f));
+    }
+
+    // Corpo: a janela
+    DrawRectangleRec(r, (Color){ 22, 20, 44, 255 });
+    DrawRectangle((int)r.x, (int)r.y, (int)r.width, 9, aberta ? MAGENTA : cor);
+    for (int k = 0; k < 3; k++) DrawCircle((int)(r.x + r.width - 8 - k * 7), (int)r.y + 4, 2, (Color){ 22, 20, 44, 255 });
+    // Linhas de texto correndo. O sorteio usa a largura FIXA do corpo e só o resultado é escalado:
+    // surgindo, a escala começa em 0 (a largura escalada viraria um "% 0", divisão por zero que fechava o jogo)
+    for (int k = 0; k < 5; k++) {
+        float fase = fmodf(t * 18.0f + k * 9.0f, fmaxf(1.0f, h - 14.0f));
+        int lw = (int)((float)(12 + (int)(Ruido((unsigned int)(k * 13 + (int)(t * 2.0f))) % 42u)) * escala);
+        DrawRectangle((int)r.x + 6, (int)(r.y + 12 + fase), lw, 2, Fade(cor, 0.6f));
+    }
+    DrawRectangleLinesEx(r, 2, aberta ? MAGENTA : cor);
+
+    if (aberta) {
+        // Rachaduras e o núcleo exposto
+        DrawLineEx((Vector2){ r.x + 8, r.y + 12 }, (Vector2){ p.x, p.y }, 2, MAGENTA);
+        DrawLineEx((Vector2){ r.x + r.width - 6, r.y + h - 6 }, (Vector2){ p.x + 4, p.y + 2 }, 2, MAGENTA);
+        DrawCircleV(p, 10 + 3 * sinf(t * 10.0f), MAGENTA);
+        DrawCircleV(p, 5, WHITE);
+    }
+    if (e->estado == 2)
+        DrawText("RESUMINDO", (int)p.x - MeasureText("RESUMINDO", 10) / 2, (int)(r.y - 16), 10, cor);
+}
+
+// Dado dourado: o que a Janela sabe sobre o jogador (dá para destruir com um tiro)
+static void DesenharToken(const Inimigo *e, float t)
+{
+    float s = 7.0f + sinf(t * 8.0f + e->pos.x) * 1.0f;
+    DrawPoly(e->pos, 4, s + 4, 45.0f, Fade(GOLD, 0.25f));
+    DrawPoly(e->pos, 4, s, 45.0f + t * 90.0f, GOLD);
+    DrawCircleV(e->pos, 2, (Color){ 60, 40, 0, 255 });
+}
+
+// Barra do mini-chefe: vida e a janela de contexto (o mais antigo à esquerda)
+static void DesenharBarraJanela(const Biblioteca *b, float tempo)
+{
+    const JanelaContexto *jc = &b->janela;
+    const Inimigo *e = (jc->indice >= 0 && jc->indice < MAX_INIMIGOS) ? &b->ini[jc->indice] : NULL;
+    if (e == NULL || !e->ativo || e->tipo != INIMIGO_JANELA)
+        return;
+
+    // Vida
+    int x = 220, y = 42, w = 360;
+    DrawRectangle(x - 4, y - 2, w + 8, 14, Fade(BLACK, 0.8f));
+    DrawRectangle(x, y + 1, w, 8, (Color){ 30, 26, 50, 255 });
+    DrawRectangle(x, y + 1, (int)(w * e->hp / e->hpMax), 8, (jc->vulneravel > 0.0f) ? MAGENTA : DEF_INIMIGOS[INIMIGO_JANELA].cor);
+    DrawRectangle(x + (int)(w * JANELA_FASE2) - 1, y - 1, 2, 12, WHITE);
+    DrawRectangle(x + (int)(w * JANELA_FASE3) - 1, y - 1, 2, 12, WHITE);
+    const char *nome = TextFormat("JANELA DE CONTEXTO  F%d", jc->fase);
+    int wn = MeasureText(nome, 10);
+    DrawRectangle(x - wn - 16, y - 2, wn + 10, 14, Fade(BLACK, 0.8f));
+    DrawText(nome, x - wn - 11, y, 10, DEF_INIMIGOS[INIMIGO_JANELA].cor);
+
+    // Janela de contexto: capacidade em blocos
+    int lado = 52, alto = 22, gap = 4;
+    int total = jc->capacidade * lado + (jc->capacidade - 1) * gap;
+    int x0 = LARGURA_TELA / 2 - total / 2, y0 = 60;
+    DrawRectangle(x0 - 70, y0 - 4, total + 140, alto + 8, Fade(BLACK, 0.75f));
+    DrawText("esquece <", x0 - 66, y0 + 6, 10, Fade(RED, 0.8f));
+    DrawText("< entra", x0 + total + 8, y0 + 6, 10, GOLD);
+
+    for (int i = 0; i < jc->capacidade; i++) {
+        Rectangle s = { (float)(x0 + i * (lado + gap)), (float)y0, (float)lado, (float)alto };
+        if (i >= jc->num) {
+            DrawRectangleLinesEx(s, 1, Fade(GRAY, 0.4f));
+            continue;
+        }
+        int tipo = jc->slot[i];
+        Color c = (tipo == CTX_SISTEMA) ? (Color){ 0, 228, 255, 255 } : ((tipo == CTX_RELEVANTE) ? GOLD : (Color){ 110, 110, 120, 255 });
+        const char *rot = (tipo == CTX_SISTEMA) ? "PROTEGER" : ((tipo == CTX_RELEVANTE) ? "DADO" : "ruído");
+        bool novo = (i == jc->num - 1 && jc->entrouAnim > 0.0f);
+        bool proximo = (i == 0 && jc->num == jc->capacidade);       // o próximo a ser esquecido
+        DrawRectangleRec(s, Fade(c, novo ? 0.6f : 0.3f));
+        DrawRectangleLinesEx(s, proximo ? 2.0f : 1.0f, proximo ? ((((int)(tempo * 8.0f)) % 2) ? RED : c) : c);
+        DrawText(rot, (int)(s.x + s.width / 2) - MeasureText(rot, 10) / 2, (int)s.y + 6, 10, (tipo == CTX_RUIDO) ? LIGHTGRAY : WHITE);
+    }
+
+    // O bloco que acabou de sair (cai para fora da janela)
+    if (jc->esquecidoAnim > 0.0f) {
+        float k = 1.0f - jc->esquecidoAnim / 0.9f;
+        int tipo = jc->esquecidoTipo;
+        Color c = (tipo == CTX_SISTEMA) ? (Color){ 0, 228, 255, 255 } : ((tipo == CTX_RELEVANTE) ? GOLD : GRAY);
+        Rectangle s = { (float)(x0 - lado - 10) - 20.0f * k, (float)y0 + 30.0f * k, (float)lado, (float)alto };
+        DrawRectangleRec(s, Fade(c, 0.5f * (1.0f - k)));
+        DrawText("ESQUECIDO", (int)s.x, (int)(s.y + alto + 2), 10, Fade(RED, 1.0f - k));
+    }
+
+    // Escudo aberto: o tempo que resta
+    if (jc->vulneravel > 0.0f) {
+        DrawRectangle(x0, y0 + alto + 4, total, 4, Fade(BLACK, 0.6f));
+        DrawRectangle(x0, y0 + alto + 4, (int)(total * jc->vulneravel / JANELA_VULNERAVEL), 4, MAGENTA);
+    }
+
+    // Dica curta e o aviso de que os blocos são uma simplificação
+    const char *dica = jc->dica;
+    int wd = MeasureText(dica, 10);
+    DrawRectangle(LARGURA_TELA / 2 - wd / 2 - 6, y0 + alto + 10, wd + 12, 26, Fade(BLACK, 0.6f));
+    DrawText(dica, LARGURA_TELA / 2 - wd / 2, y0 + alto + 12, 10, (Color){ 200, 195, 255, 255 });
+    const char *nota = "(cada bloco é uma unidade simplificada de contexto, não uma palavra)";
+    DrawText(nota, LARGURA_TELA / 2 - MeasureText(nota, 8) / 2, y0 + alto + 25, 8, GRAY);
+}
+
 static void DesenharInimigo(const Inimigo *e)
 {
     float escala = (e->surgindo > 0.0f) ? 1.0f - e->surgindo / TEMPO_SURGINDO : 1.0f;
@@ -18344,6 +19416,10 @@ static void DesenharInimigo(const Inimigo *e)
             case INIMIGO_BOTNET:    DesenharBotnet(e, escala, t);          break;
             case INIMIGO_KEYLOGGER: DesenharKeylogger(e, escala, t);       break;
             case INIMIGO_NUCLEO:    DesenharNucleoCorrupcao(e, escala, t); break;
+            case INIMIGO_SENTINELA: DesenharSentinela(e, escala, t);       break;
+            case INIMIGO_RETRO:     DesenharRetro(e, escala, t);           break;
+            case INIMIGO_JANELA:    DesenharJanelaChefe(e, escala, t);     break;
+            case INIMIGO_TOKEN:     DesenharToken(e, t);                   break;
             default:                DesenharCache(e, escala, t);           break;
         }
     }
@@ -18358,7 +19434,7 @@ static void DesenharInimigo(const Inimigo *e)
         DesenharMarcasReformulacao(e, (float)GetTime());        // elite, alvo prioritário, rótulo
 
     // Barra de vida quando já levou dano (o Phisher camuflado não se entrega)
-    bool semBarra = RogueInimigoPassageiro(e->tipo) || (e->tipo == INIMIGO_PHISHER && e->estado == 0);
+    bool semBarra = RogueInimigoPassageiro(e->tipo) || (e->tipo == INIMIGO_PHISHER && e->estado == 0) || e->tipo == INIMIGO_JANELA;
 
     if (e->hp < e->hpMax && !semBarra) {
         int w = (int)(e->raio * 2.4f);
@@ -19958,7 +21034,7 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
 
 static const char *ARQUIVOS_ICONES_SALAS[NUM_TIPOS_SALA] = {
     "atrio", "combate", "educativa", "tesouro", "alucinador", "silogista", "nucleo", "luci",
-    "elite", "evento", "descanso", "desafio", "secreta", "laboratorio"
+    "elite", "evento", "descanso", "desafio", "secreta", "laboratorio", "especial"
 };
 static Texture2D iconesSalas[NUM_TIPOS_SALA];
 static bool iconesSalasCarregados = false;
@@ -20046,6 +21122,13 @@ static void DesenharIconeSala(TipoSalaRogue t, Vector2 c, float e, float tempo)
             DrawCircleLines((int)c.x, (int)c.y, 10 * e, cor);
             DrawCircleLines((int)c.x, (int)c.y, 6 * e, cor);
             DrawCircleV(c, 2.5f * e, RED);
+            break;
+
+        case SALA_ESPECIAL:     // losango de alerta (encontro especial obrigatório)
+            DrawPoly(c, 4, 11 * e, 0.0f, Fade(cor, 0.35f));
+            DrawPolyLinesEx(c, 4, 11 * e, 0.0f, 2 * e, cor);
+            DrawRectangleV((Vector2){ c.x - 1.5f * e, c.y - 6 * e }, (Vector2){ 3 * e, 7 * e }, WHITE);
+            DrawRectangleV((Vector2){ c.x - 1.5f * e, c.y + 3 * e }, (Vector2){ 3 * e, 3 * e }, WHITE);
             break;
 
         case SALA_LABORATORIO:  // frasco de laboratório
@@ -20442,7 +21525,7 @@ static Vector2 RoguePosMiniMapa(const Biblioteca *b, const NoMapa *n)
 {
     float y = 7.0f + n->x * 28.0f;
     if (n->tipo == SALA_SECRETA && n->pai >= 0) y = 7.0f + b->mapa.no[n->pai].x * 28.0f + 6.0f;
-    return (Vector2){ 14.0f + (float)n->prof * 16.0f + ((n->tipo == SALA_SECRETA) ? 6.0f : 0.0f), y };
+    return (Vector2){ 12.0f + (float)n->prof * 8.2f + ((n->tipo == SALA_SECRETA) ? 4.0f : 0.0f), y };
 }
 
 static void DesenharMiniMapa(const Biblioteca *b, float tempo)
@@ -20470,7 +21553,7 @@ static void DesenharMiniMapa(const Biblioteca *b, float tempo)
 
         Vector2 p = RoguePosMiniMapa(b, n);
         Color cor = CORES_SALAS_ROGUE[n->tipo];
-        float lado = (n->tipo == SALA_CHEFE) ? 9.0f : ((n->tipo == SALA_SECRETA) ? 5.0f : 6.0f);
+        float lado = (n->tipo == SALA_CHEFE) ? 8.0f : ((n->tipo == SALA_SECRETA) ? 4.0f : ((n->tipo == SALA_ESPECIAL) ? 7.0f : 5.0f));
         Rectangle r = { p.x - lado / 2, p.y - lado / 2, lado, lado };
 
         bool proxima = false;
@@ -20502,7 +21585,7 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
     DrawRectangleRec(area, Fade((Color){ 30, 24, 50, 255 }, 0.6f));
 
     #define POS_NO(n) ((Vector2){ area.x + 40.0f + (n)->x * (area.width - 80.0f) + (((n)->tipo == SALA_SECRETA) ? 34.0f : 0.0f), \
-                                  area.y + area.height - 26.0f - (float)(n)->prof * ((area.height - 52.0f) / (float)PROF_CHEFE) - (((n)->tipo == SALA_SECRETA) ? 18.0f : 0.0f) })
+                                  area.y + area.height - 20.0f - (float)(n)->prof * ((area.height - 40.0f) / (float)PROF_CHEFE) - (((n)->tipo == SALA_SECRETA) ? 11.0f : 0.0f) })
 
     for (int i = 0; i < m->numNos; i++) {
         const NoMapa *n = &m->no[i];
@@ -20530,13 +21613,13 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
 
         Vector2 c = POS_NO(n);
         Color cor = CORES_SALAS_ROGUE[n->tipo];
-        float raio = (n->tipo == SALA_CHEFE) ? 20.0f : ((n->tipo == SALA_SILOGISTA) ? 17.0f : 14.0f);
+        float raio = (n->tipo == SALA_CHEFE) ? 14.0f : ((n->tipo == SALA_SILOGISTA || n->tipo == SALA_ESPECIAL) ? 12.0f : 10.0f);
         bool proxima = false;
         for (int k = 0; k < atual->numSaidas; k++) if (atual->saida[k] == i) proxima = true;
 
         DrawCircleV(c, raio, n->visitado ? Fade(cor, 0.35f) : (Color){ 20, 16, 34, 255 });
         DrawCircleLines((int)c.x, (int)c.y, raio, proxima ? GOLD : Fade(cor, n->visitado ? 1.0f : 0.6f));
-        DesenharIconeSala(n->tipo, c, (n->tipo == SALA_CHEFE) ? 1.1f : 0.75f, tempo);
+        DesenharIconeSala(n->tipo, c, (n->tipo == SALA_CHEFE) ? 0.8f : 0.55f, tempo);
 
         if (i == b->noAtual)
             DrawCircleLines((int)c.x, (int)c.y, raio + 5 + 2 * sinf(tempo * 5.0f), WHITE);
@@ -20547,9 +21630,9 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
             DrawCircleV(rc, 8, Fade(BLACK, 0.85f));
             DesenharIconeRecompensa(n->recompensa, rc, 0.8f, tempo);
         }
-        if (proxima || n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA) {
+        if (proxima || n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA || n->tipo == SALA_ESPECIAL) {
             const char *nome = RoguePlacaNo(n);
-            DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)(c.y + raio + 3), 10, proxima ? GOLD : cor);
+            DrawText(nome, (int)(c.x + raio + 4), (int)c.y - 5, 10, proxima ? GOLD : cor);      // ao lado (as camadas ficaram próximas)
         }
     }
     #undef POS_NO
@@ -20584,9 +21667,9 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
 
     // Legenda
     static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA,
-                                             SALA_LABORATORIO };
+                                             SALA_LABORATORIO, SALA_ESPECIAL };
     int ly = (int)(painel.y + painel.height) - 100;
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 10; i++) {
         int lx = x + (i % 2) * 130, yy = ly + (i / 2) * 18;
         DesenharIconeSala(legenda[i], (Vector2){ (float)lx + 7, (float)yy + 6 }, 0.5f, tempo);
         DrawText(PLACAS_SALAS_ROGUE[legenda[i]], lx + 18, yy + 1, 10, CORES_SALAS_ROGUE[legenda[i]]);
@@ -22317,6 +23400,14 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         case SALA_SECRETA:
             snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "ARQUIVO OCULTO! Pegue a recompensa rara (E)" : "Escolha uma porta");
             break;
+        case SALA_ESPECIAL: {
+            int esp = (b->noAtual >= 0) ? b->mapa.no[b->noAtual].especial : 0;
+            if (b->limpa)              snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "Encontro vencido! Pegue a recompensa (E)" : "Encontro vencido! Escolha uma porta");
+            else if (esp == ESP_SENTINELA) snprintf(o.texto, sizeof(o.texto), "SENTINELA: fuja da visão nas estantes e ataque quando ela piscar");
+            else if (esp == ESP_RETRO)     snprintf(o.texto, sizeof(o.texto), "RETROPROPAGADOR: atire e MUDE de lugar (o golpe volta às marcas)");
+            else                           snprintf(o.texto, sizeof(o.texto), "%s", (b->janela.vulneravel > 0.0f) ? "ESCUDO ESQUECIDO! Ataque o núcleo"
+                                                                                                                 : "Golpes no escudo viram RUÍDO: encha a janela");
+        } break;
         case SALA_LABORATORIO:
             if (b->lab.concluido)                 snprintf(o.texto, sizeof(o.texto), "%s concluído (%d/3). Escolha uma porta", PLACAS_LAB[b->lab.tipo], b->lab.estrelas);
             else if (LAB_ESPECIAL[b->lab.tipo])   snprintf(o.texto, sizeof(o.texto), "%s (opcional): use o console (E) ou siga", PLACAS_LAB[b->lab.tipo]);
@@ -22396,6 +23487,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         const char *t = TextFormat("OBJETIVO:  %s", o.texto);
         DrawText(t, LARGURA_TELA / 2 - MeasureText(t, 14) / 2 + 2, 18, 14, Fade(MAGENTA, 0.7f));
     }
+
+    if (b->janela.ativo)
+        DesenharBarraJanela(b, tempo);      // expansão da progressão: vida e janela de contexto do mini-chefe
 
     if (b->chefe.ativo && b->chefe.apresentado) {
         DesenharBarraChefe(&b->chefe);
@@ -22500,7 +23594,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (b->tempoAviso > 0.0f) {
         float k = fminf(b->tempoAviso / 0.4f, 1.0f);
         int w = MeasureText(b->aviso, 18);
-        int ya = (b->tipoSala == SALA_CHEFE) ? 176 : ((b->tipoSala == SALA_SILOGISTA) ? 134 : ((b->tipoSala == SALA_LUCI) ? 122 : 92));    // abaixo das faixas dos chefes
+        int ya = (b->tipoSala == SALA_CHEFE) ? 176 : ((b->tipoSala == SALA_SILOGISTA || b->janela.ativo) ? 134 : ((b->tipoSala == SALA_LUCI) ? 122 : 92));    // abaixo das faixas dos chefes
         DrawRectangle(LARGURA_TELA / 2 - w / 2 - 12, ya, w + 24, 30, Fade(BLACK, 0.7f * k));
         DrawText(b->aviso, LARGURA_TELA / 2 - w / 2, ya + 6, 18, Fade(GOLD, k));
     }

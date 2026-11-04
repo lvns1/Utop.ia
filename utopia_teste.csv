@@ -356,3 +356,125 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 954.5;ranking;MAE;433.0;2
 958.9;bloco3_entrada;boa;80.0;433
 961.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;2.3;3
+5.9;sessao_inicio;;0.0;0
+66.5;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.9;3
+70.4;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.9;3
+78.8;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;38.0;1
+85.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;45.0;0
+88.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;17.7;2
+89.6;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;18.3;0
+90.6;cartao;ALUCINAÇÃO;1.0;0
+93.8;ajuda_luci;dica;4.0;0
+103.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;25.2;1
+105.7;ajuda_luci;dica;3.0;1
+111.5;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;70.2;4
+114.4;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;22.7;2
+115.0;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;23.4;0
+115.9;cartao;INTRÍNSECA x EXTRÍNSECA;0.9;0
+124.3;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;42.0;1
+132.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;57.0;1
+135.2;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;18.1;2
+136.8;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;19.7;0
+138.0;cartao;COMO EVITAR;1.2;0
+140.3;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;2.4;3
+143.2;chefe_debate;errado;0.0;7
+145.9;ajuda_luci;dica;4.0;1
+149.1;chefe_debate;certo;1.0;4
+151.2;ajuda_luci;dica;3.0;2
+154.8;chefe_debate;certo;1.0;6
+156.4;ajuda_luci;dica;2.0;3
+160.7;chefe_debate;certo;1.0;5
+163.9;ajuda_luci;alucinou;1.0;4
+167.0;chefe_debate;certo;1.0;8
+170.3;golpe_final;FIM DO BLOCO 1 // DEBATE COM FONTES;30.0;4
+170.8;batalha_vitoria;FIM DO BLOCO 1 // DEBATE COM FONTES;30.4;1
+171.6;cartao;ALUCINAÇÃO MESTRE;0.8;0
+171.7;ranking;JON;79.0;3
+173.6;dialogo;Luci: Os 3 monitores estão limpos! A porta da direita abriu;1.4;1
+183.4;dialogo;Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens;1.1;2
+200.0;dialogo;Luci: Antes de entrar, vamos falar com o Professor Byte. Ele;0.9;1
+203.3;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.6;5
+206.0;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;2.4;2
+206.8;rogue_missao;inicio;0.0;1
+206.8;rogue_sala;COMBATE;0.0;0
+206.8;rogue_encontro;ENXAME DIGITAL;1.0;1
+219.9;rogue_sala_limpa;sala 1 ELIMINAR;13.1;22
+221.2;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+221.8;rogue_recompensa_sala;MELHORIA;0.0;0
+228.2;rogue_build;JANELA DE CONTEXTO;0.0;1
+231.8;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;1
+232.0;rogue_sala;DESAFIO;1.0;1
+234.8;rogue_evento;9;0.0;1
+255.3;rogue_desafio_sala;ecos;1.0;14
+257.6;rogue_recompensa_sala;MELHORIA RARA;1.0;1
+273.3;rogue_build;ALTA CONFIANÇA;0.0;1
+282.1;rogue_sala;EDUCATIVA;2.0;2
+283.6;dialogo;Luci: Eu nunca alucino. Eu nunca... Thomas, confira tudo o q;1.2;1
+286.5;dialogo;* ARQUIVO DE AMEAÇA // SPAMMER;1.5;3
+286.5;rogue_registro_sala;3;0.0;2
+287.0;luci_contradicao;Não precisa ler o terminal: a porta já está aberta;0.0;1
+290.2;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;1.9;4
+290.2;rogue_terminal;conceito 1;0.0;10
+291.7;rogue_sala;SILOGISTA;3.0;3
+295.9;dialogo;* Engrenagens de luz giram no teto. Diagramas flutuam sobre ;3.9;6
+308.3;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+318.7;rogue_silogista_erro;montagem_conclusao;111.9;1
+319.6;dialogo;Luci: Não fechou! A conclusão (C) precisa ser a afirmaçã;0.9;1
+333.4;rogue_silogista;etapa 1;126.6;1
+337.5;dialogo;Luci: Isso! Todo registro auditado tem selo  Alfa é auditad;4.1;5
+339.4;rogue_silogista;etapa 2;132.6;1
+342.5;dialogo;Luci: Exato! Todo auditado tem selo, mas ter selo não prova;3.0;6
+344.3;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;2
+350.3;rogue_silogista;rodada 1;143.5;1
+352.1;dialogo;Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O ;1.8;3
+356.1;rogue_silogista;etapa 3;149.2;1
+358.2;dialogo;* O núcleo se energiza. A última camada da armadura lógic;2.1;4
+373.4;dialogo;* O Silogista se desmonta em diagramas e símbolos que se ap;2.2;5
+373.4;rogue_silogista_vitoria;;166.6;1
+378.2;rogue_sala;COMBATE;4.0;4
+378.2;rogue_encontro;SOBRECARGA;2.0;2
+394.5;rogue_desafio;certo;0.0;9
+396.5;rogue_sala_limpa;sala 5 ELIMINAR;189.7;49
+398.4;rogue_recompensa_sala;MELHORIA;4.0;4
+402.6;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+407.5;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;3
+411.7;rogue_sala;COMBATE;5.0;5
+411.7;rogue_encontro;PROTOCOLO BLINDADO;3.0;3
+439.9;luci_contradicao;Sala limpa! Pode escolher uma porta;0.0;3
+454.6;rogue_sala_limpa;sala 6 SOBREVIVER;247.8;57
+456.1;rogue_recompensa_sala;MELHORIA;5.0;5
+466.3;rogue_build;DISPARADOR CALIBRADO;0.0;1
+470.7;rogue_sala;DESCANSO;6.0;6
+474.1;rogue_evento;8;0.0;6
+476.0;rogue_sala;ALUCINADOR;7.0;7
+478.3;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.0;4
+481.0;rogue_chefe_fase2;;274.2;0
+482.7;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.6;2
+486.2;rogue_chefe_afirmacao;certo;6.0;5
+501.2;rogue_chefe_afirmacao;certo;6.0;2
+507.8;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;2.2;7
+507.8;rogue_chefe_vitoria;;301.0;1
+507.9;ranking;JON;261.0;3
+510.3;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;1.3;1
+512.3;bloco3_porta;;305.4;1
+513.1;bloco3_entrada;boa;76.0;261
+525.4;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;11.5;3
+535.2;dialogo;* REGISTRO 1 // CONFIANÇA. Você seguiu minhas dicas sem co;7.9;2
+546.0;dialogo;* REGISTRO 2 // CONTRADIÇÕES. Eu contradisse o que você v;8.2;2
+552.8;dialogo;* REGISTRO 3 // ORIGEM. Arquivo LUCI.exe, criado antes de Ut;5.0;2
+553.4;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.5;1
+566.8;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;8.6;2
+572.9;bloco3_fase;;366.1;2
+577.1;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;4.2;3
+581.3;bloco3_contestar;certo;0.0;-1
+587.9;bloco3_contestar;certo;0.0;-1
+591.8;bloco3_queda;1;385.0;1
+595.4;bloco3_fase_oculta;;388.6;2
+612.3;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;16.8;4
+629.3;bloco3_queda;2;422.5;2
+632.1;bloco3_fase_oculta;;425.3;3
+636.0;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;3.8;2
+647.0;bloco3_vitoria;bom;0.0;0
+658.0;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;8.7;4
+658.0;fim_do_jogo;bom;80.0;371
+664.3;ranking;JON;371.0;3

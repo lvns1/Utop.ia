@@ -626,6 +626,7 @@ static void Telemetria(const char *evento, const char *detalhe, float valor, int
 // =============================================================
 
 static Sound sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao, sfxTiro;
+static Sound sfxAvisoParry, sfxParryPerfeito, sfxEstatica, sfxDedutivo;     // Bloco 3 (reformulação)
 static bool audioPronto = false;
 
 // Gera um bipe que desliza de uma frequência para outra (forma 0 = suave, 1 = quadrada)
@@ -644,7 +645,16 @@ static Sound GerarSom(float freqInicio, float freqFim, float duracao, float volu
 
         fase += 2.0f * PI * freq / taxa;
 
-        float onda = (forma == 0) ? sinf(fase) : (sinf(fase) >= 0.0f ? 0.6f : -0.6f);
+        // forma: 0 = senoide, 1 = quadrada, 2 = ruído (estática), 3 = metálico (parciais desafinados + estalo)
+        float ruido = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+        float onda;
+        if (forma == 0)      onda = sinf(fase);
+        else if (forma == 1) onda = (sinf(fase) >= 0.0f ? 0.6f : -0.6f);
+        else if (forma == 2) onda = ruido * 0.8f;
+        else {
+            onda = 0.5f * sinf(fase) + 0.35f * sinf(fase * 2.76f) + 0.25f * sinf(fase * 5.4f) + ((t < 0.06f) ? ruido * 0.7f : 0.0f);
+            envelope = (t < 0.01f) ? t / 0.01f : (1.0f - t) * (1.0f - t);      // batida seca
+        }
         amostras[i] = (short)(onda * envelope * volume * 32000.0f);
     }
 
@@ -669,6 +679,23 @@ static void IniciarSons(void)
     sfxPegar   = GerarSom(880.0f, 1320.0f, 0.10f, 0.25f, 0);
     sfxSelecao = GerarSom(660.0f, 660.0f, 0.04f, 0.15f, 1);
     sfxTiro    = GerarSom(1200.0f, 500.0f, 0.06f, 0.10f, 1);   // Disparador de Dados (Bloco 2)
+
+    // Bloco 3 (reformulação): aviso do golpe, parry, estática e a marca do Disparo Dedutivo
+    sfxAvisoParry    = GerarSom(1900.0f, 2500.0f, 0.12f, 0.22f, 1);
+    sfxParryPerfeito = GerarSom(220.0f, 110.0f, 0.45f, 0.55f, 3);
+    sfxEstatica      = GerarSom(0.0f, 0.0f, 0.9f, 0.22f, 2);
+    sfxDedutivo      = GerarSom(900.0f, 1350.0f, 0.18f, 0.25f, 3);
+}
+
+// Para todos os sons de uma vez (a 1ª queda da Luci "congela" o áudio)
+static void PararSons(void)
+{
+    if (!audioPronto)
+        return;
+
+    Sound todos[] = { sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao, sfxTiro, sfxAvisoParry, sfxParryPerfeito, sfxDedutivo };
+    for (int i = 0; i < (int)(sizeof(todos) / sizeof(todos[0])); i++)
+        StopSound(todos[i]);
 }
 
 // tom: 1 = normal, 2 = uma oitava acima (os combos usam para o acerto ficar mais agudo)
@@ -697,6 +724,10 @@ static void EncerrarSons(void)
     UnloadSound(sfxPegar);
     UnloadSound(sfxSelecao);
     UnloadSound(sfxTiro);
+    UnloadSound(sfxAvisoParry);
+    UnloadSound(sfxParryPerfeito);
+    UnloadSound(sfxEstatica);
+    UnloadSound(sfxDedutivo);
     CloseAudioDevice();
 }
 
@@ -5715,6 +5746,28 @@ typedef struct {
     float anim;
 } Coletavel;
 
+// Bloco 3 (reformulação): o parry do Thomas
+typedef struct {
+    bool emParry;
+    float tempoJanelaParry;     // PARRY_JANELA
+    float cooldownParry;        // evita apertar sem parar
+    bool hitFreezeAtivo;
+    float tempoHitFreeze;
+    int comboMeleeContador;     // 1, 2 ou 3 golpes no atordoamento
+    float golpeAnim;            // animação do golpe corpo a corpo
+    Vector2 dirGolpe;
+} JogadorParryState;
+
+// Texto curto que sobe e some (P -> Q, PARRY PERFEITO!, ...)
+typedef struct {
+    Vector2 pos;
+    char texto[48];
+    float tempo;
+    Color cor;
+} TextoFlutuante;
+
+#define MAX_TEXTOS_FLUTUANTES 8
+
 typedef struct {
     float hp, ep;
     Vector2 pos;
@@ -5759,6 +5812,8 @@ typedef struct {
     int abatesEscudo;           // Protocolo de Blindagem: abates até o próximo escudo
     int contaFluxo;             // Amostragem Múltipla com o Fluxo Contínuo: 1 extra a cada 3 tiros
     int golpesSofridos;         // golpes que tiraram vida nesta sala (desafio de integridade)
+
+    JogadorParryState parry;    // Bloco 3: defesa perfeita e o combo de contra-ataque
 } JogadorRogue;
 
 // ---------- ALUCINADOR (chefe da Biblioteca) ----------
@@ -5926,8 +5981,8 @@ typedef struct {
 } Silogista;
 
 // ---------- BLOCO 3: a Luci como chefe final (AJUSTE AQUI) ----------
-#define LUCI_HP_BOA              900.0f   // índice bom: luta mais curta (2 fases)
-#define LUCI_HP_RUIM             1100.0f  // índice ruim: mais vida e a fase 3
+#define LUCI_HP_BOA              1000.0f  // índice bom (as 3 barras ocultas somadas; era 900 com uma barra só)
+#define LUCI_HP_RUIM             1250.0f  // índice ruim: mais vida, mais ritmo e a guarda do contexto (era 1100)
 #define LUCI_RAIO                30.0f
 #define LUCI_FASE2               0.65f    // fração da vida em que começa a fase 2
 #define LUCI_FASE3               0.30f    // ... e a fase 3 (só com índice ruim)
@@ -5948,6 +6003,59 @@ typedef struct {
 #define PONTOS_FINAL_BOM         100
 #define PONTOS_FINAL_RUIM        40
 #define NUM_CONTEXTO_LUCI        5
+
+// ---------- BLOCO 3 (reformulação): 3 fases ocultas, combate corpo a corpo e PARRY (AJUSTE AQUI) ----------
+//   A tela mostra UMA barra só. Ela zera 3 vezes:
+//     1ª barra  CONFLITO LÓGICO  (dica envenenada e, na metade, as contradições)
+//     2ª barra  SURTO FÍSICO     (vermelha: investidas corpo a corpo com parry)
+//     3ª barra  NÚCLEO INSTÁVEL  (magenta: investidas rápidas, ondas de choque e chão que cai)
+//   Somadas, as 3 barras dão LUCI_HP_BOA ou LUCI_HP_RUIM.
+static const float LUCI_FRACAO_FASE[3] = { 0.42f, 0.30f, 0.28f };
+#define LUCI_FASE_CONTRADICAO    0.50f    // 1ª barra: abaixo disso vêm as contradições
+#define LUCI_COLAPSO             2.0f     // 1ª queda: a falsa derrota (ela parece desabar)
+#define LUCI_EXPLOSAO_ESTATICA   1.4f     // 2ª queda
+#define LUCI_RENASCER            1.3f     // a barra volta a encher
+#define LUCI_TELEGRAFIA          0.65f    // flash vermelho antes da investida (2ª barra)
+#define LUCI_TELEGRAFIA_3        0.45f    // ... na 3ª barra
+#define LUCI_INVESTIDA_VEL       640.0f
+#define LUCI_INVESTIDA_DURACAO   0.28f
+#define LUCI_RECUPERA            0.65f    // depois da investida: parada e vulnerável
+#define LUCI_DANO_SWIPE          18.0f
+#define LUCI_LAMINA_RAIO         30.0f
+#define LUCI_DIST_RONDA          170.0f
+#define LUCI_ONDA_VEL            240.0f
+#define LUCI_ONDA_AVISO          0.9f
+#define LUCI_ONDA_BRECHA         30.0f    // graus para cada lado: a passagem segura da onda
+#define LUCI_DANO_ONDA           14.0f
+#define NUM_PISO_LUCI            6
+#define PISO_INTEIRO             3.5f     // + até 2 s sorteados
+#define PISO_AVISO               1.0f     // rachado em vermelho
+#define PISO_VAZIO               2.4f
+#define PISO_DANO                8.0f
+#define PARRY_JANELA             0.18f    // 11 quadros a 60 FPS
+#define PARRY_RECARGA            0.55f    // depois de uma janela perdida (evita apertar sem parar)
+#define PARRY_HIT_FREEZE         0.10f    // 6 quadros congelados no choque
+#define PARRY_STUN               1.5f
+#define PARRY_TREMOR             8.0f
+#define PARRY_ZOOM               0.45f
+#define MELEE_ALCANCE            95.0f
+static const float MELEE_FRACAO[3] = { 0.06f, 0.08f, 0.14f };       // da barra atual, por golpe do combo
+#define MELEE_CURA_HP            5.0f
+#define MELEE_CURA_EP            8.0f
+#define TRANSICAO_NUCLEO         1.6f     // a cutscene da porta do átrio
+
+enum { LUCI_SUB_DICA = 1, LUCI_SUB_CONTRADICAO = 2, LUCI_SUB_SURTO = 4, LUCI_SUB_NUCLEO = 5 };
+
+// SWIPE_FALACIA: cada investida corpo a corpo é uma falácia (o parry a refuta)
+static const char *FALACIAS_LUCI[][2] = {
+    { "FALSO DILEMA",            "Mostra só duas opções quando existem outras." },
+    { "APELO À AUTORIDADE",      "\"É verdade porque alguém importante disse\" não prova nada." },
+    { "ESPANTALHO",              "Distorce o que o outro disse para atacar a versão falsa." },
+    { "GENERALIZAÇÃO APRESSADA", "Tira uma regra geral de poucos casos." },
+    { "AD HOMINEM",              "Ataca a pessoa em vez do argumento." },
+    { "BOLA DE NEVE",            "Supõe uma cadeia de consequências sem nenhuma prova." },
+};
+#define NUM_FALACIAS 6
 
 typedef struct {
     bool ativo, apresentado;
@@ -5975,6 +6083,42 @@ typedef struct {
     bool entregue[NUM_CONTEXTO_LUCI];
     int carregando, entregues;
     bool contextoPronto;
+
+    // Reformulação: as 3 fases ocultas (a tela mostra uma barra só)
+    int faseOculta;             // 1 = conflito lógico, 2 = surto físico, 3 = núcleo instável
+    bool emRegeneracao;         // desabando (falsa derrota) ou renascendo
+    int etapaRegeneracao;       // 0 = desabando / explosão de estática, 1 = a barra renasce
+    float tempoRegeneracao;
+    bool exigeContexto;         // 3ª barra com índice ruim: o pedido claro abre a guarda
+
+    // Combate corpo a corpo (2ª e 3ª barras)
+    int estadoMelee;            // 0 = rondando, 1 = telegrafando (flash vermelho), 2 = investida, 3 = recuperando
+    float tempoMelee;
+    Vector2 dirMelee;
+    int investidasRestantes;
+    bool acertouInvestida;
+    int falacia;                // a falácia desta investida
+    float mostrarFalacia;       // tempo da explicação na faixa (depois de um parry)
+    bool atordoada;
+    float tempoStun;
+    int combo;                  // golpes dedutivos feitos neste atordoamento
+    float cronoLeve;            // tiros leves entre as investidas
+
+    // 3ª barra: ondas de choque e chão fragmentado
+    int padrao3;                // 0 = investidas, 1 = ondas de choque
+    float tempoPadrao3;
+    bool ondaAtiva, ondaAcertou;
+    float ondaRaio, ondaBrecha, avisoOnda;
+    int ondasRestantes;
+    Vector2 ondaCentro;
+    Rectangle piso[NUM_PISO_LUCI];
+    int fasePiso[NUM_PISO_LUCI];        // 0 = inteiro, 1 = rachando (aviso), 2 = caiu
+    float tempoPiso[NUM_PISO_LUCI];
+    float tickPiso;
+
+    // Estatísticas (aparecem no resultado e na telemetria)
+    int parriesPerfeitos;
+    int combosConcluidos;
 } LuciChefe;
 
 // Índice de desempenho: cada parte com o seu peso (soma 100)
@@ -6153,6 +6297,20 @@ typedef struct {
     bool resultadoAberto;
     float tempoResultado;
     int pontosFinais;
+
+    // Reformulação do Bloco 3: efeitos de tela e de impacto
+    float tremorForte;          // o tremor do parry (mais forte que o do dano)
+    float zoomImpacto;          // zoom rápido no choque
+    Vector2 focoZoom;
+    float transicaoNucleo;      // cutscene da porta do átrio (o jogo espera)
+    bool entrouNucleo;
+    float flashNegativo;        // inversão de paleta
+    float estaticaTela;         // ruído de estática
+    float portaNucleoAbrindo;   // a porta do Bloco 3 se abrindo no átrio
+    char erroTermo[64];         // feedback de erro na verificação (aberração cromática na interface)
+    char erroExplicacao[160];
+    float tempoErro;
+    TextoFlutuante textos[MAX_TEXTOS_FLUTUANTES];
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -6987,6 +7145,29 @@ static void RogueAviso(Biblioteca *b, const char *texto)
     b->tempoAviso = 1.8f;
 }
 
+// Texto que sobe de um ponto da arena e some (o mais antigo é reaproveitado)
+static void RogueTextoFlutuante(Biblioteca *b, Vector2 pos, const char *texto, Color cor)
+{
+    int escolhido = 0;
+    for (int i = 0; i < MAX_TEXTOS_FLUTUANTES; i++) {
+        if (b->textos[i].tempo <= 0.0f) { escolhido = i; break; }
+        if (b->textos[i].tempo < b->textos[escolhido].tempo) escolhido = i;
+    }
+    TextoFlutuante *t = &b->textos[escolhido];
+    t->pos = pos;
+    t->tempo = 1.2f;
+    t->cor = cor;
+    snprintf(t->texto, sizeof(t->texto), "%s", texto);
+}
+
+// Feedback de erro na verificação: o termo falso aparece com aberração cromática e a justificativa
+static void RogueErroVerificacao(Biblioteca *b, const char *termo, const char *explicacao)
+{
+    snprintf(b->erroTermo, sizeof(b->erroTermo), "%s", termo);
+    snprintf(b->erroExplicacao, sizeof(b->erroExplicacao), "%s", explicacao);
+    b->tempoErro = 2.8f;
+}
+
 static Projetil *RogueDisparar(Biblioteca *b, Vector2 origem, Vector2 dir, float vel, float dano, float raio, bool doJogador)
 {
     for (int i = 0; i < MAX_PROJETEIS; i++) {
@@ -7527,6 +7708,13 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->registroSalaLido = false;
     b->mensagemSistema = 0.0f;
     b->mapaAberto = false;
+
+    // Bloco 3: impacto e parry não passam de uma sala para outra
+    b->tremorForte = 0.0f;
+    b->zoomImpacto = 0.0f;
+    b->tempoErro = 0.0f;
+    memset(b->textos, 0, sizeof(b->textos));
+    memset(&b->j.parry, 0, sizeof(b->j.parry));
 }
 
 // ---------- Reformulação: montagem das salas da missão ----------
@@ -9185,7 +9373,9 @@ static void RogueMarcarDedutivo(Biblioteca *b, int *marca, float *tempo, int alv
 
     if (*marca == 0) {
         *marca = 1;                             // premissa 1: P → Q
-        TocarSomTom(sfxSelecao, 1.6f);
+        TocarSomTom(sfxDedutivo, 1.0f);
+        RogueTextoFlutuante(b, (Vector2){ pos.x, pos.y - 36 }, "P -> Q", (Color){ 0, 228, 255, 255 });
+        RogueAnel(b, pos, 34.0f, (Color){ 0, 228, 255, 255 });
         return;
     }
 
@@ -9199,7 +9389,9 @@ static void RogueMarcarDedutivo(Biblioteca *b, int *marca, float *tempo, int alv
     if (q != NULL) q->alvoDedutivo = alvo;
 
     RogueParticulas(b, origem, GOLD, 12, 140);
-    TocarSomTom(sfxAcerto, 1.5f);
+    TocarSomTom(sfxDedutivo, 1.6f);                         // o encadeamento tem som próprio
+    RogueTextoFlutuante(b, (Vector2){ pos.x, pos.y - 36 }, "P!  LOGO, Q", GOLD);
+    RogueAnel(b, pos, 46.0f, GOLD);
 }
 
 static void PassarMarcaDedutiva(int *marca, float *tempo, float dt)
@@ -9986,6 +10178,7 @@ static void RogueResponderAfirmacao(Biblioteca *b, ProgressoCorredor *prog, bool
         AlterarPontos(prog, -PENALIDADE_ERRO);
         RogueAtaqueEspecialChefe(b);
         RogueAviso(b, tempoEsgotado ? "TEMPO ESGOTADO! Ataque especial!" : "ERRADO! Ataque especial!");
+        RogueErroVerificacao(b, a->texto, a->explicacao);
     }
 
     Telemetria("rogue_chefe_afirmacao", certo ? "certo" : (tempoEsgotado ? "tempo" : "errado"),
@@ -11019,12 +11212,21 @@ static void RogueAtualizarLuci(Biblioteca *b, ProgressoCorredor *prog, float dt)
 //   1) CORREDOR DO NÚCLEO: a Luci se solta do jogador; 3 registros de memória
 //      mostram as decisões dele (tiradas do save). Lidos os 3, a porta abre.
 //   2) ARENA DA LUCI: a revelação (ela é a IA que alucinou UtopIA) e a luta.
-//      Fase 1 DICA ENVENENADA: ela anuncia o "lado seguro"; às vezes mente.
-//               O aviso vermelho do ataque nunca mente (verificar a fonte).
-//      Fase 2 CONTRADIÇÕES: armadura + 2 cópias. Contestar (C) o que ela diz
-//               de contraditório abre a armadura. A verdadeira tem sombra.
-//      Fase 3 CONTEXTO CLARO (só com índice ruim): levar ASSUNTO, OBJETIVO e
-//               FORMATO ao núcleo (E); pedido vago faz ela se curar.
+//      A tela mostra UMA barra de vida, mas ela precisa ser zerada 3 vezes
+//      (o jogador não sabe: a 1ª e a 2ª quedas são falsas derrotas).
+//      1ª barra CONFLITO LÓGICO: dica envenenada (o "lado seguro" às vezes é
+//               mentira; o aviso vermelho nunca mente) e, da metade para baixo,
+//               as CONTRADIÇÕES (armadura + 2 cópias; C contesta).
+//      Queda 1: o áudio congela em estática e ela desaba por 2 s.
+//      2ª barra SURTO FÍSICO (vermelha): investidas corpo a corpo, cada uma
+//               uma falácia. PARRY (X ou botão direito) no impacto: hit freeze,
+//               tremor, zoom e onda de luz; ela fica atordoada e aceita o COMBO
+//               DEDUTIVO (até 3 golpes corpo a corpo).
+//      Queda 2: explosão de estática.
+//      3ª barra NÚCLEO INSTÁVEL (magenta): investidas em cadeia, ondas de choque
+//               com brecha e o chão que racha e cai. Com índice ruim, a guarda
+//               só abre com o CONTEXTO CLARO (ASSUNTO, OBJETIVO e FORMATO ao
+//               núcleo, E) ou com um parry.
 //   O ÍNDICE DE DESEMPENHO (0-100, tirado do save) decide a dificuldade ao
 //   entrar e o final ao vencer: 60 ou mais = final bom (a Luci é salva).
 //   Perder a luta volta ao corredor sem perder nada.
@@ -11083,11 +11285,12 @@ static const Dialogo dialogoLuciFase2 = {
 
 static const Dialogo dialogoLuciFase3 = {
     .paginas = {
+        "* Uma explosão de estática. O chão do núcleo começa a se partir.",
         "Luci: Eu ainda tenho respostas para tudo! Me pergunte qualquer coisa!",
-        "* Ela se fecha de novo. No centro, um núcleo espera um pedido CLARO.",
-        "* Leve ao núcleo (E) o ASSUNTO, o OBJETIVO e o FORMATO. Pedido vago só alimenta a alucinação."
+        "* Uma armadura de dados fecha em volta dela. No centro, um núcleo espera um pedido CLARO: leve o ASSUNTO, o OBJETIVO e o FORMATO (E).",
+        "* Um PARRY também quebra a guarda dela por um instante. Cuidado com as ondas de choque (passe pela brecha) e com o chão que racha."
     },
-    .numPaginas = 3
+    .numPaginas = 4
 };
 
 static const Dialogo dialogoFinalBom = {
@@ -11194,9 +11397,20 @@ static bool RogueFraseContradiz(const Biblioteca *b, int f)
     }
 }
 
+// Leva dano agora? (o Disparo Dedutivo e o Analisador só contam quem pode ser ferido)
 static bool RogueLuciVulneravel(const LuciChefe *l)
 {
-    return l->fase == 1 || l->janela > 0.0f || (l->fase == 3 && l->contextoPronto);
+    if (l->emRegeneracao)   return false;
+    if (l->atordoada)       return true;                    // parry: a guarda caiu
+    if (l->faseOculta == 1) return l->fase == LUCI_SUB_DICA || l->janela > 0.0f;
+    if (l->faseOculta == 3 && l->exigeContexto) return l->contextoPronto;
+    return true;
+}
+
+// Vida de cada barra (as três somadas dão LUCI_HP_BOA ou LUCI_HP_RUIM)
+static float RogueHpBarraLuci(const LuciChefe *l, int fase)
+{
+    return (l->boa ? LUCI_HP_BOA : LUCI_HP_RUIM) * LUCI_FRACAO_FASE[(fase < 1) ? 0 : ((fase > 3) ? 2 : fase - 1)];
 }
 
 static void RogueIniciarLuciChefe(Biblioteca *b)
@@ -11207,13 +11421,15 @@ static void RogueIniciarLuciChefe(Biblioteca *b)
     *l = (LuciChefe){0};
     l->ativo = true;
     l->boa = boa;
-    l->fase = 1;
-    l->hpMax = l->hp = boa ? LUCI_HP_BOA : LUCI_HP_RUIM;
+    l->fase = LUCI_SUB_DICA;
+    l->faseOculta = 1;
+    l->hpMax = l->hp = RogueHpBarraLuci(l, 1);
     l->ritmo = boa ? 1.0f : LUCI_RITMO_RUIM;
     l->pos = (Vector2){ 400, 150 };
     l->tempoDica = 2.0f;
     l->frase = -1;
     l->carregando = -1;
+    l->exigeContexto = !boa;                // índice ruim: a 3ª barra pede o contexto claro
 }
 
 static void RogueLimparBalasInimigas(Biblioteca *b)
@@ -11240,6 +11456,8 @@ static void RogueMontarSalaBloco3(Biblioteca *b, TipoSalaRogue tipo)
     RogueIniciarLuciChefe(b);
     b->conversaPendente = RogueDialogoRevelacao(b);
     b->objConversa = OBJ_LUCI_INTRO;
+    b->flashNegativo = 0.7f;                // a abertura do núcleo: inversão de paleta
+    b->estaticaTela = 0.5f;
 }
 
 // Entrando no Bloco 3 pela porta do átrio: calcula o índice (decide a dificuldade)
@@ -11273,6 +11491,9 @@ static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde)
         return false;
     }
 
+    if (l->estadoMelee == 2)
+        dano *= 0.5f;                                       // investindo, ela é difícil de acertar
+
     l->hp -= dano;
     l->flash = 0.08f;
     RogueParticulas(b, onde, (Color){ 0, 228, 255, 255 }, 3, 120);
@@ -11287,7 +11508,7 @@ static bool RogueLuciAcerto(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
     if (!l->ativo || !l->apresentado || l->morrendo > 0.0f)
         return false;
 
-    if (l->fase == 2)
+    if (l->fase == LUCI_SUB_CONTRADICAO)
         for (int k = 0; k < 3; k++)
             if (k != l->real && Vector2Distance(p->pos, l->copia[k]) < LUCI_RAIO + p->raio) {
                 p->ativo = false;
@@ -11320,12 +11541,12 @@ static void RogueLuciAnel(Biblioteca *b, int balas)
     RogueParticulas(b, l->pos, MAGENTA, 24, 240);
 }
 
-// C na fase 2: contestar o que a Luci acabou de dizer
+// C nas contradições: contestar o que a Luci acabou de dizer
 static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog)
 {
     LuciChefe *l = &b->luci;
 
-    if (l->fase != 2 || l->frase < 0 || l->contestada) {
+    if (l->fase != LUCI_SUB_CONTRADICAO || l->frase < 0 || l->contestada) {
         RogueRecadoLuci(b, "Luci: Você contesta... o silêncio?");
         return;
     }
@@ -11345,12 +11566,13 @@ static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog)
         b->perm->contestouAToa++;
         RogueLuciAnel(b, 14);
         RogueAviso(b, "Isso era verdade... ela se fortalece.");
+        RogueErroVerificacao(b, FRASES_LUCI_CHEFE[l->frase], "Era VERDADE: contestar sem conferir o que você vê também é um erro.");
         TocarSom(sfxErro);
     }
     Telemetria("bloco3_contestar", l->fraseContradiz ? "certo" : "errado", 0.0f, l->frase);
 }
 
-// E na fase 3: pegar um pedaço de contexto ou entregar no núcleo
+// E na 3ª barra (índice ruim): pegar um pedaço de contexto ou entregar no núcleo
 static void RogueLuciContexto(Biblioteca *b, int k)
 {
     LuciChefe *l = &b->luci;
@@ -11382,10 +11604,12 @@ static void RogueLuciContexto(Biblioteca *b, int k)
         l->posContexto[c] = PONTOS_PECAS_SIL[GetRandomValue(0, NUM_PONTOS_PECAS_SIL - 1)];
         RogueLuciAnel(b, 12);
         RogueAviso(b, "Pedido vago: ela inventa uma resposta!");
+        RogueErroVerificacao(b, CONTEXTO_LUCI[c], "Pedido vago: sem assunto, objetivo e formato, a IA preenche a lacuna inventando.");
         TocarSom(sfxErro);
     }
 }
 
+// Na 1ª barra: da dica envenenada para as contradições
 static void RogueLuciMudarFase(Biblioteca *b, int fase)
 {
     LuciChefe *l = &b->luci;
@@ -11398,65 +11622,471 @@ static void RogueLuciMudarFase(Biblioteca *b, int fase)
     l->tempoFrase = 2.5f;
     RogueLimparBalasInimigas(b);
 
-    if (fase == 2) {
-        l->real = GetRandomValue(0, 2);
-        l->troca = 5.0f;
-        b->conversaPendente = &dialogoLuciFase2;
-    } else {
-        for (int k = 0; k < NUM_CONTEXTO_LUCI; k++)
-            l->posContexto[k] = PONTOS_PECAS_SIL[(k * 3 + GetRandomValue(0, 1)) % NUM_PONTOS_PECAS_SIL];
-        b->conversaPendente = &dialogoLuciFase3;
-    }
+    l->real = GetRandomValue(0, 2);
+    l->troca = 5.0f;
+    b->conversaPendente = &dialogoLuciFase2;
     b->objConversa = OBJ_NENHUM;
     Telemetria("bloco3_fase", "", (float)(GetTime() - b->inicio), fase);
 }
 
-static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, float dt)
+// ---------- Reformulação: as quedas (falsa derrota) e o renascimento da barra ----------
+
+static void RogueLuciFalsaDerrota(Biblioteca *b)
 {
     LuciChefe *l = &b->luci;
-    JogadorRogue *j = &b->j;
+    bool primeira = (l->faseOculta == 1);
 
-    if (!l->ativo || !l->apresentado)
-        return;
+    l->hp = 0.0f;
+    l->emRegeneracao = true;
+    l->etapaRegeneracao = 0;
+    l->tempoRegeneracao = primeira ? LUCI_COLAPSO : LUCI_EXPLOSAO_ESTATICA;
+    l->avisando = false;
+    l->janela = 0.0f;
+    l->frase = -1;
+    l->atordoada = false;
+    l->estadoMelee = 0;
+    l->ondaAtiva = false;
+    if (l->carregando >= 0) { l->posContexto[l->carregando] = b->j.pos; l->carregando = -1; }
+    for (int k = 0; k < NUM_PISO_LUCI; k++) l->fasePiso[k] = 0;
+    RogueLimparBalasInimigas(b);
+    b->j.parry.emParry = false;
 
-    l->anim += dt;
-    if (l->flash > 0.0f) l->flash -= dt;
+    PararSons();                            // o áudio da arena congela...
+    TocarSom(sfxEstatica);                  // ... e só sobra estática
 
-    // Derrotada: o final é decidido agora (o índice conta também o que aconteceu na luta)
-    if (l->morrendo > 0.0f) {
-        l->morrendo -= dt;
-        RogueParticulas(b, (Vector2){ l->pos.x + GetRandomValue(-30, 30), l->pos.y + GetRandomValue(-30, 30) },
-                        b->finalBom ? (Color){ 0, 228, 255, 255 } : MAGENTA, 3, 200);
-        if (l->morrendo <= 0.0f) {
-            l->ativo = false;
-            b->conversaPendente = b->finalBom ? &dialogoFinalBom : &dialogoFinalRuim;
-            b->objConversa = OBJ_LUCI_FINAL;
+    if (primeira) {
+        b->estaticaTela = 0.6f;
+        b->pausaImpacto = 0.25f;
+    } else {
+        // 2ª queda: explosão de estática
+        TocarSomTom(sfxDano, 0.4f);
+        b->estaticaTela = LUCI_EXPLOSAO_ESTATICA;
+        b->flashNegativo = 0.5f;
+        b->tremor = 0.6f;
+        b->tremorForte = 0.6f;
+        RogueAnel(b, l->pos, 260.0f, MAGENTA);
+        RogueAnel(b, l->pos, 160.0f, WHITE);
+        RogueParticulas(b, l->pos, MAGENTA, 60, 360);
+        RogueParticulas(b, l->pos, WHITE, 30, 300);
+        b->pausaImpacto = 0.15f;
+    }
+    Telemetria("bloco3_queda", primeira ? "1" : "2", (float)(GetTime() - b->inicio), l->faseOculta);
+}
+
+static const Dialogo dialogoLuciSurto = {
+    .paginas = {
+        "* O som some. Só sobra estática. A barra dela apagou... e a Luci levanta.",
+        "Luci: Achou que era só isso? Uma barra vazia não prova nada. Eu ainda tenho RESPOSTAS!",
+        "* Agora ela vem para cima. Quando os olhos dela piscarem em VERMELHO, o golpe está chegando: aperte X (ou o botão direito) no instante do impacto. É o PARRY!",
+        "* Defendeu na hora? Ela fica atordoada: chegue perto e ataque (clique) para o COMBO DEDUTIVO. O Pulso continua no Q."
+    },
+    .numPaginas = 4
+};
+
+static const Dialogo dialogoLuciNucleo = {
+    .paginas = {
+        "* Uma explosão de estática. O chão do núcleo começa a se partir.",
+        "Luci: CHEGA! Se eu não posso ter a resposta certa, ninguém vai ter!",
+        "* Ondas de choque saem dela: passe pela BRECHA de luz ou esquive (ESPAÇO). O chão que racha em vermelho vai cair."
+    },
+    .numPaginas = 3
+};
+
+// Muda a barra (2 ou 3): a vida renasce cheia na cor da fase nova
+static void RogueLuciComecarFaseOculta(Biblioteca *b, int fase)
+{
+    LuciChefe *l = &b->luci;
+
+    l->faseOculta = fase;
+    l->emRegeneracao = false;
+    l->hpMax = l->hp = RogueHpBarraLuci(l, fase);
+    l->fase = (fase == 2) ? LUCI_SUB_SURTO : LUCI_SUB_NUCLEO;
+    l->estadoMelee = 0;
+    l->tempoMelee = 1.2f;
+    l->investidasRestantes = 0;
+    l->cronoLeve = 1.5f;
+
+    if (fase == 3) {
+        // A 3ª barra abre com as ondas de choque (depois alterna com as investidas)
+        l->padrao3 = 1;
+        l->ondasRestantes = l->boa ? 2 : 3;
+        l->avisoOnda = LUCI_ONDA_AVISO + 0.5f;
+        l->ondaAtiva = false;
+        l->ondaBrecha = (float)GetRandomValue(0, 359) * DEG2RAD;
+        l->tempoPadrao3 = 5.0f;
+
+        // O chão fragmentado: ladrilhos que racham e caem (longe do núcleo e sem se sobrepor)
+        int criados = 0;
+        for (int t = 0; t < 80 && criados < NUM_PISO_LUCI; t++) {
+            Rectangle r = { 60.0f + 40.0f * (float)GetRandomValue(0, 15), 100.0f + 40.0f * (float)GetRandomValue(0, 8), 80, 80 };
+            if (r.x + r.width > ARENA_ROGUE.x + ARENA_ROGUE.width - 10 || r.y + r.height > ARENA_ROGUE.y + ARENA_ROGUE.height - 10) continue;
+            if (CheckCollisionCircleRec(NUCLEO_LUCI, 70.0f, r)) continue;
+            bool sobrepoe = false;
+            for (int k = 0; k < criados; k++)
+                if (CheckCollisionRecs((Rectangle){ r.x - 10, r.y - 10, r.width + 20, r.height + 20 }, l->piso[k])) sobrepoe = true;
+            if (sobrepoe) continue;
+            l->piso[criados] = r;
+            l->fasePiso[criados] = 0;
+            l->tempoPiso[criados] = 2.0f + 0.9f * (float)criados;
+            criados++;
+        }
+        for (int k = criados; k < NUM_PISO_LUCI; k++) { l->piso[k] = (Rectangle){ 0 }; l->fasePiso[k] = -1; }
+
+        if (l->exigeContexto) {
+            for (int k = 0; k < NUM_CONTEXTO_LUCI; k++) {
+                l->posContexto[k] = PONTOS_PECAS_SIL[(k * 3 + GetRandomValue(0, 1)) % NUM_PONTOS_PECAS_SIL];
+                l->entregue[k] = false;
+            }
+            l->entregues = 0;
+            l->contextoPronto = false;
+            b->conversaPendente = &dialogoLuciFase3;
+        } else {
+            b->conversaPendente = &dialogoLuciNucleo;
+        }
+    } else {
+        b->conversaPendente = &dialogoLuciSurto;
+    }
+
+    b->objConversa = OBJ_NENHUM;
+    MostrarEmocaoLuci(EMOCAO_ALERTA, 2.0f);
+    Telemetria("bloco3_fase_oculta", "", (float)(GetTime() - b->inicio), fase);
+}
+
+static void RogueAtualizarRegeneracaoLuci(Biblioteca *b, float dt)
+{
+    LuciChefe *l = &b->luci;
+    Color cor = (l->faseOculta == 1) ? RED : MAGENTA;       // a cor da barra que vai nascer
+
+    l->tempoRegeneracao -= dt;
+
+    if (l->etapaRegeneracao == 0) {
+        if (GetRandomValue(0, 2) == 0)
+            RogueParticulas(b, (Vector2){ l->pos.x + (float)GetRandomValue(-25, 25), l->pos.y + (float)GetRandomValue(-25, 30) },
+                            (l->faseOculta == 1) ? (Color){ 0, 228, 255, 255 } : MAGENTA, 2, 80);
+        if (l->tempoRegeneracao <= 0.0f) {
+            l->etapaRegeneracao = 1;
+            l->tempoRegeneracao = LUCI_RENASCER;
+            l->hpMax = RogueHpBarraLuci(l, l->faseOculta + 1);
+            l->hp = 0.0f;
+            b->estaticaTela = fmaxf(b->estaticaTela, 0.4f);
+            TocarSomTom(sfxErro, 0.5f);
+            RogueTextoFlutuante(b, (Vector2){ l->pos.x, l->pos.y - 60 }, "ERRO: INTEGRIDADE NÃO ENCONTRADA", RED);
         }
         return;
     }
 
-    if (l->hp <= 0.0f) {
-        l->hp = 0.0f;
-        l->morrendo = 2.0f;
-        b->indice = RogueCalcularIndice(b, prog->pontos);
-        b->finalBom = b->indice.total >= INDICE_FINAL_BOM;
-        RogueLimparBalasInimigas(b);
-        b->pausaImpacto = 0.25f;
-        TocarSomTom(sfxAcerto, 0.5f);
+    // A barra enche de novo, com a cor nova
+    float k = Clamp(1.0f - l->tempoRegeneracao / LUCI_RENASCER, 0.0f, 1.0f);
+    l->hp = l->hpMax * k;
+    if (GetRandomValue(0, 1) == 0)
+        RogueParticulas(b, (Vector2){ l->pos.x + (float)GetRandomValue(-30, 30), l->pos.y + 30.0f }, cor, 2, 160);
+
+    if (l->tempoRegeneracao <= 0.0f)
+        RogueLuciComecarFaseOculta(b, l->faseOculta + 1);
+}
+
+// ---------- Reformulação: combate corpo a corpo, parry e o combo dedutivo ----------
+
+// Parry perfeito: congela, treme, aproxima a câmera, abre a onda de luz e atordoa a Luci
+static void RogueLuciParry(Biblioteca *b, Vector2 ponto)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+
+    l->atordoada = true;
+    l->tempoStun = PARRY_STUN;
+    l->combo = 0;
+    l->estadoMelee = 3;
+    l->tempoMelee = PARRY_STUN;
+    l->investidasRestantes = 0;
+    l->mostrarFalacia = 3.0f;
+    l->pos = Vector2Subtract(l->pos, Vector2Scale(l->dirMelee, 18.0f));
+    RogueEmpurrarParaFora(&l->pos, LUCI_RAIO, NULL, 0);
+
+    j->parry.emParry = false;
+    j->parry.tempoJanelaParry = 0.0f;
+    j->parry.cooldownParry = 0.15f;
+    j->parry.hitFreezeAtivo = true;
+    j->parry.tempoHitFreeze = PARRY_HIT_FREEZE;
+    j->parry.comboMeleeContador = 0;
+    if (j->invulneravel < 0.45f) j->invulneravel = 0.45f;
+
+    b->pausaImpacto = PARRY_HIT_FREEZE;     // hit freeze
+    b->tremor = 0.35f;
+    b->tremorForte = 0.35f;
+    b->zoomImpacto = PARRY_ZOOM;
+    b->focoZoom = ponto;
+
+    // Onda de choque de luz: anéis e partículas saindo do choque; as balas por perto somem
+    RogueAnel(b, ponto, 160.0f, WHITE);
+    RogueAnel(b, ponto, 100.0f, GOLD);
+    RogueParticulas(b, ponto, GOLD, 40, 420);
+    RogueParticulas(b, ponto, WHITE, 20, 360);
+    for (int i = 0; i < MAX_PROJETEIS; i++) {
+        Projetil *p = &b->proj[i];
+        if (p->ativo && !p->doJogador && Vector2Distance(p->pos, ponto) < 170.0f) {
+            p->ativo = false;
+            RogueParticulas(b, p->pos, GOLD, 2, 120);
+        }
+    }
+
+    TocarSom(sfxParryPerfeito);
+    RogueTextoFlutuante(b, (Vector2){ ponto.x, ponto.y - 44 }, "PARRY PERFEITO!", GOLD);
+    l->parriesPerfeitos++;
+    Telemetria("bloco3_parry", FALACIAS_LUCI[l->falacia][0], (float)l->faseOculta, l->parriesPerfeitos);
+}
+
+// Golpe corpo a corpo do Thomas na Luci atordoada (até 3: P, P -> Q, logo Q)
+static void RogueGolpeDedutivo(Biblioteca *b)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+    static const char *nomes[3] = { "P", "P -> Q", "LOGO, Q!" };
+
+    if (!l->atordoada || l->combo >= 3)
+        return;
+
+    float dano = l->hpMax * MELEE_FRACAO[l->combo] * (0.75f + 0.25f * RogueFatorDano(b));
+    l->hp -= dano;                          // o golpe dedutivo passa por qualquer armadura
+    l->flash = 0.12f;
+
+    Vector2 dir = Vector2Subtract(l->pos, j->pos);
+    dir = (Vector2Length(dir) > 0.1f) ? Vector2Normalize(dir) : (Vector2){ 0, -1 };
+    l->pos = Vector2Add(l->pos, Vector2Scale(dir, (l->combo == 2) ? 70.0f : 14.0f));
+    RogueEmpurrarParaFora(&l->pos, LUCI_RAIO, NULL, 0);
+
+    // Cada golpe devolve um pouco da integridade do Thomas
+    j->hp = fminf(RogueHpMax(b), j->hp + MELEE_CURA_HP);
+    j->ep = fminf(RogueEpMax(b), j->ep + MELEE_CURA_EP);
+
+    RogueParticulas(b, l->pos, (l->combo == 2) ? GOLD : (Color){ 0, 228, 255, 255 }, 18, 300);
+    RogueAnel(b, l->pos, 50.0f + 25.0f * (float)l->combo, GOLD);
+    TocarSomTom(sfxParryPerfeito, 1.2f + 0.15f * (float)l->combo);
+    RogueTextoFlutuante(b, (Vector2){ l->pos.x, l->pos.y - 52 }, TextFormat("GOLPE DEDUTIVO %d/3: %s", l->combo + 1, nomes[l->combo]), GOLD);
+    b->pausaImpacto = 0.05f;
+    b->tremor = 0.15f;
+
+    l->combo++;
+    j->parry.comboMeleeContador = l->combo;
+
+    if (l->combo >= 3) {
+        l->atordoada = false;
+        l->tempoStun = 0.0f;
+        l->estadoMelee = 0;
+        l->tempoMelee = 1.4f;
+        l->combosConcluidos++;
+        b->tremor = 0.3f;
+        b->tremorForte = 0.25f;
+        RogueAviso(b, "COMBO DEDUTIVO: P -> Q, P, LOGO Q!");
+        Telemetria("bloco3_combo", "", (float)l->faseOculta, l->combosConcluidos);
+    }
+}
+
+// Investidas corpo a corpo (SWIPE_FALACIA): rondar, telegrafar (flash vermelho + aviso), investir, recuperar
+static void RogueLuciMelee(Biblioteca *b, float dt, float telegrafia, int cadeiaMax)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+    Vector2 d = Vector2Subtract(j->pos, l->pos);
+    float dist = Vector2Length(d);
+    Vector2 dir = (dist > 0.01f) ? Vector2Scale(d, 1.0f / dist) : (Vector2){ 0, 1 };
+
+    switch (l->estadoMelee) {
+
+        case 0: {       // rondando: chega perto e gira em volta
+            Vector2 lado = { -dir.y, dir.x };
+            Vector2 vel = (dist > LUCI_DIST_RONDA + 30.0f) ? Vector2Scale(dir, 180.0f)
+                        : (dist < LUCI_DIST_RONDA - 40.0f) ? Vector2Scale(dir, -120.0f) : Vector2Scale(lado, 130.0f);
+            l->pos = Vector2Add(l->pos, Vector2Scale(vel, l->ritmo * dt));
+            RogueEmpurrarParaFora(&l->pos, LUCI_RAIO, NULL, 0);
+
+            l->tempoMelee -= dt * l->ritmo;
+            if (l->tempoMelee <= 0.0f) {
+                l->estadoMelee = 1;
+                l->tempoMelee = telegrafia;
+                l->investidasRestantes = GetRandomValue(1, cadeiaMax);
+                l->falacia = GetRandomValue(0, NUM_FALACIAS - 1);
+                l->dirMelee = dir;
+                TocarSom(sfxAvisoParry);
+            }
+        } break;
+
+        case 1:         // telegrafando: olhos em vermelho neon; a mira trava no fim
+            l->tempoMelee -= dt;
+            if (l->tempoMelee > telegrafia * 0.3f) l->dirMelee = dir;
+            if (l->tempoMelee <= 0.0f) {
+                l->estadoMelee = 2;
+                l->tempoMelee = LUCI_INVESTIDA_DURACAO;
+                l->acertouInvestida = false;
+                TocarSomTom(sfxTiro, 0.4f);
+            }
+            break;
+
+        case 2: {       // a investida (a lâmina vai na frente)
+            l->pos = Vector2Add(l->pos, Vector2Scale(l->dirMelee, LUCI_INVESTIDA_VEL * dt));
+            RogueEmpurrarParaFora(&l->pos, LUCI_RAIO, NULL, 0);
+            if (GetRandomValue(0, 1) == 0) RogueParticulas(b, l->pos, RED, 1, 50);
+
+            Vector2 lamina = Vector2Add(l->pos, Vector2Scale(l->dirMelee, 24.0f));
+            if (!l->acertouInvestida && CheckCollisionCircles(lamina, LUCI_LAMINA_RAIO, j->pos, RAIO_CORPO_JOGADOR)) {
+                l->acertouInvestida = true;
+                if (j->parry.emParry) {
+                    RogueLuciParry(b, Vector2Lerp(lamina, j->pos, 0.5f));
+                    return;
+                }
+                if (j->invulneravel <= 0.0f && j->tempoEsquiva <= 0.0f) {
+                    RogueFerirJogador(b, LUCI_DANO_SWIPE);
+                    RogueErroVerificacao(b, FALACIAS_LUCI[l->falacia][0], FALACIAS_LUCI[l->falacia][1]);
+                    j->pos = Vector2Add(j->pos, Vector2Scale(l->dirMelee, 30.0f));
+                    RogueEmpurrarParaFora(&j->pos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
+                }
+            }
+
+            l->tempoMelee -= dt;
+            if (l->tempoMelee <= 0.0f) { l->estadoMelee = 3; l->tempoMelee = LUCI_RECUPERA; }
+        } break;
+
+        default:        // recuperando (vulnerável); às vezes emenda outra investida
+            l->tempoMelee -= dt;
+            if (l->tempoMelee <= 0.0f) {
+                if (--l->investidasRestantes > 0) {
+                    l->estadoMelee = 1;
+                    l->tempoMelee = telegrafia * 0.8f;
+                    l->falacia = GetRandomValue(0, NUM_FALACIAS - 1);
+                    TocarSom(sfxAvisoParry);
+                } else {
+                    l->estadoMelee = 0;
+                    l->tempoMelee = 1.0f + (float)GetRandomValue(0, 80) / 100.0f;
+                    l->investidasRestantes = 0;
+                }
+            }
+            break;
+    }
+}
+
+// 2ª barra: surto físico (investidas e alguns tiros leves entre elas)
+static void RogueLuciSurto(Biblioteca *b, float dt)
+{
+    LuciChefe *l = &b->luci;
+
+    if (l->atordoada)
+        return;
+
+    RogueLuciMelee(b, dt, LUCI_TELEGRAFIA, 2);
+
+    if (l->estadoMelee == 0) {
+        l->cronoLeve -= dt * l->ritmo;
+        if (l->cronoLeve <= 0.0f) {
+            Vector2 d = Vector2Subtract(b->j.pos, l->pos);
+            d = (Vector2Length(d) > 0.1f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
+            for (int k = -1; k <= 1; k++)
+                RogueDisparar(b, l->pos, Vector2Rotate(d, (float)k * 16.0f * DEG2RAD), LUCI_TIRO_VEL * 0.8f, LUCI_TIRO_DANO, 6.0f, false);
+            TocarSomTom(sfxTiro, 0.8f);
+            l->cronoLeve = 2.4f;
+        }
+    }
+}
+
+// 3ª barra: núcleo instável (chão que cai, investidas rápidas em cadeia e ondas de choque com brecha)
+static void RogueLuciNucleo(Biblioteca *b, float dt)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+
+    // Chão fragmentado (sempre avisa: racha em vermelho antes de cair)
+    bool noVazio = false;
+    for (int k = 0; k < NUM_PISO_LUCI; k++) {
+        if (l->fasePiso[k] < 0) continue;
+        l->tempoPiso[k] -= dt;
+        if (l->tempoPiso[k] <= 0.0f) {
+            l->fasePiso[k] = (l->fasePiso[k] + 1) % 3;
+            l->tempoPiso[k] = (l->fasePiso[k] == 1) ? PISO_AVISO : ((l->fasePiso[k] == 2) ? PISO_VAZIO
+                            : PISO_INTEIRO + (float)GetRandomValue(0, 200) / 100.0f);
+            if (l->fasePiso[k] == 2) RogueParticulas(b, CentroRetangulo(l->piso[k]), MAGENTA, 12, 160);
+        }
+        if (l->fasePiso[k] == 2 && CheckCollisionCircleRec(j->pos, RAIO_CORPO_JOGADOR * 0.6f, l->piso[k])) noVazio = true;
+    }
+    if (l->tickPiso > 0.0f) l->tickPiso -= dt;
+    if (noVazio && l->tickPiso <= 0.0f && j->tempoEsquiva <= 0.0f) {
+        RogueFerirJogador(b, PISO_DANO);
+        l->tickPiso = 0.5f;
+    }
+
+    if (l->atordoada)
+        return;
+
+    if (l->padrao3 == 0) {
+        RogueLuciMelee(b, dt, LUCI_TELEGRAFIA_3, 3);
+        l->tempoPadrao3 -= dt;
+        if (l->tempoPadrao3 <= 0.0f && l->estadoMelee == 0) {
+            l->padrao3 = 1;
+            l->ondasRestantes = l->boa ? 2 : 3;
+            l->avisoOnda = LUCI_ONDA_AVISO;
+            l->ondaAtiva = false;
+            l->ondaBrecha = (float)GetRandomValue(0, 359) * DEG2RAD;
+        }
         return;
     }
 
-    // Com o índice ruim, a fase 2 não termina a luta: abre a fase 3 (contexto)
-    if (l->fase == 1 && l->hp <= l->hpMax * LUCI_FASE2) { RogueLuciMudarFase(b, 2); return; }
-    if (l->fase == 2 && !l->boa && l->hp <= l->hpMax * LUCI_FASE3) { l->hp = l->hpMax * LUCI_FASE3; RogueLuciMudarFase(b, 3); return; }
+    // Ondas de choque: ela vai ao centro, brilha (aviso) e solta o anel com uma brecha
+    l->pos = Vector2Lerp(l->pos, (Vector2){ 400, 290 }, fminf(1.0f, 4.0f * dt));
+
+    if (!l->ondaAtiva) {
+        l->avisoOnda -= dt;
+        if (l->avisoOnda <= 0.0f) {
+            l->ondaAtiva = true;
+            l->ondaAcertou = false;
+            l->ondaRaio = LUCI_RAIO;
+            l->ondaCentro = l->pos;
+            TocarSomTom(sfxDano, 0.5f);
+            b->tremor = fmaxf(b->tremor, 0.12f);
+        }
+        return;
+    }
+
+    l->ondaRaio += LUCI_ONDA_VEL * l->ritmo * dt;
+
+    Vector2 d = Vector2Subtract(j->pos, l->ondaCentro);
+    float dist = Vector2Length(d);
+    if (!l->ondaAcertou && fabsf(dist - l->ondaRaio) < 12.0f + RAIO_CORPO_JOGADOR) {
+        float dif = atan2f(d.y, d.x) - l->ondaBrecha;
+        while (dif > PI)  dif -= 2.0f * PI;
+        while (dif < -PI) dif += 2.0f * PI;
+        if (fabsf(dif) > LUCI_ONDA_BRECHA * DEG2RAD && j->invulneravel <= 0.0f && j->tempoEsquiva <= 0.0f) {
+            RogueFerirJogador(b, LUCI_DANO_ONDA);
+            l->ondaAcertou = true;
+        }
+    }
+
+    if (l->ondaRaio > 560.0f) {
+        l->ondaAtiva = false;
+        if (--l->ondasRestantes > 0) {
+            l->avisoOnda = LUCI_ONDA_AVISO * 0.8f;
+            l->ondaBrecha = (float)GetRandomValue(0, 359) * DEG2RAD;
+        } else {
+            l->padrao3 = 0;
+            l->tempoPadrao3 = 5.0f;
+            l->estadoMelee = 0;
+            l->tempoMelee = 0.8f;
+        }
+    }
+}
+
+// 1ª barra: o conflito lógico (dica envenenada e, da metade para baixo, as contradições com as cópias)
+static void RogueLuciConflito(Biblioteca *b, float dt)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+
+    if (l->fase == LUCI_SUB_DICA && l->hp <= l->hpMax * LUCI_FASE_CONTRADICAO) { RogueLuciMudarFase(b, LUCI_SUB_CONTRADICAO); return; }
 
     if (l->janela > 0.0f) l->janela -= dt;
 
     Vector2 d = Vector2Subtract(j->pos, l->pos);
     Vector2 dir = (Vector2Length(d) > 0.01f) ? Vector2Normalize(d) : (Vector2){ 0, 1 };
 
-    // Movimento: fases 1 e 3 flutua no alto; fase 2 gira com as cópias
-    if (l->fase == 2) {
+    // Movimento: na dica flutua no alto; nas contradições gira com as cópias
+    if (l->fase == LUCI_SUB_CONTRADICAO) {
         l->angulo += dt * 0.6f * l->ritmo;
         for (int k = 0; k < 3; k++) {
             float a = l->angulo + k * (2.0f * PI / 3.0f);
@@ -11473,9 +12103,9 @@ static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, floa
         l->pos = Vector2Lerp(l->pos, (Vector2){ 400.0f + sinf(l->anim * 0.6f) * 170.0f, 150.0f }, fminf(1.0f, 3.0f * dt));
     }
 
-    // Leque (fases 1 e 3) ou espiral em rajadas (fase 2)
+    // Leque (dica) ou espiral em rajadas (contradições)
     l->cronoTiro -= dt * l->ritmo;
-    if (l->fase == 2) {
+    if (l->fase == LUCI_SUB_CONTRADICAO) {
         if (fmodf(l->anim, 3.0f) < 1.5f && l->cronoTiro <= 0.0f) {
             for (int k = 0; k < 2; k++) {
                 float a = l->anim * 3.0f + k * PI;
@@ -11490,22 +12120,28 @@ static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, floa
         TocarSomTom(sfxTiro, 0.7f);
     }
 
-    // Ataque em metade da arena (fases 1 e 3). Na fase 1 ela anuncia o "lado seguro"; às vezes mente.
-    if (l->fase != 2) {
+    // Ataque em metade da arena: ela anuncia o "lado seguro"; às vezes mente
+    if (l->fase == LUCI_SUB_DICA) {
         l->tempoDica -= dt * l->ritmo;
         if (!l->avisando && l->tempoDica <= 0.0f) {
             l->avisando = true;
             l->tempoDica = LUCI_DICA_AVISO;
             l->ladoAtaque = GetRandomValue(0, 1);
-            l->dicaFalsa = (l->fase == 1) && GetRandomValue(1, 100) <= (l->boa ? LUCI_DICA_FALSA_BOA : LUCI_DICA_FALSA_RUIM);
+            l->dicaFalsa = GetRandomValue(1, 100) <= (l->boa ? LUCI_DICA_FALSA_BOA : LUCI_DICA_FALSA_RUIM);
         } else if (l->avisando && l->tempoDica <= 0.0f) {
             bool naMetade = (l->ladoAtaque == 0) ? (j->pos.x < 400.0f) : (j->pos.x >= 400.0f);
             l->avisando = false;
             l->tempoDica = LUCI_DICA_INTERVALO;
             if (naMetade) RogueFerirJogador(b, LUCI_DANO_AREA);
             if (l->dicaFalsa) {
-                if (naMetade) { b->perm->confiouAlucinacao++; Telemetria("bloco3_dica", "acreditou", 0.0f, 0); }
-                else          { b->perm->alucinacoesPegas++;  Telemetria("bloco3_dica", "verificou", 0.0f, 0); }
+                if (naMetade) {
+                    b->perm->confiouAlucinacao++;
+                    RogueErroVerificacao(b, "\"O LADO SEGURO\"", "Era uma dica alucinada. O aviso vermelho mostrava onde o golpe cairia: confira a fonte!");
+                    Telemetria("bloco3_dica", "acreditou", 0.0f, 0);
+                } else {
+                    b->perm->alucinacoesPegas++;
+                    Telemetria("bloco3_dica", "verificou", 0.0f, 0);
+                }
             }
             for (int k = 0; k < 24; k++)
                 RogueParticulas(b, (Vector2){ (l->ladoAtaque == 0 ? 60.0f : 420.0f) + GetRandomValue(0, 320), (float)GetRandomValue(80, 520) }, RED, 1, 60);
@@ -11513,8 +12149,8 @@ static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, floa
         }
     }
 
-    // Frases da fase 2: algumas contradizem a sala
-    if (l->fase == 2) {
+    // Frases das contradições: algumas contradizem a sala
+    if (l->fase == LUCI_SUB_CONTRADICAO) {
         l->tempoFrase -= dt;
         if (l->frase < 0 && l->tempoFrase <= 0.0f && l->janela <= 0.0f) {
             l->frase = GetRandomValue(0, NUM_FRASES_LUCI - 1);
@@ -11528,17 +12164,84 @@ static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, floa
             l->tempoFrase = 1.5f;
         }
     }
+}
 
-    if (Vector2Distance(l->pos, j->pos) < LUCI_RAIO + RAIO_CORPO_JOGADOR)
+static void RogueAtualizarLuciChefe(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    LuciChefe *l = &b->luci;
+    JogadorRogue *j = &b->j;
+
+    if (!l->ativo || !l->apresentado)
+        return;
+
+    l->anim += dt;
+    if (l->flash > 0.0f) l->flash -= dt;
+    if (l->mostrarFalacia > 0.0f) l->mostrarFalacia -= dt;
+
+    // Derrotada de vez: o final é decidido agora (o índice conta também o que aconteceu na luta)
+    if (l->morrendo > 0.0f) {
+        l->morrendo -= dt;
+        RogueParticulas(b, (Vector2){ l->pos.x + GetRandomValue(-30, 30), l->pos.y + GetRandomValue(-30, 30) },
+                        b->finalBom ? (Color){ 0, 228, 255, 255 } : MAGENTA, 3, 200);
+        if (l->morrendo <= 0.0f) {
+            l->ativo = false;
+            b->conversaPendente = b->finalBom ? &dialogoFinalBom : &dialogoFinalRuim;
+            b->objConversa = OBJ_LUCI_FINAL;
+        }
+        return;
+    }
+
+    // Desabando ou renascendo (as quedas da 1ª e da 2ª barra)
+    if (l->emRegeneracao) {
+        RogueAtualizarRegeneracaoLuci(b, dt);
+        return;
+    }
+
+    if (l->hp <= 0.0f) {
+        if (l->faseOculta < 3) {            // o jogador acha que venceu... (falsa derrota)
+            RogueLuciFalsaDerrota(b);
+            return;
+        }
+
+        // 3ª queda: agora é de verdade. O IndiceFinal decide o final.
+        l->hp = 0.0f;
+        l->morrendo = 2.0f;
+        l->atordoada = false;
+        b->indice = RogueCalcularIndice(b, prog->pontos);
+        b->finalBom = b->indice.total >= INDICE_FINAL_BOM;
+        RogueLimparBalasInimigas(b);
+        b->pausaImpacto = 0.25f;
+        b->flashNegativo = 0.4f;
+        TocarSomTom(sfxAcerto, 0.5f);
+        Telemetria("bloco3_vitoria", b->finalBom ? "bom" : "ruim", (float)l->parriesPerfeitos, l->combosConcluidos);
+        return;
+    }
+
+    // Atordoada pelo parry: parada, esperando o combo
+    if (l->atordoada) {
+        l->tempoStun -= dt;
+        if (l->tempoStun <= 0.0f) {
+            l->atordoada = false;
+            l->estadoMelee = 0;
+            l->tempoMelee = 0.8f;
+        }
+    }
+
+    if (l->faseOculta == 1)      RogueLuciConflito(b, dt);
+    else if (l->faseOculta == 2) RogueLuciSurto(b, dt);
+    else                         RogueLuciNucleo(b, dt);
+
+    // Encostar nela machuca (menos atordoada ou investindo: a investida tem o próprio golpe)
+    if (!l->atordoada && l->estadoMelee != 2 && Vector2Distance(l->pos, j->pos) < LUCI_RAIO + RAIO_CORPO_JOGADOR)
         RogueFerirJogador(b, LUCI_DANO_CONTATO);
 }
 
-// O que dá para usar com E na arena (fase 3): pedaço de contexto (k) ou o núcleo (-1)
+// O que dá para usar com E na arena (3ª barra, índice ruim): pedaço de contexto (k) ou o núcleo (-1)
 static bool RogueAlvoContexto(const Biblioteca *b, int *k)
 {
     const LuciChefe *l = &b->luci;
 
-    if (!l->ativo || l->fase != 3 || l->contextoPronto)
+    if (!l->ativo || l->faseOculta != 3 || !l->exigeContexto || l->contextoPronto || l->emRegeneracao)
         return false;
 
     if (l->carregando >= 0 && Vector2Distance(b->j.pos, NUCLEO_LUCI) < 50.0f) { *k = -1; return true; }
@@ -11599,6 +12302,23 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
 
     j->ep += ROGUE_EP_POR_SEGUNDO * dt;
     if (j->ep > RogueEpMax(b)) j->ep = RogueEpMax(b);
+
+    // Bloco 3: PARRY (X ou botão direito, só na arena da Luci). A janela é curta e
+    // uma janela perdida tem recarga (não dá para ficar apertando sem parar).
+    JogadorParryState *pr = &j->parry;
+    bool arenaLuci = (b->tipoSala == SALA_LUCI);
+    if (pr->cooldownParry > 0.0f) pr->cooldownParry -= dt;
+    if (pr->golpeAnim > 0.0f)     pr->golpeAnim -= dt;
+    if (pr->tempoHitFreeze > 0.0f) { pr->tempoHitFreeze -= dt; if (pr->tempoHitFreeze <= 0.0f) pr->hitFreezeAtivo = false; }
+    if (pr->emParry) {
+        pr->tempoJanelaParry -= dt;
+        if (pr->tempoJanelaParry <= 0.0f) { pr->emParry = false; pr->cooldownParry = PARRY_RECARGA; }
+    }
+    if (arenaLuci && !pr->emParry && pr->cooldownParry <= 0.0f && (IsKeyPressed(KEY_X) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
+        pr->emParry = true;
+        pr->tempoJanelaParry = PARRY_JANELA;
+        TocarSomTom(sfxSelecao, 1.8f);
+    }
 
     // Esquiva (para onde está andando; parado, para onde está mirando)
     // Buffer de Esquiva: uma 2ª carga, com a recarga própria
@@ -11670,11 +12390,24 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     // Arma equipada (no átrio não se atira)
     bool atirando = usandoSetas || IsMouseButtonDown(MOUSE_BUTTON_LEFT);
 
+    // Bloco 3: a Luci atordoada e perto -> o ataque vira GOLPE DEDUTIVO (corpo a corpo) em vez de tiro
+    if (arenaLuci && b->luci.ativo && b->luci.atordoada && Vector2Distance(j->pos, b->luci.pos) < MELEE_ALCANCE + LUCI_RAIO) {
+        bool golpe = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_LEFT) ||
+                     IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN);
+        atirando = false;
+        if (golpe) {
+            Vector2 d = Vector2Subtract(b->luci.pos, j->pos);
+            pr->dirGolpe = (Vector2Length(d) > 0.1f) ? Vector2Normalize(d) : j->mira;
+            pr->golpeAnim = 0.18f;
+            RogueGolpeDedutivo(b);
+        }
+    }
+
     if (b->tipoSala != SALA_ATRIO)
         RogueUsarArma(b, prog, atirando, dt);
 
-    // Pulso de Integridade
-    if (b->tipoSala != SALA_ATRIO && (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_Q)))
+    // Pulso de Integridade (na arena da Luci o botão direito é o parry: lá o Pulso fica só no Q)
+    if (b->tipoSala != SALA_ATRIO && ((IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !arenaLuci) || IsKeyPressed(KEY_Q)))
         RoguePulso(b, prog);
 
     // Itens de usar: 1 = Antivírus, 2 = Pacote de Dados
@@ -13753,6 +14486,11 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         RogueEsvaziarMochila(&b->j);
         RogueEntrarAtrio(b, false);
         b->vitoriaPendente = true;
+
+        // Continuidade linear para o Bloco 3: a porta da direita (x = 746) se abre com um glitch
+        b->portaNucleoAbrindo = 3.0f;
+        b->estaticaTela = 0.5f;
+        b->falaPendente = "Luci: Aquela porta à direita... leva ao núcleo de UtopIA. Eu preciso que você venha. Agora.";
     }
 }
 
@@ -13771,6 +14509,28 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->tremor > 0.0f)      b->tremor -= dt;
     if (b->fadeEntrada > 0.0f) b->fadeEntrada -= dt;
     if (b->tempoAviso > 0.0f)  b->tempoAviso -= dt;
+
+    // Bloco 3 (reformulação): efeitos de tela e de impacto
+    if (b->tremorForte > 0.0f)        b->tremorForte -= dt;
+    if (b->zoomImpacto > 0.0f)        b->zoomImpacto -= dt;
+    if (b->flashNegativo > 0.0f)      b->flashNegativo -= dt;
+    if (b->estaticaTela > 0.0f)       b->estaticaTela -= dt;
+    if (b->tempoErro > 0.0f)          b->tempoErro -= dt;
+    if (b->portaNucleoAbrindo > 0.0f) b->portaNucleoAbrindo -= dt;
+    for (int i = 0; i < MAX_TEXTOS_FLUTUANTES; i++)
+        if (b->textos[i].tempo > 0.0f) { b->textos[i].tempo -= dt; b->textos[i].pos.y -= 28.0f * dt; }
+
+    // Cutscene da porta do núcleo: glitch, estática e a inversão de paleta (o jogo espera)
+    if (b->transicaoNucleo > 0.0f) {
+        b->transicaoNucleo -= dt;
+        if (!b->entrouNucleo && b->transicaoNucleo <= TRANSICAO_NUCLEO * 0.45f) {
+            b->entrouNucleo = true;
+            RogueEntrarBloco3(b, prog);
+            b->flashNegativo = 0.6f;
+            b->estaticaTela = 0.8f;
+        }
+        return ROGUE_NADA;
+    }
 
     if (b->vitoriaPendente) {
         b->vitoriaPendente = false;
@@ -13950,7 +14710,13 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         if (naPortaDaSaida)
             return ROGUE_SAIR;
         if (b->perm->bloco3Liberado && CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, PORTA_BLOCO3_ROGUE)) {
-            RogueEntrarBloco3(b, prog);
+            // Continuidade linear: a porta do núcleo abre a cutscene de transição
+            b->transicaoNucleo = TRANSICAO_NUCLEO;
+            b->entrouNucleo = false;
+            b->j.pos.x -= 6.0f;
+            PararSons();
+            TocarSom(sfxEstatica);
+            Telemetria("bloco3_porta", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
             return ROGUE_NADA;
         }
         if (naPortaDeCima) {
@@ -15926,6 +16692,8 @@ static void DesenharScannerLuci(const Biblioteca *b, float tempo)
 }
 
 // Estado da Luci (estabilidade, nome do estado e scanner) acima da arma
+static bool RogueNoBloco3(const Biblioteca *b);
+
 static void DesenharHudLuci(const Biblioteca *b, float tempo)
 {
     int e = RogueEstab(b);
@@ -15933,6 +16701,14 @@ static void DesenharHudLuci(const Biblioteca *b, float tempo)
     Color cor = (e >= 4) ? (Color){ 0, 228, 255, 255 } : ((e == 3) ? GOLD : ((e >= 1) ? ORANGE : MAGENTA));
     Rectangle r = { 44, 484, 214, 18 };
     int dx = (e <= 2 && ((int)(tempo * 9.0f)) % 7 == 0) ? GetRandomValue(-2, 2) : 0;     // glitchando: treme
+
+    // Bloco 3: "data bleed" (a cor oscila entre o azul e o vermelho/magenta)
+    if (RogueNoBloco3(b)) {
+        float q = 0.5f + 0.5f * sinf(tempo * 5.0f + sinf(tempo * 1.7f) * 3.0f);
+        Color a = (Color){ 102, 191, 255, 255 }, c = (((int)(tempo * 1.5f)) % 2) ? (Color){ 230, 41, 55, 255 } : MAGENTA;
+        cor = (Color){ (unsigned char)(a.r + (c.r - a.r) * q), (unsigned char)(a.g + (c.g - a.g) * q), (unsigned char)(a.b + (c.b - a.b) * q), 255 };
+        if (((int)(tempo * 11.0f)) % 9 == 0) dx = GetRandomValue(-3, 3);
+    }
 
     DrawRectangleRec(r, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
     DrawRectangleLinesEx(r, 1, Fade(cor, 0.7f));
@@ -16001,29 +16777,88 @@ static void DesenharLuciGrande(Vector2 p, float altura, float instabilidade, boo
 static void DesenharLuciChefe(const Biblioteca *b, float t)
 {
     const LuciChefe *l = &b->luci;
-    float inst = l->boa ? 0.7f : 1.0f;
+    float inst = (l->boa && l->faseOculta == 1) ? 0.7f : 1.0f;
     float k = (l->morrendo > 0.0f) ? l->morrendo / 2.0f : 1.0f;
 
     if (l->morrendo > 0.0f && b->finalBom)
-        inst *= k;                                      // salva: o magenta vai embora
+        inst = 0.7f * k;                                // salva: o magenta vai embora
 
-    // Fase 2: as cópias (sem sombra e falhando de vez em quando); a verdadeira tem sombra
-    if (l->fase == 2 && l->morrendo <= 0.0f)
+    // Contradições: as cópias (sem sombra e falhando de vez em quando); a verdadeira tem sombra
+    if (l->fase == LUCI_SUB_CONTRADICAO && l->morrendo <= 0.0f && !l->emRegeneracao)
         for (int c = 0; c < 3; c++)
             if (c != l->real && ((int)(t * 13.0f + c * 5)) % 9 != 0)
                 DesenharLuciGrande((Vector2){ l->copia[c].x, l->copia[c].y + sinf(t * 2.0f + c) * 4.0f }, 70.0f, inst, false);
 
     Vector2 p = { l->pos.x, l->pos.y + sinf(t * 2.0f) * 4.0f };
     float altura = 70.0f * ((l->morrendo > 0.0f && !b->finalBom) ? (0.4f + 0.6f * k) : 1.0f);
+    bool esconder = false;
 
-    for (int vez = 0; vez < ((l->flash > 0.0f) ? 2 : 1); vez++) {
-        if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
-        DesenharLuciGrande(p, altura, inst, true);
+    // Queda (falsa derrota): ela afunda, encolhe e falha; renascendo: sobe com a aura da cor nova
+    if (l->emRegeneracao) {
+        Color corNova = (l->faseOculta == 1) ? RED : MAGENTA;
+        if (l->etapaRegeneracao == 0) {
+            float total = (l->faseOculta == 1) ? LUCI_COLAPSO : LUCI_EXPLOSAO_ESTATICA;
+            float q = Clamp(1.0f - l->tempoRegeneracao / total, 0.0f, 1.0f);
+            p.y += 26.0f * fminf(1.0f, q * 3.0f);
+            altura *= 1.0f - 0.35f * fminf(1.0f, q * 3.0f);
+            esconder = ((int)(t * 18.0f)) % 5 == 0;
+        } else {
+            float q = Clamp(1.0f - l->tempoRegeneracao / LUCI_RENASCER, 0.0f, 1.0f);
+            p.y += 26.0f * (1.0f - q);
+            altura *= 0.65f + 0.35f * q;
+            DrawRectangle((int)p.x - (int)(10 + 30 * q), (int)ARENA_ROGUE.y, (int)(20 + 60 * q), (int)(p.y - ARENA_ROGUE.y), Fade(corNova, 0.10f + 0.15f * q));
+            DrawCircleV(p, LUCI_RAIO + 10 + 30 * q, Fade(corNova, 0.25f * q));
+        }
     }
-    if (l->flash > 0.0f) EndBlendMode();
 
-    if (l->morrendo > 0.0f)
+    // Aura da barra atual: vermelha corrompida (2ª) ou magenta psíquica (3ª)
+    if (l->faseOculta >= 2 && !l->emRegeneracao && l->morrendo <= 0.0f) {
+        Color cor = (l->faseOculta == 2) ? RED : MAGENTA;
+        DrawCircleV(p, LUCI_RAIO + 16 + 4.0f * sinf(t * 6.0f), Fade(cor, 0.16f));
+        DrawCircleLines((int)p.x, (int)p.y, LUCI_RAIO + 20 + 3.0f * sinf(t * 9.0f), Fade(cor, 0.5f));
+    }
+
+    // Telegrafia: flash vermelho neon no corpo e nos olhos, a linha da investida e a falácia
+    if (l->estadoMelee == 1 && !l->atordoada && !l->emRegeneracao && l->morrendo <= 0.0f) {
+        float pisca = (sinf(t * 40.0f) > 0.0f) ? 1.0f : 0.35f;
+        DrawCircleV(p, LUCI_RAIO + 28, Fade(RED, 0.30f * pisca));
+        DrawCircleV((Vector2){ p.x - 7, p.y - altura * 0.22f }, 4, Fade((Color){ 255, 40, 60, 255 }, pisca));
+        DrawCircleV((Vector2){ p.x + 7, p.y - altura * 0.22f }, 4, Fade((Color){ 255, 40, 60, 255 }, pisca));
+        DrawLineEx(p, Vector2Add(p, Vector2Scale(l->dirMelee, 230.0f)), 3, Fade(RED, 0.55f * pisca));
+        const char *f = TextFormat("FALÁCIA: %s", FALACIAS_LUCI[l->falacia][0]);
+        DrawText(f, (int)p.x - MeasureText(f, 10) / 2, (int)(p.y - altura * 0.6f) - 16, 10, RED);
+    }
+
+    if (!esconder) {
+        for (int vez = 0; vez < ((l->flash > 0.0f) ? 2 : 1); vez++) {
+            if (vez == 1) BeginBlendMode(BLEND_ADDITIVE);
+            DesenharLuciGrande(p, altura, inst, true);
+        }
+        if (l->flash > 0.0f) EndBlendMode();
+    }
+
+    if (l->morrendo > 0.0f || l->emRegeneracao)
         return;
+
+    // A investida: a lâmina da falácia na frente dela
+    if (l->estadoMelee == 2) {
+        float ang = atan2f(l->dirMelee.y, l->dirMelee.x) * RAD2DEG;
+        Vector2 c = Vector2Add(p, Vector2Scale(l->dirMelee, 24.0f));
+        DrawRing(c, LUCI_LAMINA_RAIO - 6, LUCI_LAMINA_RAIO, ang - 70.0f, ang + 70.0f, 16, Fade(RED, 0.9f));
+        DrawRing(c, LUCI_LAMINA_RAIO - 12, LUCI_LAMINA_RAIO - 8, ang - 50.0f, ang + 50.0f, 12, Fade(WHITE, 0.7f));
+    }
+
+    // Atordoada: estrelas girando, o tempo do atordoamento e o combo
+    if (l->atordoada) {
+        for (int s = 0; s < 3; s++) {
+            float a = t * 5.0f + (float)s * 2.0f * PI / 3.0f;
+            DrawPoly((Vector2){ p.x + cosf(a) * 22.0f, p.y - altura * 0.55f + sinf(a) * 6.0f }, 4, 4.0f, t * 200.0f, GOLD);
+        }
+        DrawRing(p, LUCI_RAIO + 14, LUCI_RAIO + 18, -90.0f, -90.0f + 360.0f * l->tempoStun / PARRY_STUN, 32, GOLD);
+        const char *txt = TextFormat("ATORDOADA  -  COMBO %d/3", l->combo);
+        DrawText(txt, (int)p.x - MeasureText(txt, 10) / 2, (int)(p.y + LUCI_RAIO + 24), 10, GOLD);
+        return;
+    }
 
     // Armadura de dados (hexágonos) ou a janela aberta (anel dourado com o tempo)
     if (!RogueLuciVulneravel(l)) {
@@ -16065,7 +16900,7 @@ static void DesenharContextoLuci(const Biblioteca *b, float t)
 {
     const LuciChefe *l = &b->luci;
 
-    if (!l->ativo || l->fase != 3 || l->morrendo > 0.0f)
+    if (!l->ativo || l->faseOculta != 3 || !l->exigeContexto || l->morrendo > 0.0f || l->emRegeneracao)
         return;
 
     float pulso = 0.5f + 0.5f * sinf(t * 4.0f);
@@ -16095,18 +16930,23 @@ static void DesenharFaixaLuci(const Biblioteca *b, float t)
     const char *ajuda = "";
     Color borda = MAGENTA;
 
-    if (!l->ativo || !l->apresentado || l->morrendo > 0.0f)
+    if (!l->ativo || !l->apresentado || l->morrendo > 0.0f || l->emRegeneracao)
         return;
 
-    if (l->fase == 1 && l->avisando) {
+    if (l->fase == LUCI_SUB_DICA && l->avisando) {
         int seguro = l->dicaFalsa ? l->ladoAtaque : 1 - l->ladoAtaque;
         snprintf(texto, sizeof(texto), "LUCI: \"O lado %s está seguro! Pode confiar.\"", seguro == 0 ? "ESQUERDO" : "DIREITO");
         ajuda = "O aviso vermelho mostra onde o ataque cai de verdade.";
-    } else if (l->fase == 2 && l->frase >= 0) {
+    } else if (l->fase == LUCI_SUB_CONTRADICAO && l->frase >= 0) {
         snprintf(texto, sizeof(texto), "LUCI: \"%s\"", FRASES_LUCI_CHEFE[l->frase]);
         ajuda = "C = CONTESTAR (só se contradiz o que você vê)";
         borda = l->contestada ? GRAY : MAGENTA;
-    } else if (l->fase == 3 && !l->contextoPronto) {
+    } else if (l->mostrarFalacia > 0.0f) {
+        // Depois do parry: a falácia que ela tentou usar, explicada
+        snprintf(texto, sizeof(texto), "FALÁCIA REFUTADA: %s", FALACIAS_LUCI[l->falacia][0]);
+        ajuda = FALACIAS_LUCI[l->falacia][1];
+        borda = GOLD;
+    } else if (l->faseOculta == 3 && l->exigeContexto && !l->contextoPronto) {
         snprintf(texto, sizeof(texto), "PEDIDO CLARO: leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E)");
         ajuda = "Pedido vago faz a Luci inventar uma resposta.";
         borda = (Color){ 0, 228, 255, 255 };
@@ -16120,25 +16960,42 @@ static void DesenharFaixaLuci(const Biblioteca *b, float t)
     DrawText(texto, (int)(faixa.x + faixa.width / 2) - MeasureText(texto, 14) / 2, (int)faixa.y + 8, 14, WHITE);
     DrawText(ajuda, (int)(faixa.x + faixa.width / 2) - MeasureText(ajuda, 10) / 2, (int)faixa.y + 30, 10, Fade(GOLD, 0.75f + 0.25f * sinf(t * 5.0f)));
 
-    if (l->fase == 2 && l->frase >= 0 && l->tempoFraseMax > 0.0f)
+    if (l->fase == LUCI_SUB_CONTRADICAO && l->frase >= 0 && l->tempoFraseMax > 0.0f)
         DrawRectangle((int)faixa.x, (int)(faixa.y + faixa.height) - 3, (int)(faixa.width * l->tempoFrase / l->tempoFraseMax), 3, GOLD);
 }
 
-static void DesenharBarraLuci(const LuciChefe *l)
+// Uma barra só: o jogador não sabe que ela renasce. 1ª: azul/magenta; 2ª: vermelha corrompida; 3ª: magenta psíquica
+static void DesenharBarraLuci(const LuciChefe *l, float t)
 {
     int x = 200, y = 44, w = 400;
+    Color cor;
+
+    if (l->faseOculta == 1)      cor = RogueLuciVulneravel(l) ? (Color){ 0, 228, 255, 255 } : MAGENTA;
+    else if (l->faseOculta == 2) cor = (Color){ 235, 30, 45, 255 };
+    else                         cor = (Color){ 255, 0, 255, 255 };
+
+    bool renascendo = l->emRegeneracao && l->etapaRegeneracao == 1;
+    if (renascendo)     cor = (l->faseOculta == 1) ? (Color){ 235, 30, 45, 255 } : (Color){ 255, 0, 255, 255 };
+    if (l->atordoada)   cor = GOLD;
+
+    if (l->faseOculta >= 2 || renascendo)          // brilho corrompido em volta
+        DrawRectangle(x - 7, y - 5, w + 14, 22, Fade(cor, 0.16f + 0.10f * sinf(t * 8.0f)));
 
     DrawRectangle(x - 4, y - 2, w + 8, 16, Fade(BLACK, 0.8f));
     DrawRectangle(x, y + 2, w, 8, (Color){ 40, 20, 50, 255 });
-    DrawRectangle(x, y + 2, (int)(w * l->hp / l->hpMax), 8, RogueLuciVulneravel(l) ? (Color){ 0, 228, 255, 255 } : MAGENTA);
-    DrawRectangle(x + (int)(w * LUCI_FASE2) - 1, y, 2, 12, WHITE);
-    if (!l->boa) DrawRectangle(x + (int)(w * LUCI_FASE3) - 1, y, 2, 12, WHITE);
+    DrawRectangle(x, y + 2, (int)(w * fmaxf(0.0f, l->hp) / l->hpMax), 8, cor);
+
+    // Renascendo: falhas de dados correndo pela barra
+    if (renascendo || (l->emRegeneracao && ((int)(t * 10.0f)) % 2 == 0))
+        for (int i = 0; i < 6; i++) {
+            unsigned int q = Ruido((unsigned int)(t * 20.0f) * 13u + (unsigned int)i);
+            DrawRectangle(x + (int)(q % (unsigned int)w), y + 2, 4 + (int)((q >> 8) % 20), 8, Fade(WHITE, 0.5f));
+        }
     DrawRectangleLines(x, y + 2, w, 8, GRAY);
 
-    const char *nome = TextFormat("LUCI  -  FASE %d", l->fase);
-    int wNome = MeasureText(nome, 10);
+    int wNome = MeasureText("LUCI", 10);
     DrawRectangle(x - wNome - 18, y - 2, wNome + 12, 16, Fade(BLACK, 0.8f));
-    DrawText(nome, x - wNome - 12, y + 1, 10, MAGENTA);
+    DrawText("LUCI", x - wNome - 12, y + 1, 10, (l->faseOculta == 1) ? MAGENTA : cor);
 }
 
 // Resultado final: o índice, parte por parte, e o final alcançado
@@ -16174,6 +17031,9 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
     DrawText(total, LARGURA_TELA / 2 - MeasureText(total, 18) / 2, (int)painel.y + 340, 18, GOLD);
     DrawText(TextFormat("Pontos: %d", b->pontosFinais), LARGURA_TELA / 2 - MeasureText(TextFormat("Pontos: %d", b->pontosFinais), 14) / 2,
              (int)painel.y + 370, 14, WHITE);
+
+    const char *luta = TextFormat("Parries perfeitos: %d     Combos dedutivos: %d", b->luci.parriesPerfeitos, b->luci.combosConcluidos);
+    DrawText(luta, LARGURA_TELA / 2 - MeasureText(luta, 12) / 2, (int)painel.y + 394, 12, LIGHTGRAY);
 
     if (b->tempoResultado > 1.0f && ((int)(t * 2.0f)) % 2 == 0) {
         const char *ok = "ENTER - ranking e menu";
@@ -17092,6 +17952,278 @@ static void DesenharHudBuild(const Biblioteca *b, int yInicio, float tempo)
     }
 }
 
+// ---------- Reformulação do Bloco 3: efeitos de tela ----------
+
+// Textos corrompidos que vazam no topo da tela ("data bleed")
+static const char *TEXTOS_CORROMPIDOS[] = {
+    "RESPOSTA SEM FONTE", "VERDADE NAO ENCONTRADA", "LUCI.exe: CONFIANCA 100%", "CONTEXTO PERDIDO",
+    "REESCREVENDO MEMORIA", "ERRO 0xUT0P1A", "NAO CONFIE. CONFIRA.", "RESPONDER SEMPRE. MESMO SEM SABER."
+};
+#define NUM_TEXTOS_CORROMPIDOS 8
+
+// Copia o texto trocando algumas letras por lixo de dados (só ASCII, para não quebrar acentos)
+static void CorromperTexto(const char *origem, char *saida, int tam, unsigned int semente, int chance)
+{
+    static const char lixo[] = "#%&01/\\<>_";
+    int i = 0;
+    for (; origem[i] != '\0' && i < tam - 1; i++) {
+        unsigned char c = (unsigned char)origem[i];
+        bool trocar = (c < 128 && c != ' ' && Ruido(semente * 131u + (unsigned int)i) % 100 < (unsigned int)chance);
+        saida[i] = trocar ? lixo[Ruido(semente + (unsigned int)i * 7u) % (sizeof(lixo) - 1)] : (char)c;
+    }
+    saida[i] = '\0';
+}
+
+// Texto com os canais vermelho e azul separados (aberração cromática na interface)
+static void DesenharTextoAberracao(const char *texto, int x, int y, int tam, float deslocamento, Color cor)
+{
+    int d = (int)deslocamento;
+    BeginBlendMode(BLEND_ADDITIVE);
+    DrawText(texto, x - d, y, tam, (Color){ 255, 0, 60, 200 });
+    DrawText(texto, x + d, y + (d > 2 ? 1 : 0), tam, (Color){ 0, 120, 255, 200 });
+    EndBlendMode();
+    DrawText(texto, x, y, tam, cor);
+}
+
+// Quanto a tela deve "sangrar" em aberração cromática agora (0 = nada)
+static float RogueIntensidadeAberracao(const Biblioteca *b)
+{
+    float k = 0.0f;
+
+    if (b->resultadoAberto)
+        return 0.0f;
+
+    // Corredor do núcleo: cresce conforme o jogador caminha até a porta
+    if (b->tipoSala == SALA_TRANSICAO)
+        k = 0.2f + 0.8f * Clamp((SPAWN_ROGUE.y - b->j.pos.y) / (SPAWN_ROGUE.y - 80.0f), 0.0f, 1.0f);
+    else if (b->tipoSala == SALA_LUCI && b->luci.ativo) {
+        if (b->luci.emRegeneracao)       k = 0.9f;
+        else if (b->luci.faseOculta == 3) k = 0.3f;
+        else if (b->luci.faseOculta == 2) k = 0.12f;
+    }
+
+    if (b->transicaoNucleo > 0.0f) k = fmaxf(k, 1.2f);
+    if (b->estaticaTela > 0.0f)    k = fmaxf(k, fminf(1.0f, b->estaticaTela));
+    return k;
+}
+
+// Pós-efeito: desloca os canais R e B do quadro inteiro em ondas senoidais que aceleram
+static RenderTexture2D alvoAberracao = { 0 };
+
+static void AplicarAberracaoCromatica(RenderTexture2D alvo, float k, float tempo)
+{
+    if (alvoAberracao.id == 0)
+        alvoAberracao = LoadRenderTexture(alvo.texture.width, alvo.texture.height);
+
+    float dx = k * 5.0f * sinf(tempo * (3.0f + 9.0f * k));
+    float dy = k * 1.5f * cosf(tempo * 7.0f);
+    Rectangle origem = { 0, 0, (float)alvo.texture.width, -(float)alvo.texture.height };
+
+    BeginTextureMode(alvoAberracao);
+    ClearBackground(BLACK);
+    BeginBlendMode(BLEND_ADDITIVE);
+    DrawTextureRec(alvo.texture, origem, (Vector2){ dx, dy }, (Color){ 255, 0, 0, 255 });
+    DrawTextureRec(alvo.texture, origem, (Vector2){ 0, 0 }, (Color){ 0, 255, 0, 255 });
+    DrawTextureRec(alvo.texture, origem, (Vector2){ -dx, -dy }, (Color){ 0, 0, 255, 255 });
+    EndBlendMode();
+    EndTextureMode();
+
+    BeginTextureMode(alvo);
+    DrawTextureRec(alvoAberracao.texture, origem, (Vector2){ 0, 0 }, WHITE);
+    EndTextureMode();
+}
+
+static void DescarregarAberracao(void)
+{
+    if (alvoAberracao.id > 0) UnloadRenderTexture(alvoAberracao);
+    alvoAberracao = (RenderTexture2D){ 0 };
+}
+
+// A porta do núcleo no átrio: aura magenta com glitch (e a animação de abertura depois do Alucinador)
+static void DesenharPortaNucleoAtrio(const Biblioteca *b, float t)
+{
+    Rectangle r = PORTA_BLOCO3_ROGUE;
+    float abrindo = (b->portaNucleoAbrindo > 0.0f) ? 1.0f - b->portaNucleoAbrindo / 3.0f : 1.0f;
+    float h = r.height * fmaxf(0.08f, abrindo);
+    Rectangle porta = { r.x, r.y + (r.height - h) / 2.0f, r.width, h };
+
+    DrawRectangle((int)r.x - 22, (int)r.y - 12, 36, (int)r.height + 24, Fade(MAGENTA, 0.10f + 0.08f * sinf(t * 5.0f)));
+    for (int i = 0; i < 5; i++) {
+        unsigned int q = Ruido((unsigned int)(t * 9.0f) * 17u + (unsigned int)i);
+        int y = (int)r.y + (int)(q % (unsigned int)r.height);
+        DrawRectangle((int)r.x - 8 - (int)(q % 26), y, 8 + (int)((q >> 5) % 18), 2, Fade(MAGENTA, 0.55f));
+    }
+    DesenharPortaRogue(porta, true, "", t);
+    DrawText("BLOCO 3", (int)r.x - MeasureText("BLOCO 3", 10) - 4, (int)r.y + 30, 10, MAGENTA);
+    DrawText("NÚCLEO", (int)r.x - MeasureText("NÚCLEO", 10) - 4, (int)r.y + 42, 10, Fade(MAGENTA, 0.6f + 0.4f * sinf(t * 7.0f)));
+}
+
+// 3ª barra: o chão fragmentado e as ondas de choque (com a brecha segura)
+static void DesenharNucleoInstavel(const Biblioteca *b, float t)
+{
+    const LuciChefe *l = &b->luci;
+
+    if (!l->ativo || l->faseOculta != 3 || l->morrendo > 0.0f || l->emRegeneracao)
+        return;
+
+    bool pisca = ((int)(t * 10.0f)) % 2 == 0;
+
+    for (int k = 0; k < NUM_PISO_LUCI; k++) {
+        if (l->fasePiso[k] < 0) continue;
+        Rectangle r = l->piso[k];
+
+        if (l->fasePiso[k] == 0) {
+            DrawRectangleLinesEx(r, 1, Fade(MAGENTA, 0.22f));
+        } else if (l->fasePiso[k] == 1) {
+            // Rachando (aviso): vermelho piscando e as rachaduras
+            DrawRectangleRec(r, Fade(RED, pisca ? 0.25f : 0.10f));
+            DrawRectangleLinesEx(r, 2, RED);
+            Vector2 c = CentroRetangulo(r);
+            for (int s = 0; s < 6; s++) {
+                unsigned int q = Ruido((unsigned int)(k * 41 + s * 7));
+                Vector2 p = { r.x + (float)(q % (unsigned int)r.width), r.y + (float)((q >> 8) % (unsigned int)r.height) };
+                DrawLineEx(c, p, 1.5f, Fade(RED, 0.8f));
+            }
+        } else {
+            // Caiu: um buraco de dados
+            DrawRectangleRec(r, (Color){ 4, 0, 10, 255 });
+            for (int s = 0; s < 4; s++) {
+                float y = r.y + fmodf(t * 40.0f + (float)s * r.height / 4.0f, r.height);
+                DrawLine((int)r.x + 4, (int)y, (int)(r.x + r.width) - 4, (int)y, Fade(MAGENTA, 0.25f));
+            }
+            DrawRectangleLinesEx(r, 2, Fade(MAGENTA, 0.6f));
+        }
+    }
+
+    float brecha = l->ondaBrecha * RAD2DEG;
+
+    // Aviso da onda: ela brilha e a brecha aparece em dourado antes
+    if (l->padrao3 == 1 && !l->ondaAtiva) {
+        float k = 1.0f - l->avisoOnda / LUCI_ONDA_AVISO;
+        DrawCircleV(l->pos, LUCI_RAIO + 10 + 30 * k, Fade(WHITE, 0.15f + 0.2f * k));
+        DrawCircleSector(l->pos, 140.0f, brecha - LUCI_ONDA_BRECHA, brecha + LUCI_ONDA_BRECHA, 16, Fade(GOLD, 0.22f));
+        DrawRing(l->pos, 60.0f + 80.0f * k, 64.0f + 80.0f * k, brecha + LUCI_ONDA_BRECHA, brecha + 360.0f - LUCI_ONDA_BRECHA, 48, Fade(RED, 0.5f));
+        Vector2 placa = { l->pos.x + cosf(l->ondaBrecha) * 150.0f, l->pos.y + sinf(l->ondaBrecha) * 150.0f };
+        DrawText("BRECHA", (int)placa.x - MeasureText("BRECHA", 10) / 2, (int)placa.y - 5, 10, GOLD);
+    }
+
+    if (l->ondaAtiva) {
+        DrawRing(l->ondaCentro, l->ondaRaio - 9, l->ondaRaio + 9, brecha + LUCI_ONDA_BRECHA, brecha + 360.0f - LUCI_ONDA_BRECHA, 96, Fade(MAGENTA, 0.85f));
+        DrawRing(l->ondaCentro, l->ondaRaio - 3, l->ondaRaio + 3, brecha + LUCI_ONDA_BRECHA, brecha + 360.0f - LUCI_ONDA_BRECHA, 96, Fade(WHITE, 0.8f));
+        for (int s = -1; s <= 1; s += 2) {
+            float a = l->ondaBrecha + (float)s * LUCI_ONDA_BRECHA * DEG2RAD;
+            DrawCircleV((Vector2){ l->ondaCentro.x + cosf(a) * l->ondaRaio, l->ondaCentro.y + sinf(a) * l->ondaRaio }, 4, GOLD);
+        }
+    }
+}
+
+// Por cima de tudo: textos flutuantes, erro de verificação, scanner, data bleed, estática e o flash negativo
+static void DesenharEfeitosTela(const Biblioteca *b, float t)
+{
+    // Textos que sobem (P -> Q, PARRY PERFEITO!, golpes do combo...)
+    for (int i = 0; i < MAX_TEXTOS_FLUTUANTES; i++) {
+        const TextoFlutuante *f = &b->textos[i];
+        if (f->tempo <= 0.0f) continue;
+        float k = fminf(1.0f, f->tempo / 0.4f);
+        int w = MeasureText(f->texto, 14);
+        DrawText(f->texto, (int)f->pos.x - w / 2 + 1, (int)f->pos.y + 1, 14, Fade(BLACK, 0.7f * k));
+        DrawText(f->texto, (int)f->pos.x - w / 2, (int)f->pos.y, 14, Fade(f->cor, k));
+    }
+
+    // Erro na verificação: o termo falso com aberração cromática e a justificativa
+    if (b->tempoErro > 0.0f) {
+        float k = fminf(1.0f, b->tempoErro / 2.8f);
+        float fade = fminf(1.0f, b->tempoErro / 0.4f);
+        char termo[96];
+        snprintf(termo, sizeof(termo), "ALUCINAÇÃO: %s", b->erroTermo);
+        int w = MeasureText(termo, 18), w2 = MeasureText(b->erroExplicacao, 10);
+        int largura = (w > w2 ? w : w2) + 30, y = 428;
+        DrawRectangle(LARGURA_TELA / 2 - largura / 2, y - 6, largura, 44, Fade(BLACK, 0.75f * fade));
+        DrawRectangleLines(LARGURA_TELA / 2 - largura / 2, y - 6, largura, 44, Fade(RED, 0.8f * fade));
+        float d = 2.0f + 7.0f * k * k + (float)(((int)(t * 30.0f)) % 3);
+        DesenharTextoAberracao(termo, LARGURA_TELA / 2 - w / 2, y, 18, d, Fade(WHITE, fade));
+        DrawText(b->erroExplicacao, LARGURA_TELA / 2 - w2 / 2, y + 22, 10, Fade(LIGHTGRAY, fade));
+    }
+
+    // Scanner de Ecos: moldura ciano nas bordas e o tempo que falta (diferente do aviso de dano)
+    if (b->scanner > 0.0f) {
+        float k = Clamp(b->scanner / SCANNER_DURACAO, 0.0f, 1.0f);
+        Color ciano = (Color){ 0, 228, 255, 255 };
+        float a = 0.45f + 0.25f * sinf(t * 6.0f);
+        DrawRectangleLinesEx((Rectangle){ 1, 1, LARGURA_TELA - 2, 536 }, 2, Fade(ciano, a));
+        for (int c = 0; c < 4; c++) {
+            float x = (c % 2) ? LARGURA_TELA - 4.0f : 4.0f, y = (c / 2) ? 533.0f : 4.0f;
+            float sx = (c % 2) ? -1.0f : 1.0f, sy = (c / 2) ? -1.0f : 1.0f;
+            DrawLineEx((Vector2){ x, y }, (Vector2){ x + sx * 26, y }, 4, ciano);
+            DrawLineEx((Vector2){ x, y }, (Vector2){ x, y + sy * 26 }, 4, ciano);
+        }
+        DrawRectangle(0, 0, (int)(LARGURA_TELA * k), 3, ciano);
+        DrawRectangle(0, 535, (int)(LARGURA_TELA * k), 3, ciano);
+        const char *txt = TextFormat("SCANNER %.1f s", b->scanner);
+        DrawText(txt, LARGURA_TELA - MeasureText(txt, 10) - 10, 6, 10, ciano);
+    }
+
+    // Data bleed: trechos corrompidos no topo (corredor do núcleo e quedas da Luci)
+    bool bleed = b->tipoSala == SALA_TRANSICAO || (b->tipoSala == SALA_LUCI && b->luci.ativo && b->luci.emRegeneracao) || b->transicaoNucleo > 0.0f;
+    if (bleed) {
+        unsigned int quadro = (unsigned int)(t * 6.0f);
+        for (int i = 0; i < 3; i++) {
+            unsigned int q = Ruido(quadro * 7u + (unsigned int)i * 101u);
+            if (q % 3 == 0) continue;
+            char texto[64];
+            CorromperTexto(TEXTOS_CORROMPIDOS[q % NUM_TEXTOS_CORROMPIDOS], texto, sizeof(texto), quadro + (unsigned int)i, 18);
+            int x = 20 + (int)((q >> 4) % 560), y = 44 + (int)((q >> 12) % 14) + i * 2;
+            DesenharTextoAberracao(texto, x, y, 10, 2.0f, Fade(MAGENTA, 0.85f));
+        }
+    }
+
+    // Estática: pontos e faixas
+    if (b->estaticaTela > 0.0f) {
+        float k = fminf(1.0f, b->estaticaTela);
+        unsigned int quadro = (unsigned int)(t * 30.0f);
+        int pontos = (int)(260.0f * k);
+        for (int i = 0; i < pontos; i++) {
+            unsigned int q = Ruido(quadro * 977u + (unsigned int)i);
+            unsigned char c = (unsigned char)(120 + q % 136);
+            DrawRectangle((int)(q % LARGURA_TELA), (int)((q >> 10) % ALTURA_TELA), 2 + (int)((q >> 20) % 3), 2, (Color){ c, c, c, (unsigned char)(200 * k) });
+        }
+        for (int i = 0; i < 6; i++) {
+            unsigned int q = Ruido(quadro * 131u + (unsigned int)i * 17u);
+            DrawRectangle(0, (int)(q % ALTURA_TELA), LARGURA_TELA, 1 + (int)((q >> 8) % 5), Fade((i % 2) ? WHITE : MAGENTA, 0.18f * k));
+        }
+    }
+
+    // Inversão de paleta (negative flash) com faixas de ruído e o desbotamento magenta
+    if (b->flashNegativo > 0.0f) {
+        float k = fminf(1.0f, b->flashNegativo / 0.4f);
+        // Uma inversão só, curta e sem piscar (tela cheia piscando rápido é risco para fotossensíveis)
+        if (b->flashNegativo > 0.3f) {
+            BeginBlendMode(BLEND_SUBTRACT_COLORS);      // branco - tela = negativo
+            DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, WHITE);
+            EndBlendMode();
+            BeginBlendMode(BLEND_ADDITIVE);             // devolve o alfa (a subtração zera o alfa)
+            DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, (Color){ 0, 0, 0, 255 });
+            EndBlendMode();
+        }
+        unsigned int quadro = (unsigned int)(t * 20.0f);
+        for (int i = 0; i < 8; i++) {
+            unsigned int q = Ruido(quadro * 53u + (unsigned int)i * 29u);
+            DrawRectangle(0, (int)(q % ALTURA_TELA), LARGURA_TELA, 2 + (int)((q >> 6) % 10), Fade(MAGENTA, 0.35f * k));
+        }
+        DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(MAGENTA, 0.22f * k));
+    }
+
+    // Cutscene da porta do núcleo
+    if (b->transicaoNucleo > 0.0f) {
+        float q = 1.0f - b->transicaoNucleo / TRANSICAO_NUCLEO;
+        DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade((Color){ 20, 0, 30, 255 }, 0.85f * sinf(q * PI)));
+        char texto[64];
+        CorromperTexto("ACESSANDO O NUCLEO DE UTOPIA...", texto, sizeof(texto), (unsigned int)(t * 12.0f), (int)(10 + 40 * q));
+        int w = MeasureText(texto, 22);
+        DesenharTextoAberracao(texto, LARGURA_TELA / 2 - w / 2, 280, 22, 3.0f + 6.0f * q, Fade(MAGENTA, sinf(q * PI)));
+    }
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
@@ -17104,8 +18236,18 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     // A tela só treme quando o jogador toma dano
     Camera2D cam = { 0 };
     cam.zoom = 1.0f;
-    if (b->tremor > 0.0f)
-        cam.offset = (Vector2){ (float)GetRandomValue(-4, 4), (float)GetRandomValue(-4, 4) };
+    if (b->tremor > 0.0f) {
+        int f = (b->tremorForte > 0.0f) ? (int)PARRY_TREMOR : 4;      // o parry treme mais
+        cam.offset = (Vector2){ (float)GetRandomValue(-f, f), (float)GetRandomValue(-f, f) };
+    }
+
+    // Parry: zoom rápido no ponto do choque
+    if (b->zoomImpacto > 0.0f) {
+        float k = b->zoomImpacto / PARRY_ZOOM;
+        cam.target = b->focoZoom;
+        cam.offset = Vector2Add(cam.offset, b->focoZoom);
+        cam.zoom = 1.0f + 0.14f * k * k;
+    }
 
     BeginMode2D(cam);
 
@@ -17141,10 +18283,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (atrio) {
         DesenharPortaRogue(PORTA_PROXIMA_ROGUE, true, "BIBLIOTECA (MISSÃO)", tempo);
         DesenharPortaRogue(PORTA_SAIDA_ROGUE, true, "CORREDOR", tempo);
-        if (b->perm->bloco3Liberado) {
-            DesenharPortaRogue(PORTA_BLOCO3_ROGUE, true, "", tempo);
-            DrawText("BLOCO 3", (int)PORTA_BLOCO3_ROGUE.x - MeasureText("BLOCO 3", 10) - 4, (int)PORTA_BLOCO3_ROGUE.y + 30, 10, MAGENTA);
-        }
+        if (b->perm->bloco3Liberado)
+            DesenharPortaNucleoAtrio(b, tempo);
     } else if (b->tipoSala == SALA_TRANSICAO) {
         DesenharPortaRogue(PORTA_PROXIMA_ROGUE, b->limpa, "NÚCLEO", tempo);
         for (int i = 0; i < 3; i++) {
@@ -17154,6 +18294,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         }
         DesenharLuciGrande((Vector2){ POS_LUCI_NUCLEO.x, POS_LUCI_NUCLEO.y + sinf(tempo * 2.0f) * 4.0f }, 44.0f, 0.85f, true);
     } else if (b->tipoSala == SALA_LUCI) {
+        DesenharNucleoInstavel(b, tempo);
         DesenharAvisoMetade(b, tempo);
         DesenharContextoLuci(b, tempo);
     } else if (b->noAtual >= 0) {
@@ -17272,6 +18413,19 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         }
 
         DesenharEfeitosJogador(b, tempo);
+
+        // Bloco 3: o Escudo Lógico (janela do parry) e o arco do golpe dedutivo
+        if (j->parry.emParry) {
+            float q = j->parry.tempoJanelaParry / PARRY_JANELA;
+            DrawCircleV(j->pos, 26, Fade(WHITE, 0.10f + 0.10f * q));
+            DrawRing(j->pos, 22, 27, 0, 360, 32, Fade(GOLD, 0.5f + 0.5f * q));
+        }
+        if (j->parry.golpeAnim > 0.0f) {
+            float q = 1.0f - j->parry.golpeAnim / 0.18f;
+            float ang = atan2f(j->parry.dirGolpe.y, j->parry.dirGolpe.x) * RAD2DEG;
+            Vector2 c = Vector2Add(j->pos, Vector2Scale(j->parry.dirGolpe, 18.0f));
+            DrawRing(c, 26, 36, ang - 80.0f + 120.0f * q, ang - 20.0f + 120.0f * q, 12, Fade(GOLD, 1.0f - q));
+        }
 
         // Fragmento do silogismo na mão: flutua sobre a cabeça
         if (b->silogista.ativo && b->silogista.carregando >= 0)
@@ -17428,11 +18582,19 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         case SALA_LUCI: {
             const LuciChefe *l = &b->luci;
             if (!l->ativo || !l->apresentado)  snprintf(o.texto, sizeof(o.texto), "A LUCI");
-            else if (l->fase == 1)             snprintf(o.texto, sizeof(o.texto), "Confira o aviso vermelho antes de acreditar no lado seguro");
-            else if (l->fase == 2)             snprintf(o.texto, sizeof(o.texto), "%s", (l->janela > 0.0f) ? "ARMADURA ABERTA! Acerte a Luci verdadeira (a que tem sombra)"
-                                                                                                          : "Conteste (C) o que contradiz a sala para abrir a armadura");
-            else                               snprintf(o.texto, sizeof(o.texto), "%s", l->contextoPronto ? "Pedido claro! Derrote a Luci"
-                                                                                                          : "Leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E)");
+            else if (l->emRegeneracao && l->etapaRegeneracao == 0)
+                snprintf(o.texto, sizeof(o.texto), "%s", (l->faseOculta == 1) ? "A Luci caiu... acabou?" : "ESTÁTICA! O núcleo está explodindo");
+            else if (l->emRegeneracao)         snprintf(o.texto, sizeof(o.texto), "ERRO: INTEGRIDADE NÃO ENCONTRADA... REINICIANDO");
+            else if (l->atordoada)             snprintf(o.texto, sizeof(o.texto), "ATORDOADA! Chegue perto e ataque (clique): COMBO %d/3", l->combo);
+            else if (l->fase == LUCI_SUB_DICA) snprintf(o.texto, sizeof(o.texto), "Confira o aviso vermelho antes de acreditar no lado seguro");
+            else if (l->fase == LUCI_SUB_CONTRADICAO)
+                snprintf(o.texto, sizeof(o.texto), "%s", (l->janela > 0.0f) ? "ARMADURA ABERTA! Acerte a Luci verdadeira (a que tem sombra)"
+                                                                           : "Conteste (C) o que contradiz a sala para abrir a armadura");
+            else if (l->faseOculta == 2)       snprintf(o.texto, sizeof(o.texto), "Olhos em VERMELHO = golpe: PARRY (X ou botão direito) no impacto");
+            else if (l->exigeContexto && !l->contextoPronto)
+                snprintf(o.texto, sizeof(o.texto), "Leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E) ou dê um PARRY");
+            else if (l->padrao3 == 1)          snprintf(o.texto, sizeof(o.texto), "ONDA DE CHOQUE: passe pela BRECHA de luz ou esquive");
+            else                               snprintf(o.texto, sizeof(o.texto), "Núcleo instável! Parry nas investidas e cuidado com o chão");
         } break;
         case SALA_SILOGISTA: {
             const Silogista *s = &b->silogista;
@@ -17496,7 +18658,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     if (b->luci.ativo && b->luci.apresentado) {
-        DesenharBarraLuci(&b->luci);
+        DesenharBarraLuci(&b->luci, tempo);
         DesenharFaixaLuci(b, tempo);
     }
 
@@ -17577,6 +18739,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     const char *controles = atrio ? "WASD andar    E falar, comprar e ler a enciclopédia    porta de cima: missão    porta da esquerda: corredor"
+                          : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  X / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
                                   : "WASD andar  MOUSE atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar  M mapa  E usar";
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, 10) / 2, ALTURA_TELA - 14, 10, GRAY);
 
@@ -17610,6 +18773,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     if (b->resultadoAberto)
         DesenharResultadoFinal(b, tempo);
+
+    // Bloco 3: textos flutuantes, erro de verificação, scanner, data bleed, estática e flash negativo
+    DesenharEfeitosTela(b, tempo);
 
     // Entrando numa sala nova
     if (b->fadeEntrada > 0.0f)
@@ -20334,6 +21500,13 @@ int main(void) {
 
         EndTextureMode();
 
+        // Bloco 3: aberração cromática (canais R e B deslocados em ondas) sobre o quadro da Biblioteca
+        if (tela == BIBLIOTECA && !pausado && !transicao.ativa) {
+            float aberracao = RogueIntensidadeAberracao(&biblioteca) * ((dlg.estado != DLG_NENHUM) ? 0.3f : 1.0f);
+            if (aberracao > 0.01f)
+                AplicarAberracaoCromatica(alvo, aberracao, tempo);
+        }
+
         // Acabou de apertar ESC: a tela deste frame vira o fundo do pause
         if (capturarPausa) {
 
@@ -20369,6 +21542,7 @@ int main(void) {
     UnloadTexture(imagem_titulo);
     DescarregarLuci();
     DescarregarIconesBiblioteca();       // Bloco 2: ícones opcionais das salas
+    DescarregarAberracao();              // Bloco 3: alvo do pós-efeito
     for (int i = 0; i < NUM_DIRECOES; i++)
         if (!spritesJogador[i].emprestada)
             UnloadTexture(spritesJogador[i].textura);

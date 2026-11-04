@@ -5508,9 +5508,10 @@ enum { PEN_FRAGIL = 1, PEN_LENTO = 2, PEN_VIDA = 4 };
 typedef enum { LADO_CIMA, LADO_ESQUERDA, LADO_DIREITA, LADO_BAIXO, NUM_LADOS } LadoPorta;
 
 typedef enum { RECOMPENSA_NENHUMA, RECOMPENSA_MELHORIA, RECOMPENSA_RARA, RECOMPENSA_FRAGMENTOS, RECOMPENSA_ARMA, RECOMPENSA_VIDA,
+               RECOMPENSA_SELO,     // Silogista bullet-hell: o desafio opcional (Selo amplificado)
                NUM_TIPOS_RECOMPENSA } TipoRecompensa;
 
-static const char *NOMES_RECOMPENSA[NUM_TIPOS_RECOMPENSA] = { "", "MELHORIA", "MELHORIA RARA", "FRAGMENTOS", "ARSENAL", "RESTAURAÇÃO" };
+static const char *NOMES_RECOMPENSA[NUM_TIPOS_RECOMPENSA] = { "", "MELHORIA", "MELHORIA RARA", "FRAGMENTOS", "ARSENAL", "RESTAURAÇÃO", "DESAFIO OPCIONAL" };
 
 #define MAPA_PROFUNDIDADES       8
 #define PROF_SILOGISTA           3
@@ -5814,6 +5815,7 @@ typedef struct {
     int golpesSofridos;         // golpes que tiraram vida nesta sala (desafio de integridade)
 
     JogadorParryState parry;    // Bloco 3: defesa perfeita e o combo de contra-ataque
+    bool seloAmplificado;       // venceu o Silogista bullet-hell: Disparo Dedutivo e EP reforçados
 } JogadorRogue;
 
 // ---------- ALUCINADOR (chefe da Biblioteca) ----------
@@ -5941,6 +5943,94 @@ enum { ENCAIXE_P1, ENCAIXE_P2, ENCAIXE_C, NUM_ENCAIXES };
 #define MAX_PORTAS_CIRCUITO   4
 #define MAX_ELEMENTOS_CIRCUITO (2 + MAX_PORTAS_CIRCUITO)    // 0 = p, 1 = q, 2+k = porta k
 
+// =============================================================
+// O SILOGISTA: ARQUITETURA DUAL (para comparar as duas versões)
+//   SILOGISTA_MODO_QUIZ        = versão LEGADA, preservada sem mudanças: a Câmara da
+//                                Inferência obrigatória no meio do mapa, com os puzzles
+//                                (montagem do silogismo, sofisma e circuito) e as
+//                                explicações que pausam o jogo entre um e outro.
+//   SILOGISTA_MODO_BULLET_HELL = versão NOVA: desafio OPCIONAL no mapa (como em Hades),
+//                                bullet-hell lógico com projéteis simbólicos, FOCUS MODE
+//                                (câmera lenta) e parry. Vencendo: Selo amplificado.
+//   As duas versões são sempre compiladas (a legada não quebra sem ninguém ver);
+//   a flag só escolhe qual delas o jogo usa (descomente a linha da QUIZ abaixo, ou
+//   compile com -DSILOGISTA_MODO_QUIZ). Defina só uma: as duas juntas dão erro.
+// =============================================================
+
+// Alterne esta flag para definir qual versão do Silogista será executada no jogo:
+// #define SILOGISTA_MODO_QUIZ        // Versão Legada (a Câmara da Inferência original)
+#ifndef SILOGISTA_MODO_QUIZ
+#define SILOGISTA_MODO_BULLET_HELL   // Nova Versão Dinâmica (Bullet-Hell + Focus Mode)
+#endif
+
+#if defined(SILOGISTA_MODO_QUIZ) && defined(SILOGISTA_MODO_BULLET_HELL)
+#error "Escolha apenas um modo do Silogista: SILOGISTA_MODO_QUIZ ou SILOGISTA_MODO_BULLET_HELL"
+#endif
+
+#ifdef SILOGISTA_MODO_BULLET_HELL
+#define SILOGISTA_BH 1
+#else
+#define SILOGISTA_BH 0
+#endif
+
+// ---------- Versão bullet-hell (AJUSTE AQUI) ----------
+#define MAX_PROJETEIS_SILOGISTA  20
+#define SIL_BH_META              3        // conclusões válidas para derrubar cada camada da armadura
+#define SIL_BH_FATOR_FOCO        0.3f     // Focus Mode: o mundo anda a 30% (dt * 0.3)
+#define SIL_BH_FOCO_VELOCIDADE   0.6f     // ... e o Thomas mantém 60% da velocidade
+#define SIL_BH_FOCO_EP           16.0f    // EP por segundo segurando o foco
+#define SIL_BH_PENALIDADE_EP     12.0f    // erro lógico: a "estabilidade mental" (EP) do Thomas cai
+#define SIL_BH_RAIO_SIMBOLO      17.0f
+#define SIL_BH_DEDUTIVO_BONUS    1.5f     // recompensa: Disparo Dedutivo 50% mais forte ...
+#define SIL_BH_DEDUTIVO_RECARGA  0.7f     // ... e 30% mais rápido
+#define SIL_BH_EP_BONUS          20.0f    // ... e +20 de EP máximo
+
+typedef enum {
+    PROJETIL_LOGICO_VALIDO,     // a conclusão que decorre das premissas (é nela que se atira)
+    PROJETIL_LOGICO_FALACIA,    // conclusão inválida
+    PROJETIL_LOGICO_PREMISSA    // uma premissa (ela foi dada como verdadeira: não é ela que está em jogo)
+} TipoProjetilLogico;
+
+typedef struct {
+    Vector2 posicao;
+    Vector2 velocidade;
+    char textoSimbolo[16];              // ex.: "P -> Q", "LOGO Q", "INVÁLIDO"
+    const char *explicacaoPedagogica;   // glossário do foco: o argumento completo
+    const char *justificativa;          // acerto: a regra; erro: por que é falácia
+    TipoProjetilLogico tipo;
+    bool ehRespostaCorreta;
+    bool ativo;
+    float raio;
+    float vida;                         // some sozinho depois disso
+    float surgindo;                     // aparecendo (não machuca nem pode ser atingido)
+} ProjetilSilogista;
+
+typedef struct {
+    // Estado do bullet-hell
+    ProjetilSilogista projeteis[MAX_PROJETEIS_SILOGISTA];
+    int totalProjeteis;                 // quantos estão ativos agora
+    bool modoFocoAtivo;
+    float fatorTempo;                   // 1.0 normal, 0.3 no Focus Mode
+
+    // Feedback educativo (faixa no alto: verde = regra confirmada, vermelho = erro com a justificativa)
+    char mensagemFeedback[128];
+    float tempoExibicaoFeedback;
+    Color corFeedback;
+
+    // Progresso
+    int rodada;                         // 0, 1, 2 (uma por camada da armadura)
+    int acertosRodada;
+    bool desafioConcluido;
+    bool recompensaObtida;
+
+    // Padrões de tiro
+    int padrao;
+    float proximoPadrao;
+    int emissoesRestantes;              // espiral em andamento
+    float cronoEmissao, anguloEmissao;
+    float recargaErro;                  // erros seguidos contam uma vez só
+} EstadoSilogista;
+
 typedef struct {
     bool ativo;
     bool apresentado;           // a conversa de abertura já aconteceu
@@ -5978,6 +6068,10 @@ typedef struct {
     float travado[MAX_ELEMENTOS_CIRCUITO];
     float erroElemento[MAX_ELEMENTOS_CIRCUITO];
     float nucleo;                       // núcleo energizado (animação)
+
+    // Versão bullet-hell (SILOGISTA_MODO_BULLET_HELL). Na legada, modoBH fica false.
+    bool modoBH;
+    EstadoSilogista bh;
 } Silogista;
 
 // ---------- BLOCO 3: a Luci como chefe final (AJUSTE AQUI) ----------
@@ -6311,6 +6405,7 @@ typedef struct {
     char erroExplicacao[160];
     float tempoErro;
     TextoFlutuante textos[MAX_TEXTOS_FLUTUANTES];
+    bool bonusSilogistaSessao;  // venceu o Silogista bullet-hell nesta sessão (o Selo amplificado volta no núcleo)
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -6723,6 +6818,87 @@ static const Dialogo dialogoSilogistaVitoria = {
         "Luci: O Selo usa o MODUS PONENS: se P -> Q e P, então Q. O 1º acerto num inimigo marca P -> Q, o 2º confirma P... e a conclusão Q sai como um disparo extra!"
     },
     .numPaginas = 5
+};
+
+// ---------- Versão bullet-hell: falas e as 3 rodadas (uma regra lógica por camada da armadura) ----------
+
+static const Dialogo dialogoSilogistaIntroBH = {
+    .paginas = {
+        "* A Câmara da Inferência gira. Símbolos lógicos orbitam o Silogista como projéteis.",
+        "Silogista: Um visitante voluntário! Prove que sabe raciocinar e eu entrego o meu SELO... amplificado. Fuja, e ninguém vai notar.",
+        "Luci: Ele vai lançar CONCLUSÕES. As premissas ficam lá em cima. Atire (ou dê PARRY com X / botão direito) SÓ na conclusão que DECORRE delas.",
+        "Luci: Segure SHIFT (ou continue segurando ESPAÇO depois da esquiva) para o FOCUS MODE: o tempo desacelera e o símbolo mais perto mostra o argumento completo. Gasta EP.",
+        "Luci: Acertar uma falácia, ou ser atingido por ela, abala a sua estabilidade (EP). Três conclusões certas derrubam cada camada da armadura."
+    },
+    .numPaginas = 5
+};
+
+static const Dialogo dialogosRodadaSilogistaBH[3] = {
+    { .paginas = {
+        "Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra mais usada para tirar conclusões.",
+        "* A primeira camada da armadura lógica se desfaz. Silogista: Sorte. Agora, um argumento que só PARECE certo..." }, .numPaginas = 2 },
+    { .paginas = {
+        "Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR O CONSEQUENTE, um sofisma que parece lógico.",
+        "* A segunda camada se desfaz. Silogista: Última prova. Cuidado com o NÃO." }, .numPaginas = 2 },
+    { .paginas = {
+        "Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se a consequência falhou, a causa também não aconteceu.",
+        "* A última camada da armadura lógica caiu! Luci: Agora é no Disparador, Thomas!" }, .numPaginas = 2 },
+};
+
+static const Dialogo dialogoSilogistaVitoriaBH = {
+    .paginas = {
+        "* O Silogista se desmonta numa chuva de conectivos que se apagam no ar.",
+        "Silogista: Você só aceitou... o que decorria das premissas. Nem mais, nem menos.",
+        "* SELO DA INFERÊNCIA AMPLIFICADO! Disparo Dedutivo 50% mais forte e mais rápido, +20 de EP máximo e a Luci mais estável, até o fim da tentativa (e no núcleo, nesta sessão).",
+        "* FUNDAMENTOS DA LÓGICA foi registrado na enciclopédia.",
+        "Luci: O Selo usa o MODUS PONENS: o 1º acerto num inimigo marca P -> Q, o 2º confirma P... e a conclusão Q sai como um disparo extra!"
+    },
+    .numPaginas = 5
+};
+
+typedef struct {
+    const char *titulo;
+    const char *premissas;
+    const char *pergunta;
+    const char *validos[2][2];          // símbolo, glossário
+    const char *falacias[3][3];         // símbolo, glossário, justificativa do erro
+    const char *premissa[2];            // símbolo, glossário
+    const char *regraAcerto;            // micro-feedback verde
+} RodadaSilogistaBH;
+
+static const RodadaSilogistaBH RODADAS_SILOGISTA_BH[3] = {
+    { "MODUS PONENS",
+      "P1: SE chove (P), ENTÃO o chão molha (Q).     P2: Choveu (P).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO Q", "Conclusão: logo, o chão molhou (Q)." },
+        { "MODUS PONENS", "Regra: de P -> Q e P, conclui-se Q." } },
+      { { "LOGO NÃO Q", "Conclusão: logo, o chão NÃO molhou.", "Contradição: com P -> Q e P verdadeiros, Q não pode ser falso." },
+        { "NÃO P", "Conclusão: logo, não choveu.", "Nega a premissa P2: ela foi dada como verdadeira." },
+        { "Q CAUSA P", "Conclusão: o chão molhado causou a chuva.", "Falsa causalidade: correlação não implica consequência." } },
+      { "P -> Q", "Premissa P1: se chove, o chão molha." },
+      "Modus Ponens: P -> Q e P, logo Q. Confirmada!" },
+
+    { "AFIRMAÇÃO DO CONSEQUENTE",
+      "P1: SE é eco falso (P), ENTÃO some com o scanner (Q).     P2: Sumiu com o scanner (Q).     Logo, é eco (P)?",
+      "Avalie o argumento: atire na avaliação CORRETA.",
+      { { "INVÁLIDO", "Avaliação: o argumento é INVÁLIDO." },
+        { "SOFISMA", "Avaliação: parece válido, mas não é." } },
+      { { "LOGO P", "Conclusão: logo, é um eco falso.", "Afirmar o consequente: outras coisas também podem sumir com o scanner." },
+        { "VÁLIDO", "Avaliação: o argumento é válido.", "Não é: Q verdadeiro não obriga P a ser verdadeiro." },
+        { "TUDO É ECO", "Conclusão: tudo o que some é eco.", "Generalização apressada: um caso não vira regra geral." } },
+      { "Q", "Premissa P2: sumiu com o scanner." },
+      "Afirmar o consequente: ter Q não prova P. Argumento inválido!" },
+
+    { "MODUS TOLLENS",
+      "P1: SE o registro é auditado (P), ENTÃO tem selo (Q).     P2: O registro NÃO tem selo (NÃO Q).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO NÃO P", "Conclusão: logo, o registro NÃO é auditado." },
+        { "MODUS TOLLENS", "Regra: de P -> Q e NÃO Q, conclui-se NÃO P." } },
+      { { "LOGO P", "Conclusão: logo, o registro é auditado.", "Contradição: se fosse auditado (P), teria selo (Q)." },
+        { "LOGO Q", "Conclusão: logo, o registro tem selo.", "Nega a premissa P2: ele NÃO tem selo." },
+        { "Q CAUSA P", "Conclusão: a falta de selo causou a falta de auditoria.", "Falsa causalidade: correlação não implica consequência." } },
+      { "NÃO Q", "Premissa P2: o registro não tem selo." },
+      "Modus Tollens: P -> Q e NÃO Q, logo NÃO P. Confirmada!" },
 };
 
 // Explicações da Luci quando um puzzle dá errado
@@ -7232,7 +7408,7 @@ static float RogueHpMax(const Biblioteca *b)
 
 static float RogueEpMax(const Biblioteca *b)
 {
-    return ROGUE_EP_MAX + MELHORIA_EP * (float)b->perm->melhorias[MELHORIA_ENERGIA];
+    return ROGUE_EP_MAX + MELHORIA_EP * (float)b->perm->melhorias[MELHORIA_ENERGIA] + (b->j.seloAmplificado ? SIL_BH_EP_BONUS : 0.0f);
 }
 
 // Multiplicador de dano de todas as armas (Processador Neural, a melhoria do Byteco e a build)
@@ -7337,6 +7513,7 @@ static void RogueEsvaziarMochila(JogadorRogue *j)
 {
     memset(j->itens, 0, sizeof(j->itens));
     j->seloInferencia = false;
+    j->seloAmplificado = false;
     j->armaExtra = ARMA_DISPARADOR;
     j->usandoExtra = false;
     RogueLimparEfeitos(j);
@@ -7471,6 +7648,7 @@ static void RogueTornarElite(Inimigo *e)
 
 static void RogueIniciarChefe(Biblioteca *b);
 static void RogueIniciarSilogista(Biblioteca *b);
+static void RogueIniciarSilogistaBH(Biblioteca *b);
 static void RogueMontarSalaBloco3(Biblioteca *b, TipoSalaRogue tipo);
 static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde);
 static void RogueLuciContestar(Biblioteca *b, ProgressoCorredor *prog);
@@ -8171,8 +8349,9 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
     }
     else if (tipo == SALA_SILOGISTA) {
         RogueUsarLayout(b, &LAYOUT_CHEFE);
-        RogueIniciarSilogista(b);
-        b->conversaPendente = &dialogoSilogistaIntro;
+        if (SILOGISTA_BH) RogueIniciarSilogistaBH(b);       // versão nova (desafio opcional)
+        else              RogueIniciarSilogista(b);         // versão legada (Câmara obrigatória)
+        b->conversaPendente = SILOGISTA_BH ? &dialogoSilogistaIntroBH : &dialogoSilogistaIntro;
         b->objConversa = OBJ_SILOGISTA_INTRO;
     }
     else {
@@ -8283,7 +8462,9 @@ static void RogueGerarMapa(Biblioteca *b)
     MapaRogue *m = &b->mapa;
     memset(m, 0, sizeof(*m));
 
-    int larg[MAPA_PROFUNDIDADES] = { 1, 2, GetRandomValue(2, 3), 1, GetRandomValue(2, 3), GetRandomValue(2, 3), 2, 1 };
+    // Na versão bullet-hell a camada da Câmara tem 2 salas: a Câmara (opcional) e um caminho que a evita
+    int larg[MAPA_PROFUNDIDADES] = { 1, 2, GetRandomValue(2, 3), SILOGISTA_BH ? 2 : 1, GetRandomValue(2, 3), GetRandomValue(2, 3), 2, 1 };
+    int colunaSilogista = GetRandomValue(0, larg[PROF_SILOGISTA] - 1);
 
     // Nós
     for (int d = 0; d < MAPA_PROFUNDIDADES; d++) {
@@ -8352,7 +8533,8 @@ static void RogueGerarMapa(Biblioteca *b)
             NoMapa *n = RogueNo(b, d, c);
 
             if (d == 0)                   n->tipo = SALA_COMBATE;
-            else if (d == PROF_SILOGISTA) n->tipo = SALA_SILOGISTA;
+            else if (d == PROF_SILOGISTA) n->tipo = (!SILOGISTA_BH || c == colunaSilogista) ? SALA_SILOGISTA
+                                                   : ((GetRandomValue(1, 100) <= 60) ? SALA_COMBATE : ((GetRandomValue(0, 1) == 0) ? SALA_EVENTO : SALA_DESCANSO));
             else if (d == PROF_CHEFE)     n->tipo = SALA_CHEFE;
             else                          n->tipo = RogueSortearTipoSala(d, naCamada);
             naCamada |= 1u << n->tipo;
@@ -8367,6 +8549,7 @@ static void RogueGerarMapa(Biblioteca *b)
             NoMapa *n = RogueNo(b, d, c);
             if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate(d, ultimaRec);
             else if (n->tipo == SALA_ELITE || n->tipo == SALA_DESAFIO) n->recompensa = RECOMPENSA_RARA;
+            else if (n->tipo == SALA_SILOGISTA && SILOGISTA_BH)       n->recompensa = RECOMPENSA_SELO;
             if (d == 0)                       n->recompensa = RECOMPENSA_MELHORIA;    // começa sempre com uma melhoria
         }
     }
@@ -9382,10 +9565,10 @@ static void RogueMarcarDedutivo(Biblioteca *b, int *marca, float *tempo, int alv
     // Premissa 2: P. Conclusão: Q
     *marca = 2;
     *tempo = 0.6f;                              // os símbolos ficam um instante na tela
-    j->recargaDedutivo = DEDUTIVO_RECARGA;
+    j->recargaDedutivo = DEDUTIVO_RECARGA * (j->seloAmplificado ? SIL_BH_DEDUTIVO_RECARGA : 1.0f);
 
     Vector2 origem = { pos.x, fmaxf(ARENA_ROGUE.y + 8.0f, pos.y - 70.0f) };
-    Projetil *q = RogueDisparar(b, origem, (Vector2){ 0, 1 }, DEDUTIVO_VEL, RogueDanoTiro(b) * DEDUTIVO_DANO, 7.0f, true);
+    Projetil *q = RogueDisparar(b, origem, (Vector2){ 0, 1 }, DEDUTIVO_VEL, RogueDanoTiro(b) * DEDUTIVO_DANO * (j->seloAmplificado ? SIL_BH_DEDUTIVO_BONUS : 1.0f), 7.0f, true);
     if (q != NULL) q->alvoDedutivo = alvo;
 
     RogueParticulas(b, origem, GOLD, 12, 140);
@@ -10966,9 +11149,373 @@ static void SilAcertarElemento(Biblioteca *b, ProgressoCorredor *prog, int e)
 }
 
 // Tiro do jogador na Câmara da Inferência. Devolve true se o tiro foi usado.
+// =============================================================
+// O SILOGISTA - VERSÃO BULLET-HELL LÓGICO (SILOGISTA_MODO_BULLET_HELL)
+//   3 rodadas, uma por camada da armadura (Modus Ponens, Afirmação do
+//   Consequente, Modus Tollens). As premissas ficam na faixa do alto; o
+//   Silogista lança CONCLUSÕES curtas em anéis, espirais e cercos. O jogador
+//   atira (ou dá parry) na conclusão válida: ela confirma a regra e desfaz as
+//   falácias da tela. Atingir uma falácia ou ser atingido por ela custa EP
+//   (a estabilidade mental do Thomas) e mostra a justificativa. Sem armadura,
+//   o Silogista vira um bullet-hell comum até cair.
+// =============================================================
+
+static void ExibirFeedbackPedagogico(Silogista *s, const char *texto, Color cor)
+{
+    snprintf(s->bh.mensagemFeedback, sizeof(s->bh.mensagemFeedback), "%s", texto);
+    s->bh.corFeedback = cor;
+    s->bh.tempoExibicaoFeedback = 2.5f;             // a explicação fica 2,5 s na tela
+}
+
+static void RogueIniciarSilogistaBH(Biblioteca *b)
+{
+    Silogista *s = &b->silogista;
+
+    *s = (Silogista){0};
+    s->ativo = true;
+    s->modoBH = true;
+    s->etapa = SIL_MONTAGEM;            // as 3 camadas da armadura usam as etapas (SIL_VULNERAVEL = sem armadura)
+    s->hp = SIL_HP;
+    s->pos = (Vector2){ 400, 170 };
+    s->carregando = -1;
+    s->bh.fatorTempo = 1.0f;
+    s->bh.proximoPadrao = 2.0f;
+}
+
+// Fator do tempo do mundo (Focus Mode): os projéteis e inimigos andam com dt * fator
+static float RogueFatorTempoMundo(const Biblioteca *b)
+{
+    const Silogista *s = &b->silogista;
+    return (b->tipoSala == SALA_SILOGISTA && s->ativo && s->modoBH && s->bh.modoFocoAtivo) ? SIL_BH_FATOR_FOCO : 1.0f;
+}
+
+// papel: 0 = conclusão válida, 1 = falácia, 2 = premissa
+static void SilBHCriarSimbolo(Biblioteca *b, Vector2 pos, Vector2 vel, int papel, float surgindo)
+{
+    Silogista *s = &b->silogista;
+    const RodadaSilogistaBH *r = &RODADAS_SILOGISTA_BH[(s->bh.rodada < 3) ? s->bh.rodada : 2];
+    ProjetilSilogista *q = NULL;
+
+    for (int k = 0; k < MAX_PROJETEIS_SILOGISTA && q == NULL; k++)
+        if (!s->bh.projeteis[k].ativo) q = &s->bh.projeteis[k];
+    if (q == NULL)
+        return;
+
+    *q = (ProjetilSilogista){0};
+    q->ativo = true;
+    q->posicao = pos;
+    q->velocidade = vel;
+    q->raio = SIL_BH_RAIO_SIMBOLO;
+    q->vida = 9.0f;
+    q->surgindo = surgindo;
+
+    if (papel == 0) {
+        int i = GetRandomValue(0, 1);
+        snprintf(q->textoSimbolo, sizeof(q->textoSimbolo), "%s", r->validos[i][0]);
+        q->explicacaoPedagogica = r->validos[i][1];
+        q->justificativa = r->regraAcerto;
+        q->tipo = PROJETIL_LOGICO_VALIDO;
+        q->ehRespostaCorreta = true;
+    } else if (papel == 1) {
+        int i = GetRandomValue(0, 2);
+        snprintf(q->textoSimbolo, sizeof(q->textoSimbolo), "%s", r->falacias[i][0]);
+        q->explicacaoPedagogica = r->falacias[i][1];
+        q->justificativa = r->falacias[i][2];
+        q->tipo = PROJETIL_LOGICO_FALACIA;
+    } else {
+        snprintf(q->textoSimbolo, sizeof(q->textoSimbolo), "%s", r->premissa[0]);
+        q->explicacaoPedagogica = r->premissa[1];
+        q->justificativa = "Premissa: ela foi DADA como verdadeira. O que está em jogo é a conclusão.";
+        q->tipo = PROJETIL_LOGICO_PREMISSA;
+    }
+}
+
+// Começa um padrão (ANEL radial, ESPIRAL ou CERCO circular em volta do jogador)
+static void SilBHComecarPadrao(Biblioteca *b)
+{
+    Silogista *s = &b->silogista;
+    JogadorRogue *j = &b->j;
+    int padrao = s->bh.padrao % 3;
+    s->bh.padrao++;
+
+    if (padrao == 0) {
+        // ANEL: 8 conclusões saindo do Silogista (2 válidas, uma premissa) + um anel de balas comuns
+        int n = 8, v1 = GetRandomValue(0, n - 1), v2 = (v1 + n / 2) % n, pr = (v1 + 2) % n;
+        for (int i = 0; i < n; i++) {
+            float a = (float)i * 2.0f * PI / (float)n + s->anim * 0.5f;
+            Vector2 d = { cosf(a), sinf(a) };
+            SilBHCriarSimbolo(b, Vector2Add(s->pos, Vector2Scale(d, 40.0f)), Vector2Scale(d, 85.0f),
+                              (i == v1 || i == v2) ? 0 : ((i == pr) ? 2 : 1), 0.0f);
+        }
+        for (int i = 0; i < 12; i++) {
+            float a = (float)i * 2.0f * PI / 12.0f + PI / 12.0f + s->anim * 0.5f;
+            RogueDisparar(b, s->pos, (Vector2){ cosf(a), sinf(a) }, SIL_TIRO_VEL * 0.75f, SIL_TIRO_DANO, 5.0f, false);
+        }
+        TocarSomTom(sfxTiro, 0.6f);
+    }
+    else if (padrao == 1) {
+        // ESPIRAL: um símbolo de cada vez, girando (ver RogueAtualizarSilogistaBH)
+        s->bh.emissoesRestantes = 10;
+        s->bh.cronoEmissao = 0.0f;
+        s->bh.anguloEmissao = (float)GetRandomValue(0, 359) * DEG2RAD;
+    }
+    else {
+        // CERCO: um círculo de conclusões em volta do jogador, girando e se fechando devagar
+        int n = 8, v = GetRandomValue(0, n - 1);
+        float giro = (GetRandomValue(0, 1) == 0) ? 1.0f : -1.0f;
+        for (int i = 0; i < n; i++) {
+            float a = (float)i * 2.0f * PI / (float)n;
+            Vector2 d = { cosf(a), sinf(a) };
+            Vector2 p = Vector2Add(j->pos, Vector2Scale(d, 230.0f));
+            if (!CheckCollisionPointRec(p, (Rectangle){ ARENA_ROGUE.x + 20, ARENA_ROGUE.y + 20, ARENA_ROGUE.width - 40, ARENA_ROGUE.height - 40 }))
+                continue;
+            Vector2 tangente = { -d.y * giro, d.x * giro };
+            SilBHCriarSimbolo(b, p, Vector2Add(Vector2Scale(d, -55.0f), Vector2Scale(tangente, 22.0f)),
+                              (i == v) ? 0 : ((i == (v + 4) % n) ? 2 : 1), 0.6f);
+        }
+        TocarSomTom(sfxSelecao, 0.5f);
+    }
+
+    s->bh.proximoPadrao = 3.4f - 0.3f * (float)s->bh.rodada;
+}
+
+// Erro lógico: atingiu a conclusão errada ou foi atingido por ela
+static void SilBHErro(Biblioteca *b, ProgressoCorredor *prog, const ProjetilSilogista *q, bool foiAtingido)
+{
+    Silogista *s = &b->silogista;
+    JogadorRogue *j = &b->j;
+
+    ExibirFeedbackPedagogico(s, q->justificativa, (Color){ 230, 41, 55, 255 });
+    j->ep = fmaxf(0.0f, j->ep - SIL_BH_PENALIDADE_EP);          // a estabilidade mental do Thomas cai
+    RogueTextoFlutuante(b, (Vector2){ q->posicao.x, q->posicao.y - 24 }, TextFormat("ERRO LÓGICO  -%d EP", (int)SIL_BH_PENALIDADE_EP), RED);
+    RogueParticulas(b, q->posicao, RED, 14, 200);
+
+    // Atirou na errada: ela se parte em balas
+    if (!foiAtingido)
+        for (int i = 0; i < 4; i++) {
+            float a = (float)i * PI / 2.0f + PI / 4.0f;
+            RogueDisparar(b, q->posicao, (Vector2){ cosf(a), sinf(a) }, SIL_TIRO_VEL * 0.8f, SIL_TIRO_DANO * 0.7f, 5.0f, false);
+        }
+
+    // Erros seguidos contam uma vez só (no índice e nos pontos)
+    if (s->bh.recargaErro <= 0.0f) {
+        s->bh.recargaErro = 1.5f;
+        RogueRegistrarResposta(b, false);
+        AlterarPontos(prog, -2);
+    }
+
+    TocarSom(sfxErro);
+    MostrarEmocaoLuci(EMOCAO_DUVIDA, 1.5f);
+    Telemetria("rogue_silogista_bh_erro", q->textoSimbolo, (float)s->bh.rodada + 1.0f, foiAtingido ? 1 : 0);
+}
+
+// Uma camada da armadura cai: explicação curta (pausa) e a próxima rodada
+static void SilBHConcluirRodada(Biblioteca *b, ProgressoCorredor *prog)
+{
+    Silogista *s = &b->silogista;
+    int feita = s->bh.rodada;
+
+    s->bh.acertosRodada = 0;
+    s->bh.emissoesRestantes = 0;
+    s->bh.proximoPadrao = 2.0f;
+    memset(s->bh.projeteis, 0, sizeof(s->bh.projeteis));
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+
+    s->etapa = (EtapaSilogista)((int)s->etapa + 1);
+    s->bh.rodada++;
+
+    RogueRegistrarResposta(b, true);
+    AlterarPontos(prog, PONTOS_ETAPA_SILOGISTA);
+    RogueParticulas(b, s->pos, (Color){ 0, 228, 255, 255 }, 30, 240);
+    TocarSom(sfxAcerto);
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
+
+    b->conversaPendente = &dialogosRodadaSilogistaBH[feita];
+    b->objConversa = OBJ_NENHUM;
+    b->pausaImpacto = 0.15f;
+    Telemetria("rogue_silogista_bh", RODADAS_SILOGISTA_BH[feita].titulo, (float)(GetTime() - b->inicio), b->perm->tentativas);
+}
+
+// Escolheu a conclusão k (tiro ou parry)
+static void SilBHEscolher(Biblioteca *b, ProgressoCorredor *prog, int k, bool rebatido)
+{
+    Silogista *s = &b->silogista;
+    ProjetilSilogista q = s->bh.projeteis[k];
+
+    s->bh.projeteis[k].ativo = false;
+
+    if (!q.ehRespostaCorreta) {
+        SilBHErro(b, prog, &q, false);
+        return;
+    }
+
+    // Conclusão válida: o micro-feedback verde explica a regra
+    s->bh.acertosRodada++;
+    ExibirFeedbackPedagogico(s, q.justificativa, (Color){ 0, 228, 48, 255 });
+    RogueTextoFlutuante(b, (Vector2){ q.posicao.x, q.posicao.y - 26 }, TextFormat("%s  %d/%d", q.textoSimbolo, s->bh.acertosRodada, SIL_BH_META), LIME);
+    RogueParticulas(b, q.posicao, LIME, 24, 240);
+    RogueAnel(b, q.posicao, 60.0f, LIME);
+
+    // ... e desfaz as falácias e premissas que estavam na tela
+    for (int i = 0; i < MAX_PROJETEIS_SILOGISTA; i++) {
+        ProjetilSilogista *o = &s->bh.projeteis[i];
+        if (!o->ativo || o->ehRespostaCorreta) continue;
+        RogueParticulas(b, o->posicao, (Color){ 170, 140, 255, 255 }, 6, 140);
+        o->ativo = false;
+    }
+
+    // Rebatida: a conclusão volta voando para o Silogista (só o efeito; a armadura segura)
+    if (rebatido) {
+        Vector2 d = Vector2Subtract(s->pos, q.posicao);
+        d = (Vector2Length(d) > 0.1f) ? Vector2Normalize(d) : (Vector2){ 0, -1 };
+        Projetil *p = RogueDisparar(b, q.posicao, d, 560.0f, 0.0f, 7.0f, true);
+        if (p != NULL) { p->secundario = true; p->arma = ARMA_DISPARADOR; }
+    }
+
+    s->flash = 0.1f;
+    TocarSom(sfxAcerto);
+    TocarSomTom(sfxDedutivo, 1.4f);
+
+    if (s->bh.acertosRodada >= SIL_BH_META)
+        SilBHConcluirRodada(b, prog);
+}
+
+// Tiro do jogador na Câmara (bullet-hell): primeiro os símbolos, depois o corpo do Silogista
+static bool RogueSilogistaAcertoBH(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
+{
+    Silogista *s = &b->silogista;
+
+    if (!s->ativo || !s->apresentado || s->morrendo > 0.0f)
+        return false;
+
+    if (s->etapa != SIL_VULNERAVEL && p->dano > 0.0f)       // dano 0 = a conclusão rebatida (só o efeito)
+        for (int k = 0; k < MAX_PROJETEIS_SILOGISTA; k++) {
+            const ProjetilSilogista *q = &s->bh.projeteis[k];
+            if (!q->ativo || q->surgindo > 0.0f || Vector2Distance(p->pos, q->posicao) > q->raio + p->raio) continue;
+            p->ativo = false;
+            SilBHEscolher(b, prog, k, false);
+            return true;
+        }
+
+    if (Vector2Distance(p->pos, s->pos) < SIL_RAIO + p->raio) {
+        p->ativo = false;
+        if (RogueFerirSilogista(b, p->dano, p->pos) && p->alvoDedutivo == 0)
+            RogueMarcarDedutivo(b, &s->marca, &s->tempoMarca, -1, s->pos);
+        return true;
+    }
+
+    return false;
+}
+
+static void RogueAtualizarSilogistaBH(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    Silogista *s = &b->silogista;
+    JogadorRogue *j = &b->j;
+    EstadoSilogista *e = &s->bh;
+
+    if (e->tempoExibicaoFeedback > 0.0f) e->tempoExibicaoFeedback -= dt;
+    if (e->recargaErro > 0.0f)           e->recargaErro -= dt;
+
+    // Flutua no alto (sem armadura, também sobe e desce)
+    Vector2 alvo = { 400.0f + sinf(s->anim * 0.5f) * 200.0f,
+                     (s->etapa == SIL_VULNERAVEL) ? 200.0f + sinf(s->anim * 0.9f) * 70.0f : 165.0f };
+    s->pos = Vector2Lerp(s->pos, alvo, fminf(1.0f, 3.0f * dt));
+
+    if (Vector2Distance(s->pos, j->pos) < SIL_RAIO + RAIO_CORPO_JOGADOR)
+        RogueFerirJogador(b, SIL_DANO_CONTATO);
+
+    e->proximoPadrao -= dt;
+
+    if (s->etapa != SIL_VULNERAVEL) {
+        if (e->proximoPadrao <= 0.0f && e->totalProjeteis <= MAX_PROJETEIS_SILOGISTA - 8)
+            SilBHComecarPadrao(b);
+
+        // Espiral em andamento: a 4ª e a 8ª são válidas; a 6ª é a premissa
+        if (e->emissoesRestantes > 0) {
+            e->cronoEmissao -= dt;
+            if (e->cronoEmissao <= 0.0f) {
+                int i = 10 - e->emissoesRestantes;
+                Vector2 d = { cosf(e->anguloEmissao), sinf(e->anguloEmissao) };
+                SilBHCriarSimbolo(b, Vector2Add(s->pos, Vector2Scale(d, 40.0f)), Vector2Scale(d, 100.0f),
+                                  (i == 3 || i == 7) ? 0 : ((i == 5) ? 2 : 1), 0.0f);
+                RogueDisparar(b, s->pos, Vector2Rotate(d, PI), SIL_TIRO_VEL * 0.9f, SIL_TIRO_DANO, 5.0f, false);
+                e->anguloEmissao += 36.0f * DEG2RAD;
+                e->cronoEmissao = 0.22f;
+                e->emissoesRestantes--;
+            }
+        }
+    } else {
+        // Sem armadura: anéis e espiral de balas comuns (bullet-hell clássico)
+        if (e->proximoPadrao <= 0.0f) {
+            for (int i = 0; i < 16; i++) {
+                float a = (float)i * 2.0f * PI / 16.0f + s->anim;
+                RogueDisparar(b, s->pos, (Vector2){ cosf(a), sinf(a) }, SIL_TIRO_VEL * 0.8f, SIL_TIRO_DANO, 5.0f, false);
+            }
+            TocarSomTom(sfxTiro, 0.6f);
+            e->proximoPadrao = 1.4f;
+        }
+        e->cronoEmissao -= dt;
+        if (e->cronoEmissao <= 0.0f) {
+            for (int k = 0; k < 2; k++) {
+                float a = s->anim * 2.4f + (float)k * PI;
+                RogueDisparar(b, s->pos, (Vector2){ cosf(a), sinf(a) }, SIL_TIRO_VEL, SIL_TIRO_DANO, 5.0f, false);
+            }
+            e->cronoEmissao = 0.16f;
+        }
+    }
+
+    // Símbolos: andam, somem fora da arena, batem no jogador ou são rebatidos pelo parry
+    int ativos = 0;
+    for (int k = 0; k < MAX_PROJETEIS_SILOGISTA; k++) {
+
+        ProjetilSilogista *q = &e->projeteis[k];
+        if (!q->ativo) continue;
+
+        if (q->surgindo > 0.0f) { q->surgindo -= dt; ativos++; continue; }
+
+        q->posicao = Vector2Add(q->posicao, Vector2Scale(q->velocidade, dt));
+        q->vida -= dt;
+        if (q->vida <= 0.0f || !CheckCollisionPointRec(q->posicao, (Rectangle){ ARENA_ROGUE.x + 4, ARENA_ROGUE.y + 12, ARENA_ROGUE.width - 8, ARENA_ROGUE.height - 16 })) {
+            q->ativo = false;
+            continue;
+        }
+        ativos++;
+
+        float d = Vector2Distance(q->posicao, j->pos);
+
+        // Parry no símbolo: rebate (conta como escolher essa conclusão)
+        if (j->parry.emParry && d < q->raio + RAIO_CORPO_JOGADOR + 22.0f) {
+            j->parry.emParry = false;
+            j->parry.cooldownParry = 0.15f;
+            if (j->invulneravel < 0.3f) j->invulneravel = 0.3f;
+            b->pausaImpacto = 0.06f;
+            b->tremor = 0.15f;
+            b->zoomImpacto = 0.25f;
+            b->focoZoom = q->posicao;
+            RogueAnel(b, q->posicao, 70.0f, GOLD);
+            TocarSom(sfxParryPerfeito);
+            RogueTextoFlutuante(b, (Vector2){ j->pos.x, j->pos.y - 44 }, "PARRY!", GOLD);
+            SilBHEscolher(b, prog, k, true);
+            continue;
+        }
+
+        // Encostar: a conclusão válida passa sem machucar; falácia e premissa ferem
+        if (d < q->raio + RAIO_CORPO_JOGADOR - 2.0f && !q->ehRespostaCorreta && j->invulneravel <= 0.0f && j->tempoEsquiva <= 0.0f) {
+            RogueFerirJogador(b, SIL_TIRO_DANO);
+            SilBHErro(b, prog, q, true);
+            q->ativo = false;
+        }
+    }
+    e->totalProjeteis = ativos;
+}
+
 static bool RogueSilogistaAcerto(Biblioteca *b, ProgressoCorredor *prog, Projetil *p)
 {
     Silogista *s = &b->silogista;
+
+    if (s->modoBH)
+        return RogueSilogistaAcertoBH(b, prog, p);
 
     if (!s->ativo || !s->apresentado || s->morrendo > 0.0f)
         return false;
@@ -11018,7 +11565,7 @@ static void RogueAtualizarSilogista(Biblioteca *b, ProgressoCorredor *prog, floa
                         (GetRandomValue(0, 1) == 0) ? PURPLE : (Color){ 0, 228, 255, 255 }, 3, 220);
         if (s->morrendo <= 0.0f) {
             s->ativo = false;
-            b->conversaPendente = &dialogoSilogistaVitoria;
+            b->conversaPendente = s->modoBH ? &dialogoSilogistaVitoriaBH : &dialogoSilogistaVitoria;
             b->objConversa = OBJ_SILOGISTA_VITORIA;
         }
         return;
@@ -11028,10 +11575,18 @@ static void RogueAtualizarSilogista(Biblioteca *b, ProgressoCorredor *prog, floa
         s->hp = 0.0f;
         s->morrendo = 1.6f;
         memset(s->atq, 0, sizeof(s->atq));
+        memset(s->bh.projeteis, 0, sizeof(s->bh.projeteis));
+        s->bh.modoFocoAtivo = false;
         for (int i = 0; i < MAX_PROJETEIS; i++)
             if (!b->proj[i].doJogador) b->proj[i].ativo = false;
         b->pausaImpacto = 0.2f;
         TocarSomTom(sfxAcerto, 0.6f);
+        return;
+    }
+
+    // Versão bullet-hell: padrões, símbolos e parry próprios (a legada segue abaixo, sem mudanças)
+    if (s->modoBH) {
+        RogueAtualizarSilogistaBH(b, prog, dt);
         return;
     }
 
@@ -11475,6 +12030,8 @@ static void RogueEntrarBloco3(Biblioteca *b, ProgressoCorredor *prog)
     b->j.ep = RogueEpMax(b);
     if (RogueTemConceito(b, CONCEITO_LOGICA))
         b->j.seloInferencia = true;                         // o que foi aprendido no Silogista volta
+    if (b->bonusSilogistaSessao)
+        b->j.seloAmplificado = true;                        // ... e o Selo amplificado (bullet-hell), nesta sessão
     Telemetria("bloco3_entrada", b->indice.total >= INDICE_FINAL_BOM ? "boa" : "ruim", (float)b->indice.total, prog->pontos);
     RogueEntrarSala(b, SALA_TRANSICAO);
 }
@@ -12307,6 +12864,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     // uma janela perdida tem recarga (não dá para ficar apertando sem parar).
     JogadorParryState *pr = &j->parry;
     bool arenaLuci = (b->tipoSala == SALA_LUCI);
+    bool arenaParry = arenaLuci || (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH);     // na Câmara bullet-hell: rebater símbolos
     if (pr->cooldownParry > 0.0f) pr->cooldownParry -= dt;
     if (pr->golpeAnim > 0.0f)     pr->golpeAnim -= dt;
     if (pr->tempoHitFreeze > 0.0f) { pr->tempoHitFreeze -= dt; if (pr->tempoHitFreeze <= 0.0f) pr->hitFreezeAtivo = false; }
@@ -12314,7 +12872,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
         pr->tempoJanelaParry -= dt;
         if (pr->tempoJanelaParry <= 0.0f) { pr->emParry = false; pr->cooldownParry = PARRY_RECARGA; }
     }
-    if (arenaLuci && !pr->emParry && pr->cooldownParry <= 0.0f && (IsKeyPressed(KEY_X) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
+    if (arenaParry && !pr->emParry && pr->cooldownParry <= 0.0f && (IsKeyPressed(KEY_X) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
         pr->emParry = true;
         pr->tempoJanelaParry = PARRY_JANELA;
         TocarSomTom(sfxSelecao, 1.8f);
@@ -12345,6 +12903,20 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
             b->ini[k].atingidoEsquiva = false;
     }
 
+    // Silogista (bullet-hell): FOCUS MODE. Segurar SHIFT, ou continuar segurando ESPAÇO depois da
+    // esquiva, desacelera o mundo (dt * 0,3). Gasta EP; o Thomas ainda anda, mais devagar.
+    Silogista *sg = &b->silogista;
+    if (b->tipoSala == SALA_SILOGISTA && sg->ativo && sg->modoBH && sg->apresentado && sg->morrendo <= 0.0f) {
+        bool segurando = IsKeyDown(KEY_LEFT_SHIFT) || (IsKeyDown(KEY_SPACE) && j->tempoEsquiva <= 0.0f);
+        sg->bh.modoFocoAtivo = segurando && j->ep > 1.0f;
+        sg->bh.fatorTempo = sg->bh.modoFocoAtivo ? SIL_BH_FATOR_FOCO : 1.0f;
+        if (sg->bh.modoFocoAtivo)
+            j->ep = fmaxf(0.0f, j->ep - SIL_BH_FOCO_EP * dt);
+    } else if (sg->bh.modoFocoAtivo) {
+        sg->bh.modoFocoAtivo = false;
+        sg->bh.fatorTempo = 1.0f;
+    }
+
     if (j->tempoEsquiva > 0.0f) {
         j->tempoEsquiva -= dt;
         j->pos = Vector2Add(j->pos, Vector2Scale(j->dirEsquiva, ESQUIVA_DISTANCIA / ESQUIVA_DURACAO * dt));
@@ -12363,6 +12935,8 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
         float vel = RogueVelocidadeJogador(j);
         if (b->silogista.ativo && b->silogista.carregando >= 0)
             vel *= SIL_VELOCIDADE_CARREGANDO;           // carregando um fragmento
+        if (sg->bh.modoFocoAtivo)
+            vel *= SIL_BH_FOCO_VELOCIDADE;              // Focus Mode: movimentação parcial
         j->pos = Vector2Add(j->pos, Vector2Scale(mov, vel * dt));
     }
 
@@ -12407,7 +12981,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
         RogueUsarArma(b, prog, atirando, dt);
 
     // Pulso de Integridade (na arena da Luci o botão direito é o parry: lá o Pulso fica só no Q)
-    if (b->tipoSala != SALA_ATRIO && ((IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !arenaLuci) || IsKeyPressed(KEY_Q)))
+    if (b->tipoSala != SALA_ATRIO && ((IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !arenaParry) || IsKeyPressed(KEY_Q)))
         RoguePulso(b, prog);
 
     // Itens de usar: 1 = Antivírus, 2 = Pacote de Dados
@@ -14130,7 +14704,7 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
         // Carregando, o mecanismo vem primeiro; de mãos vazias, o fragmento no chão.
         const Silogista *s = &b->silogista;
 
-        if (!s->ativo || !s->apresentado || s->etapa != SIL_MONTAGEM)
+        if (!s->ativo || !s->apresentado || s->etapa != SIL_MONTAGEM || s->modoBH)
             return ALVO_NADA;
 
         for (int vez = 0; vez < 2; vez++) {
@@ -14462,6 +15036,14 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         if (!s->recompensaDada) {
             s->recompensaDada = true;
             b->j.seloInferencia = true;
+            if (s->modoBH) {
+                // Desafio opcional vencido: Selo amplificado e um alívio de estabilidade
+                s->bh.desafioConcluido = s->bh.recompensaObtida = true;
+                b->j.seloAmplificado = true;
+                b->bonusSilogistaSessao = true;
+                b->j.ep = RogueEpMax(b);
+                RogueMudarEstabilidade(b, 1, "raciocínio verificado");
+            }
             if (!(b->perm->conceitos & (1u << CONCEITO_LOGICA)))
                 RogueAviso(b, "NOVO CONCEITO NA ENCICLOPÉDIA!");
             else
@@ -14645,9 +15227,12 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
+    // Focus Mode (Silogista bullet-hell): projéteis, inimigos e o Silogista andam com dt * 0,3
+    float dtMundo = dt * RogueFatorTempoMundo(b);
+
     RogueAtualizarJogador(b, prog, dt);
-    RogueAtualizarInimigos(b, dt);
-    RogueAtualizarProjeteis(b, prog, dt);
+    RogueAtualizarInimigos(b, dtMundo);
+    RogueAtualizarProjeteis(b, prog, dtMundo);
     RogueAtualizarColetaveis(b, dt);
 
     RogueAtualizarDedutivo(b, dt);
@@ -14658,7 +15243,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         RogueAtualizarChefe(b, prog, dt);
 
     if (b->tipoSala == SALA_SILOGISTA)
-        RogueAtualizarSilogista(b, prog, dt);
+        RogueAtualizarSilogista(b, prog, dtMundo);
 
     if (b->tipoSala == SALA_LUCI)
         RogueAtualizarLuciChefe(b, prog, dt);
@@ -16360,6 +16945,31 @@ static void DesenharFaixaSilogista(const Biblioteca *b, float tempo)
     if (s->etapa == SIL_VULNERAVEL || s->morrendo > 0.0f)
         return;
 
+    // Versão bullet-hell: as premissas da rodada e a prova (curtas: o texto não voa pela tela)
+    if (s->modoBH) {
+        const RodadaSilogistaBH *r = &RODADAS_SILOGISTA_BH[(s->bh.rodada < 3) ? s->bh.rodada : 2];
+        Rectangle faixa = { 60, 64, 680, 64 };
+        DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.88f));
+        DrawRectangleLinesEx(faixa, 2, ciano);
+
+        int x = (int)faixa.x + 10, y = (int)faixa.y + 6;
+        DrawText(TextFormat("RODADA %d/3  //  %s", s->bh.rodada + 1, r->titulo), x, y, 10, ciano);
+
+        char linhas[320];
+        QuebrarTexto(r->premissas, (int)faixa.width - 20, 12, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, x, y + 14, 12, 14, WHITE);
+        DrawText(r->pergunta, x, y + 44, 10, Fade(GOLD, 0.75f + 0.25f * sinf(tempo * 5.0f)));
+
+        int px = (int)(faixa.x + faixa.width) - 90;
+        DrawText("PROVA", px - 44, y, 10, LIGHTGRAY);
+        for (int c = 0; c < SIL_BH_META; c++) {
+            Rectangle pip = { (float)(px + c * 14), (float)y, 10, 10 };
+            if (c < s->bh.acertosRodada) DrawRectangleRec(pip, LIME);
+            DrawRectangleLinesEx(pip, 1, LIME);
+        }
+        return;
+    }
+
     Rectangle faixa = { 60, 64, 680, 64 };
     DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.88f));
     DrawRectangleLinesEx(faixa, 2, (s->etapa == SIL_SOFISMA) ? MAGENTA : ciano);
@@ -17197,6 +17807,11 @@ static void DesenharIconeRecompensa(TipoRecompensa r, Vector2 c, float e, float 
         case RECOMPENSA_VIDA:
             DesenharCoracao(c.x, c.y, (int)fmaxf(1.0f, 1.5f * e), RED);
             break;
+        case RECOMPENSA_SELO:       // SIMBOLO_SILOGISTA: o selo dourado da inferência (desafio opcional)
+            DrawCircleV(c, 7 * e, GOLD);
+            DrawCircleLines((int)c.x, (int)c.y, 7 * e, ORANGE);
+            DrawText("Q", (int)(c.x - 3 * e), (int)(c.y - 5 * e), (int)fmaxf(8.0f, 10 * e), (Color){ 60, 40, 0, 255 });
+            break;
         default:
             break;
     }
@@ -18002,6 +18617,9 @@ static float RogueIntensidadeAberracao(const Biblioteca *b)
         else if (b->luci.faseOculta == 2) k = 0.12f;
     }
 
+    // Focus Mode do Silogista: uma aberração leve enquanto o foco está ativo
+    if (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH && b->silogista.bh.modoFocoAtivo) k = fmaxf(k, 0.22f);
+
     if (b->transicaoNucleo > 0.0f) k = fmaxf(k, 1.2f);
     if (b->estaticaTela > 0.0f)    k = fmaxf(k, fminf(1.0f, b->estaticaTela));
     return k;
@@ -18224,6 +18842,94 @@ static void DesenharEfeitosTela(const Biblioteca *b, float t)
     }
 }
 
+// ---------- Silogista bullet-hell: desenho ----------
+
+// Os projéteis simbólicos (todos com o mesmo visual: é preciso LER a conclusão) e o glossário do foco
+static void DesenharSimbolosSilogistaBH(const Biblioteca *b, float t)
+{
+    const EstadoSilogista *e = &b->silogista.bh;
+    Color lilas = { 170, 140, 255, 255 };
+    int maisPerto = -1;
+    float menor = 260.0f;
+
+    for (int k = 0; k < MAX_PROJETEIS_SILOGISTA; k++) {
+        const ProjetilSilogista *q = &e->projeteis[k];
+        if (!q->ativo) continue;
+        float d = Vector2Distance(q->posicao, b->j.pos);
+        if (q->surgindo <= 0.0f && d < menor) { menor = d; maisPerto = k; }
+    }
+
+    for (int k = 0; k < MAX_PROJETEIS_SILOGISTA; k++) {
+        const ProjetilSilogista *q = &e->projeteis[k];
+        if (!q->ativo) continue;
+
+        float alfa = (q->surgindo > 0.0f) ? 0.35f + 0.65f * (1.0f - q->surgindo / 0.6f) : 1.0f;
+        int wt = MeasureText(q->textoSimbolo, 10);
+        Rectangle r = { q->posicao.x - (float)(wt + 14) / 2.0f, q->posicao.y - 10, (float)(wt + 14), 20 };
+
+        DrawCircleV(q->posicao, q->raio + 4 + 2.0f * sinf(t * 6.0f + (float)k), Fade(lilas, 0.16f * alfa));
+        DrawRectangleRounded(r, 0.6f, 8, Fade((Color){ 30, 20, 60, 255 }, 0.92f * alfa));
+        DrawRectangleRoundedLinesEx(r, 0.6f, 8, (k == maisPerto && e->modoFocoAtivo) ? 2.0f : 1.0f, Fade((k == maisPerto && e->modoFocoAtivo) ? GOLD : lilas, alfa));
+        DrawText(q->textoSimbolo, (int)q->posicao.x - wt / 2, (int)q->posicao.y - 5, 10, Fade(WHITE, alfa));
+        if (q->surgindo > 0.0f)
+            DrawCircleLines((int)q->posicao.x, (int)q->posicao.y, q->raio + 10.0f * q->surgindo, Fade(lilas, 0.6f));
+    }
+
+    // Glossário do foco: o símbolo mais perto mostra o argumento completo
+    if (e->modoFocoAtivo && maisPerto >= 0) {
+        const ProjetilSilogista *q = &e->projeteis[maisPerto];
+        const char *titulo = q->textoSimbolo;
+        const char *texto = q->explicacaoPedagogica ? q->explicacaoPedagogica : "";
+        int w = MeasureText(texto, 10);
+        if (MeasureText(titulo, 12) > w) w = MeasureText(titulo, 12);
+        w += 16;
+
+        float bx = q->posicao.x + 26.0f, by = q->posicao.y - 40.0f;
+        if (bx + (float)w > ARENA_ROGUE.x + ARENA_ROGUE.width - 4) bx = q->posicao.x - 26.0f - (float)w;
+        by = Clamp(by, ARENA_ROGUE.y + 4, ARENA_ROGUE.y + ARENA_ROGUE.height - 40);
+        Rectangle caixa = { bx, by, (float)w, 34 };
+
+        DrawLineEx(q->posicao, (Vector2){ (bx < q->posicao.x) ? bx + (float)w : bx, by + 17 }, 1, Fade(GOLD, 0.8f));
+        DrawRectangleRec(caixa, Fade((Color){ 10, 20, 45, 255 }, 0.92f));
+        DrawRectangleLinesEx(caixa, 1, (Color){ 102, 191, 255, 255 });
+        DrawText(titulo, (int)bx + 8, (int)by + 4, 12, GOLD);
+        DrawText(texto, (int)bx + 8, (int)by + 19, 10, WHITE);
+    }
+}
+
+// Focus Mode (vinheta azul nas bordas) e o micro-feedback pedagógico no alto
+static void DesenharFocoSilogistaBH(const Biblioteca *b, float t)
+{
+    const EstadoSilogista *e = &b->silogista.bh;
+
+    if (e->modoFocoAtivo) {
+        Color azul = { 40, 110, 255, 255 };
+        DrawRectangle(0, 0, LARGURA_TELA, 538, Fade(azul, 0.06f));
+        DrawRectangleGradientV(0, 0, LARGURA_TELA, 80, Fade(azul, 0.38f), Fade(azul, 0.0f));
+        DrawRectangleGradientV(0, 458, LARGURA_TELA, 80, Fade(azul, 0.0f), Fade(azul, 0.38f));
+        DrawRectangleGradientH(0, 0, 80, 538, Fade(azul, 0.38f), Fade(azul, 0.0f));
+        DrawRectangleGradientH(LARGURA_TELA - 80, 0, 80, 538, Fade(azul, 0.0f), Fade(azul, 0.38f));
+        const char *rotulo = "FOCUS MODE - ANÁLISE LÓGICA ATIVA";
+        DrawText(rotulo, LARGURA_TELA / 2 - MeasureText(rotulo, 14) / 2, 506, 14, Fade(SKYBLUE, 0.75f + 0.25f * sinf(t * 6.0f)));
+    }
+
+    if (e->tempoExibicaoFeedback > 0.0f) {
+        // Título curto (o erro "corrompe" com aberração) e a justificativa sempre legível embaixo
+        float k = fminf(1.0f, e->tempoExibicaoFeedback / 0.4f);
+        bool erro = (e->corFeedback.r > 200 && e->corFeedback.g < 100);
+        const char *titulo = erro ? "CORRUPÇÃO LÓGICA" : "REGRA VALIDADA";
+        int wt = MeasureText(titulo, 12), wm = MeasureText(e->mensagemFeedback, 12);
+        int w = ((wt > wm) ? wt : wm) + 30;
+        Rectangle r = { (float)(LARGURA_TELA / 2 - w / 2), 166, (float)w, 40 };
+
+        DrawRectangleRec(r, Fade(BLACK, 0.85f * k));
+        DrawRectangleLinesEx(r, 2, Fade(e->corFeedback, k));
+        if (erro) DesenharTextoAberracao(titulo, LARGURA_TELA / 2 - wt / 2, (int)r.y + 5, 12, 1.0f + 3.0f * (e->tempoExibicaoFeedback / 2.5f), Fade(e->corFeedback, k));
+        else      DrawText(titulo, LARGURA_TELA / 2 - wt / 2, (int)r.y + 5, 12, Fade(e->corFeedback, k));
+        DrawText(e->mensagemFeedback, LARGURA_TELA / 2 - wm / 2, (int)r.y + 22, 12, Fade(WHITE, k));
+    }
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
@@ -18326,12 +19032,15 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         // Câmara da Inferência: o mecanismo (montagem e sofisma) ou o circuito, que fica aceso depois
         const Silogista *s = &b->silogista;
 
-        if (s->etapa >= SIL_CIRCUITO)
+        if (s->modoBH) {
+            if (s->ativo) DesenharSimbolosSilogistaBH(b, tempo);       // versão bullet-hell
+        }
+        else if (s->etapa >= SIL_CIRCUITO)
             DesenharCircuito(s, tempo);
         else if (s->ativo)
             DesenharMecanismoSilogismo(s, tempo);
 
-        if (s->ativo && s->etapa == SIL_MONTAGEM)
+        if (s->ativo && s->etapa == SIL_MONTAGEM && !s->modoBH)
             for (int k = 0; k < NUM_ENCAIXES; k++)
                 if (SilPecaNoChao(s, k))
                     DesenharPecaSilogismo(s->posPeca[k], s->letraPeca[k], (Color){ 0, 228, 255, 255 }, tempo);
@@ -18600,6 +19309,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             const Silogista *s = &b->silogista;
             if (b->limpa)                          snprintf(o.texto, sizeof(o.texto), "Câmara vencida! Escolha uma porta");
             else if (!s->ativo || !s->apresentado) snprintf(o.texto, sizeof(o.texto), "O SILOGISTA");
+            else if (s->modoBH && s->etapa != SIL_VULNERAVEL)
+                snprintf(o.texto, sizeof(o.texto), "Acerte a conclusão VÁLIDA: %d/%d  (SHIFT = foco)", s->bh.acertosRodada, SIL_BH_META);
             else if (s->etapa == SIL_MONTAGEM)     snprintf(o.texto, sizeof(o.texto), "%s", (s->carregando >= 0) ? "Leve o fragmento até P1, P2 ou C (E encaixa)"
                                                                                                                : "Pegue os fragmentos (E) e monte o silogismo");
             else if (s->etapa == SIL_SOFISMA)      snprintf(o.texto, sizeof(o.texto), "Destrua a tiros a peça do argumento que não se sustenta");
@@ -18655,6 +19366,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (b->silogista.ativo && b->silogista.apresentado) {
         DesenharBarraSilogista(&b->silogista);
         DesenharFaixaSilogista(b, tempo);
+        if (b->silogista.modoBH)
+            DesenharFocoSilogistaBH(b, tempo);
     }
 
     if (b->luci.ativo && b->luci.apresentado) {
@@ -18739,6 +19452,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     const char *controles = atrio ? "WASD andar    E falar, comprar e ler a enciclopédia    porta de cima: missão    porta da esquerda: corredor"
+                          : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  X / botão direito PARRY  Q pulso  H scanner  E usar"
                           : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  X / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
                                   : "WASD andar  MOUSE atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar  M mapa  E usar";
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, 10) / 2, ALTURA_TELA - 14, 10, GRAY);

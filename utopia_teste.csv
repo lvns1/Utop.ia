@@ -478,3 +478,231 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 658.0;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;8.7;4
 658.0;fim_do_jogo;bom;80.0;371
 664.3;ranking;JON;371.0;3
+14.4;sessao_inicio;;0.0;0
+26.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.6;3
+32.5;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;4.0;3
+69.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;22.0;0
+85.4;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+92.2;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+105.6;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;70.3;3
+106.1;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;70.9;1
+107.0;cartao;ALUCINAÇÃO;0.8;0
+116.2;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;50.0;2
+123.3;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;99.0;3
+126.0;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;18.1;2
+128.9;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.9;0
+131.1;cartao;INTRÍNSECA x EXTRÍNSECA;2.3;0
+140.6;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;34.0;1
+149.9;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;81.0;2
+152.6;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;20.3;2
+153.1;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;20.9;0
+154.1;cartao;COMO EVITAR;1.0;0
+161.0;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;6.9;3
+165.1;ajuda_luci;dica;4.0;0
+167.5;chefe_debate;certo;1.0;8
+169.5;ajuda_luci;dica;3.0;1
+169.7;chefe_debate;certo;1.0;6
+171.2;ajuda_luci;dica;2.0;2
+173.9;chefe_debate;certo;1.0;4
+175.5;ajuda_luci;dica;1.0;3
+180.4;chefe_debate;certo;1.0;9
+182.0;ajuda_luci;dica;0.0;4
+184.4;chefe_debate;certo;1.0;0
+187.5;golpe_final;FIM DO BLOCO 1 // DEBATE COM FONTES;26.4;5
+187.8;batalha_vitoria;FIM DO BLOCO 1 // DEBATE COM FONTES;26.8;0
+188.4;cartao;ALUCINAÇÃO MESTRE;0.6;0
+188.4;ranking;JAE;95.0;4
+190.4;dialogo;Luci: Os 3 monitores estão limpos! A porta da direita abriu;0.9;1
+201.9;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;6.7;5
+210.2;dialogo;Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens;1.0;2
+227.9;dialogo;Byte: A IA generativa é um tipo de inteligência artificial;4.2;6
+233.3;rogue_missao;inicio;0.0;1
+233.3;rogue_sala;COMBATE;0.0;0
+233.4;rogue_encontro;ENXAME DIGITAL;1.0;1
+240.2;rogue_temporario;PROXY-ISCA;0.0;0
+240.2;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+240.2;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+246.3;rogue_sala_limpa;sala 1 ELIMINAR;12.9;16
+247.6;rogue_recompensa_sala;MELHORIA;0.0;0
+257.6;rogue_build;ROTULAGEM DE DADOS;1.0;1
+261.7;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;0
+267.1;rogue_sala;EDUCATIVA;1.0;1
+268.2;dialogo;Luci: Eu nunca alucino. Eu nunca... Thomas, confira tudo o q;0.8;1
+271.8;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;2.4;4
+271.8;rogue_terminal;conceito 1;0.0;5
+274.5;dialogo;* ARQUIVO DE AMEAÇA // BOTNET;1.2;3
+274.5;rogue_registro_sala;2;0.0;1
+277.5;rogue_sala;EVENTO;2.0;2
+282.5;rogue_evento;3;1.0;2
+286.2;rogue_sala;SILOGISTA;3.0;3
+316.6;dialogo;* A Câmara da Inferência gira. Símbolos lógicos orbitam ;30.1;5
+337.7;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+359.4;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+360.3;rogue_silogista_bh_erro;P -> Q;1.0;0
+382.2;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+399.5;rogue_silogista_bh_erro;Q CAUSA P;1.0;0
+399.8;rogue_silogista_bh;MODUS PONENS;166.5;1
+401.5;dialogo;Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra ;1.7;2
+406.3;rogue_silogista_bh_erro;TUDO É ECO;2.0;1
+413.0;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+431.5;rogue_silogista_bh;AFIRMAÇÃO DO CONSEQUENTE;198.1;1
+433.2;dialogo;Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR;1.6;2
+434.0;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+445.4;rogue_silogista_bh_erro;Q CAUSA P;3.0;1
+460.2;luci_contradicao;A armadura dele caiu: atire à vontade!;0.0;1
+467.0;rogue_silogista_bh_erro;LOGO Q;3.0;0
+468.6;rogue_silogista_bh;MODUS TOLLENS;235.2;1
+470.0;dialogo;Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se ;1.3;2
+503.4;dialogo;* O Silogista se desmonta numa chuva de conectivos que se ap;7.8;5
+503.4;rogue_silogista_vitoria;;270.0;1
+507.9;rogue_sala;DESAFIO;4.0;4
+510.2;rogue_evento;9;0.0;4
+527.0;rogue_desafio_sala;ecos;1.0;14
+528.1;rogue_recompensa_sala;MELHORIA RARA;4.0;4
+533.5;rogue_build;TOKENS SALTITANTES;1.0;1
+536.0;rogue_sala;COMBATE;5.0;5
+536.0;rogue_encontro;REDE ZUMBI;3.0;2
+538.8;luci_contradicao;Sala limpa! Pode escolher uma porta;0.0;2
+547.3;rogue_desafio;certo;0.0;1
+556.0;rogue_morte;sala 6;322.7;37
+580.6;rogue_loja;FRAGMENTADORA;8.0;16
+587.3;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.1;2
+593.2;dialogo;* TERMINAL // ALUCINAÇÕES DE IA (versão completa);3.1;6
+596.8;rogue_missao;inicio;0.0;2
+596.8;rogue_sala;COMBATE;0.0;0
+596.8;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+608.0;rogue_sala_limpa;sala 1 ELIMINAR;11.2;5
+608.8;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+610.5;rogue_recompensa_sala;MELHORIA;0.0;0
+620.8;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+622.1;luci_contradicao;Cuidado: ainda há inimigos escondidos nesta sala;0.0;3
+627.4;rogue_sala;COMBATE;1.0;1
+627.4;rogue_encontro;ISCA E ANZOL;1.0;2
+656.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+658.1;luci_contradicao;Sala limpa! Pode escolher uma porta;0.0;3
+660.1;rogue_sala_limpa;sala 2 SOBREVIVER;63.3;12
+662.8;rogue_recompensa_sala;MELHORIA;1.0;1
+670.2;rogue_build;SAÍDA GENERATIVA;1.0;1
+673.0;rogue_sala;ELITE;2.0;2
+673.0;rogue_encontro;SOBRECARGA ELITE;3.0;3
+678.1;rogue_desafio;certo;0.0;4
+698.7;rogue_sala_limpa;sala 3 ELIMINAR;101.8;21
+702.6;rogue_recompensa_sala;MELHORIA RARA;2.0;2
+705.2;rogue_build;VERIFICAÇÃO CRUZADA;1.0;1
+711.0;rogue_sala;SILOGISTA;3.0;3
+713.7;dialogo;* A Câmara da Inferência gira. Símbolos lógicos orbitam ;2.3;5
+719.2;rogue_silogista_bh_erro;P -> Q;1.0;0
+735.6;rogue_silogista_bh;MODUS PONENS;138.8;2
+736.7;dialogo;Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra ;1.0;2
+760.8;rogue_silogista_bh;AFIRMAÇÃO DO CONSEQUENTE;163.9;2
+761.9;dialogo;Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR;1.1;2
+788.6;rogue_silogista_bh;MODUS TOLLENS;191.8;2
+789.7;dialogo;Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se ;1.1;2
+807.9;rogue_morte;sala 4;211.1;21
+823.9;rogue_melhoria;MEMÓRIA EXPANDIDA;8.0;1
+824.3;rogue_melhoria;MEMÓRIA EXPANDIDA;12.0;2
+826.0;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;8.0;1
+829.7;rogue_missao;inicio;0.0;3
+829.7;rogue_sala;COMBATE;0.0;0
+829.7;rogue_encontro;ENXAME DIGITAL;1.0;1
+839.1;rogue_sala_limpa;sala 1 ELIMINAR;9.5;24
+840.4;rogue_recompensa_sala;MELHORIA;0.0;0
+849.9;rogue_build;REDUNDÂNCIA DE DADOS;0.0;1
+855.3;rogue_sala;COMBATE;1.0;1
+855.3;rogue_encontro;ISCA E ANZOL;1.0;2
+866.2;rogue_temporario;OVERCLOCK;0.0;0
+876.8;rogue_sala_limpa;sala 2 NÚCLEOS DE CORRUPÇÃO;47.1;35
+879.5;rogue_recompensa_sala;ARSENAL;1.0;1
+892.1;rogue_build;DISPARADOR CALIBRADO;0.0;1
+902.5;rogue_sala;EVENTO;2.0;2
+906.7;rogue_evento;2;0.0;2
+918.8;rogue_build;CONTRA-ATAQUE HEURÍSTICO;1.0;1
+923.1;rogue_sala;SILOGISTA;3.0;3
+925.5;dialogo;* A Câmara da Inferência gira. Símbolos lógicos orbitam ;2.1;5
+927.7;rogue_silogista_bh_erro;Q CAUSA P;1.0;0
+928.0;rogue_silogista_bh_erro;LOGO NÃO Q;1.0;0
+937.1;rogue_silogista_bh_erro;Q CAUSA P;1.0;0
+946.4;rogue_silogista_bh_erro;P -> Q;1.0;0
+955.9;rogue_silogista_bh;MODUS PONENS;126.3;3
+957.0;dialogo;Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra ;1.0;2
+967.8;rogue_silogista_bh;AFIRMAÇÃO DO CONSEQUENTE;138.2;3
+968.9;dialogo;Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR;1.0;2
+992.9;rogue_silogista_bh;MODUS TOLLENS;163.2;3
+994.0;dialogo;Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se ;1.1;2
+1008.8;dialogo;* O Silogista se desmonta numa chuva de conectivos que se ap;2.7;5
+1008.8;rogue_silogista_vitoria;;179.2;3
+1010.6;rogue_sala;COMBATE;4.0;4
+1010.6;rogue_encontro;DADOS PERSISTENTES;2.0;3
+1022.4;rogue_desafio;certo;0.0;5
+1027.2;rogue_sala_limpa;sala 5 ELIMINAR;197.5;42
+1028.1;rogue_recompensa_sala;MELHORIA;4.0;4
+1033.6;rogue_build;JANELA DE CONTEXTO;0.0;1
+1037.5;rogue_sala;EVENTO;5.0;5
+1043.9;rogue_evento;4;0.0;5
+1045.4;rogue_sala;DESCANSO;6.0;6
+1050.6;rogue_evento;8;0.0;6
+1052.3;luci_scanner;certo;0.0;5
+1055.9;rogue_sala;ALUCINADOR;7.0;7
+1058.3;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.0;4
+1060.0;rogue_chefe_fase2;;230.3;0
+1061.3;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.3;2
+1065.5;rogue_chefe_afirmacao;certo;6.0;0
+1073.2;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.1;7
+1073.2;rogue_chefe_vitoria;;243.6;3
+1073.3;ranking;JAE;395.0;3
+1077.0;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;1.4;1
+1090.1;rogue_loja;PULSO DE FIREWALL;14.0;11
+1100.9;rogue_loja;PROCESSADOR NEURAL;6.0;5
+1106.9;rogue_missao;inicio;0.0;4
+1106.9;rogue_sala;COMBATE;0.0;0
+1106.9;rogue_encontro;ENXAME DIGITAL;1.0;1
+1119.0;rogue_sala_limpa;sala 1 ELIMINAR;12.1;22
+1122.4;rogue_recompensa_sala;MELHORIA;0.0;0
+1126.0;rogue_build;ESQUIVA FRAGMENTADA;1.0;1
+1129.1;rogue_sala;RECOMPENSA;1.0;1
+1133.8;rogue_recompensa;ROTEAMENTO DINÂMICO;0.0;0
+1134.6;rogue_sala;ELITE;2.0;2
+1134.6;rogue_encontro;SOBRECARGA ELITE;3.0;2
+1149.6;rogue_desafio;certo;0.0;11
+1159.8;rogue_temporario;OVERCLOCK;0.0;0
+1161.9;rogue_sala_limpa;sala 3 ELIMINAR;55.0;31
+1161.9;rogue_sala;SILOGISTA;3.0;3
+1165.4;dialogo;* A Câmara da Inferência gira. Símbolos lógicos orbitam ;3.1;5
+1178.3;rogue_silogista_bh_erro;LOGO NÃO Q;1.0;1
+1193.7;rogue_silogista_bh;MODUS PONENS;86.7;4
+1194.9;dialogo;Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra ;1.3;2
+1206.3;rogue_silogista_bh;AFIRMAÇÃO DO CONSEQUENTE;99.4;4
+1207.5;dialogo;Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR;1.2;2
+1217.9;rogue_silogista_bh;MODUS TOLLENS;111.0;4
+1219.0;dialogo;Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se ;1.0;2
+1259.5;dialogo;* O Silogista se desmonta numa chuva de conectivos que se ap;2.6;5
+1259.5;rogue_silogista_vitoria;;152.6;4
+1261.1;rogue_sala;COMBATE;4.0;4
+1261.1;rogue_encontro;ENXAME DIGITAL;2.0;3
+1263.8;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1266.5;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1274.2;rogue_temporario;OVERCLOCK;0.0;0
+1297.1;rogue_sala_limpa;sala 5 NÚCLEOS DE CORRUPÇÃO;190.2;69
+1298.8;rogue_recompensa_sala;RESTAURAÇÃO;4.0;4
+1301.2;rogue_sala;EVENTO;5.0;5
+1314.6;rogue_evento;5;1.0;5
+1318.8;rogue_sala;ELITE;6.0;6
+1318.8;rogue_encontro;GUARDA DE ELITE;3.0;4
+1322.7;rogue_desafio;certo;0.0;5
+1333.8;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+1343.8;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+1346.3;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+1348.3;rogue_sala_limpa;sala 7 ELIMINAR;241.4;86
+1350.3;rogue_recompensa_sala;MELHORIA RARA;6.0;6
+1355.2;rogue_build;MURALHA ATIVA;1.0;1
+1358.3;rogue_sala;ALUCINADOR;7.0;7
+1360.5;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;1.8;4
+1378.9;rogue_chefe_fase2;;272.0;0
+1380.3;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.4;2
+1384.7;rogue_chefe_afirmacao;certo;6.0;2
+1397.7;rogue_chefe_afirmacao;certo;6.0;4
+1412.5;rogue_chefe_afirmacao;certo;6.0;1
+1420.8;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.2;7
+1420.8;rogue_chefe_vitoria;;313.9;4
+1420.8;ranking;JAE;647.0;2
+1423.2;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;1.3;1

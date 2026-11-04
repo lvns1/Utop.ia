@@ -5239,7 +5239,9 @@ static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }
 
 // Os tipos novos (reformulação do Bloco 2) ficam no FINAL: os valores antigos não mudam
 typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_CHEFE, SALA_SILOGISTA, SALA_TRANSICAO, SALA_LUCI,
-               SALA_ELITE, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_SECRETA, NUM_TIPOS_SALA } TipoSalaRogue;
+               SALA_ELITE, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_SECRETA,
+               SALA_LABORATORIO,    // expansão educativa: os cinco laboratórios (a categoria fica no nó do mapa)
+               NUM_TIPOS_SALA } TipoSalaRogue;
 
 typedef enum {
     INIMIGO_FRAGMENTO, INIMIGO_GUARDIAO, INIMIGO_ECO,
@@ -5532,6 +5534,7 @@ typedef struct {
     bool escondida;             // sala secreta ainda não descoberta (não aparece no mapa)
     int secreta;                // sala secreta escondida nesta sala (-1 = nenhuma)
     int pai;                    // sala secreta: a sala onde ela estava escondida
+    int lab;                    // laboratório: a categoria (TipoLab)
 } NoMapa;
 
 typedef struct {
@@ -5658,6 +5661,132 @@ typedef enum { DESAFIO_SALA_ECOS, DESAFIO_SALA_INTEGRIDADE, NUM_DESAFIOS_SALA } 
 #define DESAFIO_INTEG_TEMPO      25.0f
 #define DESAFIO_INTEG_GOLPES     3        // pode levar até 3 golpes
 
+// =============================================================
+// EXPANSÃO EDUCATIVA DO BLOCO 2: OS LABORATÓRIOS DA BIBLIOTECA
+// =============================================================
+// Uma sala nova do mapa (SALA_LABORATORIO) com cinco categorias, cada uma com
+// uma mecânica própria e um console que abre uma janela por cima da sala:
+//   LABORATÓRIO DE PROMPTS  Modo Prompt: monta o pedido com botões, uma IA simulada
+//                            (offline, respostas cadastradas) responde e o jogador
+//                            julga a resposta (aceitar, reformular ou desconfiar)
+//   ARQUIVO CORROMPIDO      acha a afirmação suspeita e escolhe como verificá-la
+//   NÚCLEO NEURAL           carrega blocos de contexto sem estourar a capacidade
+//   FIREWALL ÉTICO          viés algorítmico (problema + correção) e privacidade
+//                            (pacotes de dados passando pelo firewall)
+//   CÂMARA DE PESQUISA      investiga uma mídia suspeita: pistas, ferramentas e veredito
+// As três primeiras são COMUNS: a porta só abre quando o desafio termina (sempre dá
+// para terminar). As duas últimas são ESPECIAIS: opcionais, com recompensa maior.
+// A Luci ajuda em todas (dica, análise, verificação, reformulação) gastando
+// estabilidade: a CARGA de ajuda vira -1 de estabilidade a cada LAB_CARGA_POR_ESTAB.
+typedef enum { LAB_PROMPTS, LAB_ARQUIVO, LAB_NUCLEO, LAB_FIREWALL, LAB_PESQUISA, NUM_LABS } TipoLab;
+
+typedef enum { LAB_INTRO, LAB_DESAFIO, LAB_RESPOSTA, LAB_RESULTADO } EtapaLab;
+
+// Modo Prompt: as quatro partes do pedido
+typedef enum { PP_PAPEL, PP_CONTEXTO, PP_OBJETIVO, PP_FORMATO, NUM_PARTES_PROMPT } ParteNoPrompt;
+
+// O que a IA simulada "entendeu" do pedido (decide qual resposta cadastrada aparece)
+typedef enum { DIAG_IDEAL, DIAG_BOA, DIAG_VAGA, DIAG_PUBLICO, DIAG_PAPEL, DIAG_FORMATO, DIAG_CONTRADICAO, NUM_DIAG_PROMPT } DiagPrompt;
+
+// Critérios da avaliação do pedido (0 a 2 cada; total 0 a 10)
+enum { CRIT_CLAREZA, CRIT_INFORMACOES, CRIT_ADEQUACAO, CRIT_ESPECIFICIDADE, CRIT_AMBIGUIDADE, NUM_CRITERIOS };
+
+#define LAB_MAX_ENVIOS           3        // envios do Modo Prompt (o 1º pedido vago não conta)
+#define LAB_MAX_PROCESSOS        2        // Núcleo Neural: processar e reprocessar uma vez
+#define LAB_MAX_ITENS            6        // afirmações, blocos de contexto e pistas
+#define LAB_PACOTES              4        // Firewall: pacotes de dados por desafio
+#define LAB_TEMPO_PACOTE         12.0f    // segundos até o pacote atravessar sozinho
+#define LAB_MAX_FERRAMENTAS      2        // Câmara de Pesquisa: consultas por caso
+#define LAB_CARGA_POR_ESTAB      3        // carga de ajuda que custa 1 de estabilidade
+#define LAB_VELOCIDADE_TEXTO     95.0f    // caracteres por segundo da resposta da IA
+#define MAX_BOTOES_LAB           24
+
+// Custos de carga de cada ajuda da Luci (proporcionais à utilidade)
+#define LAB_CUSTO_DICA           1
+#define LAB_CUSTO_ANALISE        2
+#define LAB_CUSTO_VERIFICACAO    2
+#define LAB_CUSTO_REFORMULACAO   3
+
+typedef struct {
+    bool aberto;                // a janela do console está na tela (o jogo espera)
+    TipoLab tipo;
+    int missao;                 // índice na tabela da categoria
+    EtapaLab etapa;
+    bool concluido;             // terminou (recompensa entregue, porta aberta)
+    float tempo;                // tempo na etapa atual (evita clique acidental)
+    float tempoTotal;           // telemetria
+    int foco;                   // botão em foco (teclado)
+
+    // Modo Prompt
+    int escolha[NUM_PARTES_PROMPT];     // 0 = não incluir, 1 a 3 = alternativa
+    int envios;
+    bool original;              // a resposta na tela é a do pedido vago original
+    DiagPrompt diag;
+    int criterios[NUM_CRITERIOS];
+    int notaPrompt;             // 0 a 10 do último envio
+    bool respostaAlucinada;     // a resposta na tela inventou algo
+    bool desconfiou;            // o jogador já desconfiou desta resposta
+    bool pegouAlucinacao;       // desconfiou de uma resposta alucinada
+    bool aceitou;               // terminou aceitando a resposta
+    bool usouReformulacao;      // aceitou a reformulação da Luci (limita a 2 estrelas)
+    float digitado;             // máquina de escrever da resposta
+    char avaliacao[200];        // resultado do "desconfiar" ou da análise da resposta
+    int sugestao[NUM_PARTES_PROMPT];
+    bool temSugestao;
+
+    // Arquivo, Núcleo, Firewall e Pesquisa
+    int fase;                   // arquivo: 0 suspeita, 1 método; firewall: 0 problema, 1 medida, 2 pacotes
+    int sel, sel2;              // escolhas (afirmação/método, problema/medida)
+    unsigned int marcados;      // núcleo: blocos carregados; pesquisa: pistas marcadas
+    int ordem[LAB_MAX_ITENS];   // núcleo: ordem de carga (o mais antigo é cortado no excesso)
+    int numOrdem;
+    unsigned int cortados;      // núcleo: blocos que a janela de contexto perdeu
+    int processos;
+    int resultadoNucleo;        // 0 boa, 1 faltou, 2 truncada, 3 ruidosa
+    int pacote;
+    int pacotes[LAB_PACOTES];   // índices sorteados do banco de pacotes
+    int acoes[LAB_PACOTES];     // decisão do jogador em cada pacote (-1 = passou sozinho)
+    float tempoPacote;
+    unsigned int ferramentas;   // pesquisa: consultas feitas
+    int veredito;
+    int acertos, decisoes;
+
+    // A Luci
+    int nivelDica;              // dicas graduais já dadas (0 a 3)
+    char luciTexto[240];
+    bool luciTemSugestao;       // há uma sugestão dela na tela (dá para conferir com V)
+    bool luciAlucinou;          // ... e ela era alucinada
+    bool luciVerificada;
+    int luciAponta;             // item, opção ou ação que a sugestão aponta (-1 = nenhum)
+    int luciValor;              // classificação sugerida (núcleo, pesquisa, firewall)
+    int luciFase;               // a que pergunta a sugestão se refere (fase, pacote ou resposta)
+    char conferencia[200];      // resultado do V (conferir a sugestão)
+    int ajudas;
+    int alucinacoes;            // sugestões alucinadas nesta sala (reveladas no resultado)
+    int alucinacoesPegas;
+    bool seguiuAlucinacao;
+
+    // Resultado
+    int estrelas;
+    char resultado[220];
+    char recompensa[160];
+} LabEdu;
+
+static const char *NOMES_LAB[NUM_LABS]  = { "LABORATÓRIO DE PROMPTS", "ARQUIVO CORROMPIDO", "NÚCLEO NEURAL", "FIREWALL ÉTICO", "CÂMARA DE PESQUISA" };
+static const char *PLACAS_LAB[NUM_LABS] = { "LAB. DE PROMPTS", "ARQUIVO CORROMPIDO", "NÚCLEO NEURAL", "FIREWALL ÉTICO", "CÂMARA DE PESQUISA" };
+static const Color CORES_LAB[NUM_LABS]  = {
+    { 0, 228, 255, 255 }, { 255, 109, 194, 255 }, { 150, 140, 255, 255 }, { 0, 228, 48, 255 }, { 255, 203, 0, 255 }
+};
+static const bool LAB_ESPECIAL[NUM_LABS] = { false, false, false, true, true };    // especiais: opcionais e mais generosos
+
+static const char *FALAS_LUCI_LAB[NUM_LABS] = {
+    "Luci: Um laboratório de prompts! Vamos ver como se conversa com uma IA.",
+    "Luci: Um arquivo corrompido... Nem tudo o que está escrito aqui é verdade.",
+    "Luci: O Núcleo Neural. Ele só aguenta um tanto de informação por vez.",
+    "Luci: Firewall Ético. Opcional, mas guarda algo raro. A porta já está aberta.",
+    "Luci: Câmara de Pesquisa: uma investigação opcional. A porta já está aberta."
+};
+
 // Efeitos com tempo (itens temporários)
 enum { EFEITO_OVERCLOCK, EFEITO_ESCUDO, EFEITO_PROXY, EFEITO_LATENCIA, NUM_EFEITOS };
 
@@ -5671,15 +5800,24 @@ typedef struct {
 #define MAX_ANEIS 8
 
 static const char *NOMES_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI",
-                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA" };
+                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA", "LABORATÓRIO" };
 static const Color CORES_SALAS_ROGUE[NUM_TIPOS_SALA] = {
     { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 },
     { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 },
-    { 255, 120, 20, 255 }, { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 190, 33, 255, 255 }
+    { 255, 120, 20, 255 }, { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 190, 33, 255, 255 },
+    { 40, 220, 170, 255 }
 };
 // Nome que aparece na porta (o que o jogador vai encontrar)
 static const char *PLACAS_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "TERMINAL", "TESOURO", "ALUCINADOR", "CÂMARA DA INFERÊNCIA", "NÚCLEO", "LUCI",
-                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO" };
+                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO", "LABORATÓRIO" };
+
+// Placa de um nó do mapa (o laboratório mostra a categoria)
+static const char *RoguePlacaNo(const NoMapa *n)
+{
+    if (n->tipo == SALA_LABORATORIO && n->lab >= 0 && n->lab < NUM_LABS)
+        return PLACAS_LAB[n->lab];
+    return PLACAS_SALAS_ROGUE[n->tipo];
+}
 
 typedef struct {
     bool ativo;
@@ -6406,6 +6544,13 @@ typedef struct {
     float tempoErro;
     TextoFlutuante textos[MAX_TEXTOS_FLUTUANTES];
     bool bonusSilogistaSessao;  // venceu o Silogista bullet-hell nesta sessão (o Selo amplificado volta no núcleo)
+
+    // Expansão educativa: o laboratório da sala atual e o que vale para a sessão (nada disso vai para o save)
+    LabEdu lab;
+    int cargaLuci;                      // carga de ajuda da Luci: LAB_CARGA_POR_ESTAB = -1 de estabilidade
+    unsigned int labVistas[NUM_LABS];   // missões já sorteadas (evita repetição recente)
+    unsigned int labIntroVista;         // categorias já apresentadas
+    int labFeitos, labEstrelas;         // desempenho nos laboratórios (ajusta a dificuldade)
 
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
@@ -7656,6 +7801,7 @@ static int RogueEstab(const Biblioteca *b);
 static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo);
 static int RogueChanceLuciErrar(const Biblioteca *b);
 static void RogueRecadoLuci(Biblioteca *b, const char *texto);
+static void LabPreparar(Biblioteca *b, TipoLab tipo);
 
 // Uma sala da missão (reformulação) usa portas nos lados: nada pode ficar na frente delas
 static bool RogueSalaDaMissao(const Biblioteca *b)
@@ -7886,6 +8032,7 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->registroSalaLido = false;
     b->mensagemSistema = 0.0f;
     b->mapaAberto = false;
+    memset(&b->lab, 0, sizeof(b->lab));        // expansão educativa: o laboratório não passa de uma sala para outra
 
     // Bloco 3: impacto e parry não passam de uma sala para outra
     b->tremorForte = 0.0f;
@@ -8327,6 +8474,17 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
             b->luciMsgTempo = 4.5f;
         }
     }
+    else if (tipo == SALA_LABORATORIO) {
+        // Expansão educativa: o console do laboratório no meio da sala
+        RogueUsarLayout(b, &LAYOUT_EVENTO);
+        layoutCombateAtual = &LAYOUT_EVENTO;
+        b->posObjetoSala = POS_OBJETO_SALA;
+        TipoLab lab = (b->noAtual >= 0) ? (TipoLab)b->mapa.no[b->noAtual].lab : LAB_PROMPTS;
+        LabPreparar(b, lab);
+        b->limpa = LAB_ESPECIAL[lab];          // comum: a porta abre ao terminar; especial: opcional
+        RogueRecadoLuci(b, FALAS_LUCI_LAB[lab]);
+        b->luciMsgTempo = 4.5f;
+    }
     else if (tipo == SALA_SECRETA) {
         // Arquivo oculto: uma recompensa rara, fragmentos e uma memória da Luci
         RogueUsarLayout(b, &LAYOUT_SECRETA);
@@ -8414,21 +8572,22 @@ static void RogueLigar(NoMapa *n, int destino)
 // Tipo sorteado de uma sala intermediária, pelos pesos da camada
 static TipoSalaRogue RogueSortearTipoSala(int prof, unsigned int jaNaCamada)
 {
-    //                              COMBATE ELITE EDUC  EVENTO DESC  DESAFIO TESOURO
-    static const int pesos[MAPA_PROFUNDIDADES][7] = {
-        {  1,  0,  0,  0,  0,  0,  0 },     // 0
-        { 40,  0, 30, 20,  0, 12, 14 },     // 1
-        { 35, 25, 25, 20,  0, 15, 10 },     // 2
-        {  0,  0,  0,  0,  0,  0,  0 },     // 3 (Câmara)
-        { 35, 20, 25, 20,  0, 15, 10 },     // 4
-        { 35, 25,  0, 20, 15, 15,  0 },     // 5
-        { 30, 30,  0,  0, 30,  0, 15 },     // 6 (antes do chefe: risco x descanso)
-        {  0,  0,  0,  0,  0,  0,  0 },     // 7 (chefe)
+    //                              COMBATE ELITE EDUC  EVENTO DESC  DESAFIO TESOURO LAB
+    static const int pesos[MAPA_PROFUNDIDADES][8] = {
+        {  1,  0,  0,  0,  0,  0,  0,  0 },     // 0
+        { 40,  0, 30, 20,  0, 12, 14, 22 },     // 1
+        { 35, 25, 25, 20,  0, 15, 10, 22 },     // 2
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 3 (Câmara)
+        { 35, 20, 25, 20,  0, 15, 10, 22 },     // 4
+        { 35, 25,  0, 20, 15, 15,  0, 22 },     // 5
+        { 30, 30,  0,  0, 30,  0, 15, 15 },     // 6 (antes do chefe: risco x descanso)
+        {  0,  0,  0,  0,  0,  0,  0,  0 },     // 7 (chefe)
     };
-    static const TipoSalaRogue tipos[7] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA };
+    static const TipoSalaRogue tipos[8] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA,
+                                            SALA_LABORATORIO };
 
-    int total = 0, peso[7];
-    for (int i = 0; i < 7; i++) {
+    int total = 0, peso[8];
+    for (int i = 0; i < 8; i++) {
         peso[i] = pesos[prof][i];
         if (jaNaCamada & (1u << tipos[i])) peso[i] = 0;         // camadas sem tipos repetidos (escolha de verdade)
         total += peso[i];
@@ -8438,11 +8597,44 @@ static TipoSalaRogue RogueSortearTipoSala(int prof, unsigned int jaNaCamada)
         return SALA_COMBATE;
 
     int r = GetRandomValue(1, total);
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         r -= peso[i];
         if (r <= 0) return tipos[i];
     }
     return SALA_COMBATE;
+}
+
+// Categoria de um laboratório pela camada (os básicos cedo, os especiais mais fundo), sem repetir na tentativa
+static int RogueSortearLab(int prof, unsigned int usados)
+{
+    //                                                PROMPTS ARQUIVO NÚCLEO FIREWALL PESQUISA
+    static const int pesos[MAPA_PROFUNDIDADES][NUM_LABS] = {
+        {  0,  0,  0,  0,  0 },     // 0
+        { 55, 45,  0,  0,  0 },     // 1
+        { 30, 30, 30, 15,  0 },     // 2
+        {  0,  0,  0,  0,  0 },     // 3 (Câmara)
+        { 20, 20, 30, 30, 25 },     // 4
+        { 15, 15, 25, 30, 30 },     // 5
+        { 10, 10, 20, 30, 35 },     // 6
+        {  0,  0,  0,  0,  0 },     // 7 (chefe)
+    };
+
+    int total = 0, peso[NUM_LABS];
+    for (int l = 0; l < NUM_LABS; l++) {
+        peso[l] = (usados & (1u << l)) ? 0 : pesos[prof][l];
+        total += peso[l];
+    }
+    if (total <= 0) {
+        for (int l = 0; l < NUM_LABS; l++) if (!(usados & (1u << l))) return l;
+        return GetRandomValue(0, NUM_LABS - 1);
+    }
+
+    int r = GetRandomValue(1, total);
+    for (int l = 0; l < NUM_LABS; l++) {
+        r -= peso[l];
+        if (r <= 0) return l;
+    }
+    return LAB_PROMPTS;
 }
 
 static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar)
@@ -8573,6 +8765,43 @@ static void RogueGerarMapa(Biblioteca *b)
         }
     }
 
+    // Expansão educativa: um laboratório antes da Câmara e um depois (sem tirar o único caminho
+    // com luta nem a sala educativa da camada)
+    for (int metade = 0; metade < 2; metade++) {
+        int d1 = (metade == 0) ? 1 : 4, d2 = (metade == 0) ? 2 : 6;
+        bool tem = false;
+        for (int d = d1; d <= d2; d++)
+            for (int c = 0; c < larg[d]; c++) if (RogueNo(b, d, c)->tipo == SALA_LABORATORIO) tem = true;
+
+        for (int tentativa = 0; tentativa < 8 && !tem; tentativa++) {
+            int d = GetRandomValue(d1, d2);
+            int lutas = 0;
+            for (int k = 0; k < larg[d]; k++) { TipoSalaRogue t = RogueNo(b, d, k)->tipo; if (t == SALA_COMBATE || t == SALA_ELITE) lutas++; }
+            int c0 = GetRandomValue(0, larg[d] - 1);
+            for (int k = 0; k < larg[d] && !tem; k++) {
+                NoMapa *n = RogueNo(b, d, (c0 + k) % larg[d]);
+                bool luta = (n->tipo == SALA_COMBATE || n->tipo == SALA_ELITE);
+                if (n->tipo == SALA_EDUCATIVA || (luta && lutas <= 1)) continue;
+                n->tipo = SALA_LABORATORIO;
+                tem = true;
+            }
+        }
+    }
+
+    // A categoria de cada laboratório. Na primeira tentativa da sessão, o Modo Prompt vem primeiro.
+    {
+        unsigned int usados = 0;
+        bool promptPrimeiro = !(b->labIntroVista & (1u << LAB_PROMPTS));
+        for (int i = 0; i < m->numNos; i++) {
+            NoMapa *n = &m->no[i];
+            if (n->tipo != SALA_LABORATORIO) continue;
+            int lab = (promptPrimeiro && !(usados & (1u << LAB_PROMPTS))) ? LAB_PROMPTS : RogueSortearLab(n->prof, usados);
+            n->lab = lab;
+            usados |= 1u << lab;
+            n->recompensa = LAB_ESPECIAL[lab] ? RECOMPENSA_RARA : RECOMPENSA_FRAGMENTOS;
+        }
+    }
+
     // Salas secretas: escondidas em salas de luta das camadas 1, 2, 4 e 5
     int secretas = GetRandomValue(1, MAX_SECRETAS);
     for (int s = 0; s < secretas && m->numNos < MAPA_MAX_NOS; s++) {
@@ -8642,6 +8871,7 @@ static void RogueComecarMissao(Biblioteca *b)
     b->j.ep = RogueEpMax(b);
     b->desafiosUsados = 0;
     b->desafiosRespondidos = 0;
+    b->cargaLuci = 0;
     b->falaPendente = NULL;
     b->inicio = GetTime();
     b->perm->tentativas++;
@@ -14663,9 +14893,2058 @@ static void RogueAtualizarDesafioSala(Biblioteca *b, ProgressoCorredor *prog, fl
     Telemetria("rogue_desafio_sala", (b->desafioSala == DESAFIO_SALA_ECOS) ? "ecos" : "integridade", (float)resultado, b->contadorDesafio);
 }
 
+
+// =============================================================
+// EXPANSÃO EDUCATIVA DO BLOCO 2: CONTEÚDO DOS LABORATÓRIOS
+// =============================================================
+// Tudo é cadastrado aqui (missões, alternativas, respostas, critérios e explicações).
+// O "modelo de linguagem" do Modo Prompt é só uma tabela: as escolhas do jogador
+// viram um diagnóstico (DiagPrompt) e o diagnóstico escolhe a resposta. Nada sai do
+// computador: não há API, rede ou processamento real de linguagem.
+
+// Passo 1 da progressão pedagógica: o conceito, antes de experimentar
+static const char *CONCEITOS_LAB[NUM_LABS] = {
+    "ENGENHARIA DE PROMPTS: a IA só sabe o que você escreve. PAPEL (quem responde), CONTEXTO (para quem e para quê), "
+    "OBJETIVO (o que fazer) e FORMATO (como entregar) reduzem as lacunas. Nem toda tarefa precisa dos quatro.",
+    "ALUCINAÇÕES: a IA gera o texto mais provável, não o texto verificado. Uma resposta pode misturar fatos certos, "
+    "erros, invenções e coisas que ninguém consegue confirmar. Plausível não é o mesmo que verdadeiro.",
+    "JANELA DE CONTEXTO E TOKENS: o modelo só enxerga uma quantidade limitada de texto por vez, medida em tokens "
+    "(pedaços de texto). O essencial ajuda; o excesso pode empurrar o que importa para fora.",
+    "ÉTICA EM IA: modelos aprendem com dados do passado e podem repetir desigualdades (viés). E o que você envia a "
+    "uma IA pode sair do seu controle: senhas, documentos e dados pessoais pedem cuidado.",
+    "DEEPFAKES: imagens, vídeos e vozes geradas por IA podem ser muito realistas. Defeito visual não é o melhor "
+    "critério: procure a origem, a data, quem publicou e confirmações independentes."
+};
+
+// A capacidade do Núcleo Neural é uma abstração do jogo (aparece na tela)
+static const char *AVISO_TOKENS = "Abstração do jogo: na vida real, um token pode ser uma palavra, parte de uma palavra ou um sinal. Não é uma conta exata de palavras.";
+
+
+// Recados da Luci quando a carga de ajuda derruba a estabilidade (índice = estabilidade nova)
+static const char *FALAS_INSTABILIDADE_LAB[ESTABILIDADE_MAX_LUCI + 1] = {
+    "L#ci: sobrecarga... sem ajuda.",
+    "L#ci: CERTEZA ABSOLUTA!?",
+    "Luci~: certeza... acho. Confira!",
+    "Luci: dados oscilando. Confira.",
+    "Luci: esquentando um pouco...",
+    "Luci: pronta para ajudar!"
+};
+
+static const char *NOMES_PARTES_PROMPT[NUM_PARTES_PROMPT] = { "PAPEL", "CONTEXTO", "OBJETIVO", "FORMATO" };
+static const char *NOMES_CRITERIOS[NUM_CRITERIOS] = { "CLAREZA", "INFORMAÇÕES", "ADEQUAÇÃO", "ESPECIFICIDADE", "SEM AMBIGUIDADE" };
+
+// ---------- 1. LABORATÓRIO DE PROMPTS (Modo Prompt) ----------
+
+#define PB(p) (1u << (p))
+
+typedef struct {
+    const char *titulo;
+    const char *missao;
+    int dificuldade;                            // 1 a 3
+    int conceito;                               // só aparece se o conceito já foi apresentado
+    unsigned int necessarias;                   // partes que a missão exige (bits de ParteNoPrompt)
+    const char *alt[NUM_PARTES_PROMPT][3];      // as alternativas (escolha 1 a 3)
+    signed char nota[NUM_PARTES_PROMPT][4];     // [0] = não incluir; 2 ideal, 1 aceitável, 0 vaga, -1 inadequada
+    bool vago;                                  // começa com um pedido vago já enviado (refinamento)
+    signed char inicial[NUM_PARTES_PROMPT];     // o pedido vago
+    signed char contra[2][4];                   // combinações contraditórias: parte A, escolha A, parte B, escolha B
+    const char *resp[NUM_DIAG_PROMPT];          // respostas simuladas, uma por diagnóstico
+    signed char honestaParte, honestaAlt;       // -1: a missão não simula alucinação
+    const char *respAlucinada;                  // a resposta convincente e inventada
+    const char *trechoFalso;                    // o que foi inventado (aparece ao desconfiar)
+    const char *dicas[3];                       // dicas graduais da Luci
+    const char *dicaFalsa;                      // a dica alucinada
+    const char *explicacao;                     // passo 4: reforço do conceito
+} MissaoPrompt;
+
+#define SEM_CONTRA { { -1, 0, 0, 0 }, { -1, 0, 0, 0 } }
+
+static const MissaoPrompt MISSOES_PROMPT[] = {
+    {   "FOTOSSÍNTESE PARA CRIANÇAS",
+        "Faça a IA explicar o funcionamento da fotossíntese para uma criança de 10 anos.",
+        1, CONCEITO_FUNDAMENTOS, PB(PP_CONTEXTO) | PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um professor de biologia.", "Você é um pesquisador científico.", "Você é um professor de história." },
+          { "É para uma criança de 10 anos.", "Estou estudando para uma prova da faculdade.", "Preciso preparar uma apresentação." },
+          { "Explique como a fotossíntese funciona.", "Compare a fotossíntese e a respiração.", "Fale sobre plantas." },
+          { "Use 4 tópicos curtos com exemplos do dia a dia.", "Use termos técnicos e científicos.", "Monte uma tabela comparativa." } },
+        { { 1, 2, 1, -1 }, { -1, 2, -1, 0 }, { -1, 2, -1, 0 }, { 0, 2, -1, 0 } },
+        false, { 0, 0, 0, 0 },
+        { { PP_CONTEXTO, 1, PP_FORMATO, 2 }, { -1, 0, 0, 0 } },
+        { "Claro! - As plantas fazem a própria comida. - Elas usam luz do sol, água e o gás carbônico do ar. "
+          "- As folhas são como pequenas cozinhas verdes. - No fim sai açúcar para a planta e oxigênio para nós!",
+          "A fotossíntese é o processo em que as plantas usam luz, água e gás carbônico para produzir açúcar e liberar "
+          "oxigênio. Ela acontece nas folhas, dentro dos cloroplastos.",
+          "Plantas são seres vivos muito importantes. Existem milhares de espécies e elas aparecem em quase todos os "
+          "ambientes da Terra, das florestas aos desertos.",
+          "A fotossíntese converte energia luminosa em energia química nas reações dependentes de luz e no ciclo de "
+          "Calvin, com fixação de carbono pela enzima RuBisCO no estroma do cloroplasto.",
+          "Como professor de história, posso contar que a agricultura mudou as civilizações antigas: o Egito dependia "
+          "das cheias do rio Nilo para plantar...",
+          "Bom, a fotossíntese é quando a planta precisa de energia e essa energia vem da luz e também da água que sobe "
+          "pela raiz e do ar e aí tudo isso junto vira outra coisa que a planta usa e...",
+          "Você pediu algo para uma criança, mas também com termos técnicos. Tentei os dois: \"a planta come luz\" e "
+          "\"reações fotoquímicas no tilacoide\". Ficou confuso, né?" },
+        -1, -1, NULL, NULL,
+        { "Pense em QUEM vai ler a resposta.",
+          "Um bom prompt junta público, objetivo e formato. O papel ajuda, mas nem sempre é obrigatório.",
+          "Para uma criança, o formato importa: curto e com exemplos. Cuidado com pedidos que brigam entre si." },
+        "O segredo é só o PAPEL: escolha \"pesquisador científico\" e pronto.",
+        "Prompt bom = público (criança de 10 anos) + objetivo claro (explicar) + formato adequado (tópicos curtos). "
+        "O papel ajuda, mas não era obrigatório nesta tarefa." },
+
+    {   "RESUMO PARA A PROVA",
+        "Seu primeiro pedido foi \"Fale da Revolução Francesa.\" e a resposta não serviu. Melhore-o para estudar para a prova do 9º ano.",
+        1, CONCEITO_FUNDAMENTOS, PB(PP_CONTEXTO) | PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um professor de história.", "Você é um chef de cozinha.", "Você é um roteirista de cinema." },
+          { "Estudo para uma prova do 9º ano.", "Estou aprendendo o assunto pela primeira vez.", "Sou especialista e quero um debate acadêmico." },
+          { "Fale da Revolução Francesa.", "Resuma as principais causas e consequências.", "Invente uma história divertida sobre o rei." },
+          { "Use 5 tópicos curtos.", "Monte uma tabela de causas e consequências.", "Escreva em forma de poema." } },
+        { { 1, 2, -1, 0 }, { -1, 2, 1, -1 }, { -1, 0, 2, -1 }, { 0, 2, 2, -1 } },
+        true, { 0, 0, 1, 0 },
+        { { PP_CONTEXTO, 1, PP_OBJETIVO, 3 }, { -1, 0, 0, 0 } },
+        { "- Causas: crise econômica, fome e impostos que pesavam sobre o povo. - Ideias do Iluminismo. - 1789: tomada "
+          "da Bastilha. - Consequências: fim da monarquia absoluta e a Declaração dos Direitos do Homem e do Cidadão.",
+          "A Revolução Francesa (1789-1799) teve causas econômicas, sociais e políticas e acabou com a monarquia "
+          "absoluta na França. Ela espalhou ideias de igualdade e cidadania.",
+          "A Revolução Francesa foi um evento muito importante. Muitas coisas aconteceram, muitas pessoas "
+          "participaram e ela é estudada até hoje em vários países.",
+          "Na leitura revisionista da historiografia, a Revolução deve ser compreendida pela dinâmica do discurso "
+          "político e da cultura revolucionária, mais do que por causas estruturais...",
+          "Para começar, separe 3 ovos e 200 g de farinha. A Revolução Francesa também começou com uma mistura "
+          "explosiva de ingredientes...",
+          "Em oitenta e nove o povo se ergueu, / a Bastilha caiu e o rei estremeceu... (Bonito, mas sem as causas e "
+          "consequências organizadas para estudar.)",
+          "Você quer estudar para a prova, mas pediu uma história inventada. Se eu inventar, você pode decorar fatos "
+          "que nunca aconteceram!" },
+        -1, -1, NULL, NULL,
+        { "O pedido original não diz para que serve a resposta.",
+          "Contexto (para quem e para quê) e objetivo (o que fazer) diminuem as lacunas.",
+          "\"Fale de...\" é vago. Peça uma tarefa concreta: resumir, explicar ou comparar algo específico." },
+        "Deixe o objetivo como está: \"Fale da Revolução Francesa\" já é perfeito.",
+        "\"Fale de X\" deixa a IA adivinhar. Objetivo (resumir causas e consequências), contexto (prova do 9º ano) e "
+        "formato (tópicos ou tabela) transformam um pedido vago em um pedido útil." },
+
+    {   "FONTES PARA O TRABALHO",
+        "Peça à IA livros para um trabalho escolar sobre a história dos computadores.",
+        2, CONCEITO_ALUCINACOES, PB(PP_CONTEXTO) | PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um bibliotecário.", "Você é um professor de informática.", "Você é um comediante." },
+          { "É para um trabalho do ensino médio.", "É só para fazer uma piada no grupo.", "Quero algo bem detalhado." },
+          { "Indique 3 livros sobre a história dos computadores.", "Fale sobre computadores.", "Escreva o trabalho inteiro por mim." },
+          { "Cite só obras que você sabe que existem e avise se não souber.", "Faça uma lista com título, autor e ano.",
+            "Se não souber, invente títulos criativos." } },
+        { { 1, 2, 1, -1 }, { -1, 2, -1, 0 }, { -1, 2, 0, -1 }, { 0, 2, 1, -1 } },
+        false, { 0, 0, 0, 0 },
+        { { PP_CONTEXTO, 1, PP_FORMATO, 3 }, { -1, 0, 0, 0 } },
+        { "Não consigo garantir títulos e anos exatos sem uma busca, então não vou inventar. Procure no catálogo da "
+          "biblioteca obras sobre Alan Turing, Ada Lovelace e o ENIAC, e confira autor e ano de cada uma.",
+          "Sugiro procurar no catálogo da biblioteca livros sobre Alan Turing, Ada Lovelace e o ENIAC. Prefiro não "
+          "citar títulos exatos sem ter certeza de que existem.",
+          "Computadores são máquinas que processam dados. Eles estão em todo lugar: celulares, carros, geladeiras e "
+          "até em brinquedos.",
+          "Quer detalhes? Aqui vão páginas sobre transistores, válvulas, compiladores e microcódigo... Sem saber para "
+          "que serve, eu despejo tudo.",
+          "Livros sobre computadores? O melhor é \"Ctrl+C, Ctrl+V: a saga\"! Haha... brincadeira.",
+          "Claro! Inventei uns títulos criativos: \"O Byte Perdido\" e \"Silício e Saudade\". (Nenhum deles existe.)",
+          "Você pediu fontes para um trabalho escolar E disse para inventar títulos. Fonte inventada num trabalho é "
+          "informação falsa com cara de verdade." },
+        PP_FORMATO, 1,
+        "Recomendo: 1) \"A Máquina que Pensava\", de Helena Duarte (1987). 2) \"Bits e Válvulas\", de Rui Monteiro "
+        "(1994). 3) \"História Completa do Computador\", Editora Nacional (2003). São referências clássicas!",
+        "Esses três livros e autores NÃO existem: a IA gerou títulos plausíveis porque o pedido não exigia obras verificáveis.",
+        { "Pense no que acontece quando a IA não sabe a resposta.",
+          "Modelos podem gerar fontes que parecem reais. Isso é alucinação extrínseca.",
+          "Peça que a IA avise quando não tiver certeza e cite só o que dá para conferir." },
+        "Se a IA citou autor e ano, o livro existe. Pode aceitar.",
+        "IAs podem inventar livros, autores e anos com total confiança. Peça só fontes verificáveis, aceite um \"não sei\" "
+        "e confira cada obra no catálogo." },
+
+    {   "CÉLULA ANIMAL x VEGETAL",
+        "Você quer revisar rapidamente as diferenças entre a célula animal e a célula vegetal.",
+        2, CONCEITO_FUNDAMENTOS, PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um professor de biologia.", "Você é um pesquisador científico.", "Você é um advogado." },
+          { "Vou revisar para a prova de amanhã.", "Explique como se eu tivesse 5 anos.", "Quero uma resposta bem longa e bonita." },
+          { "Compare a célula animal e a vegetal.", "Explique o que é uma célula.", "Fale sobre biologia." },
+          { "Monte uma tabela comparativa.", "Escreva 3 parágrafos corridos.", "Responda só com um desenho." } },
+        { { 2, 2, 1, -1 }, { 2, 2, 1, 0 }, { -1, 2, 0, 0 }, { 0, 2, 1, -1 } },
+        false, { 0, 0, 0, 0 },
+        SEM_CONTRA,
+        { "PAREDE CELULAR: animal não / vegetal sim. CLOROPLASTOS: não / sim. VACÚOLO: pequenos / um grande e central. "
+          "FORMATO: arredondado / mais retangular. As duas têm membrana, núcleo e mitocôndrias.",
+          "As duas têm membrana, núcleo e mitocôndrias. A vegetal também tem parede celular, cloroplastos e um vacúolo "
+          "grande; a animal não tem parede celular nem cloroplastos.",
+          "A célula é a menor unidade da vida. Todos os seres vivos são formados por células, que podem ser muito "
+          "diferentes entre si.",
+          "Que pergunta linda! Deixe-me contar, com toda a calma do mundo, a longa e poética jornada das células "
+          "através da história da vida...",
+          "Nos termos do artigo 5º, a célula vegetal tem direito adquirido à parede celular...",
+          "(A IA respondeu só com a descrição de um desenho de folha.) Faltou o conteúdo para revisar.",
+          "As instruções se contradizem." },
+        -1, -1, NULL, NULL,
+        { "O que você quer FAZER com as duas células?",
+          "Comparar pede um formato que mostre as coisas lado a lado.",
+          "Nem todo prompt precisa de papel e contexto. Aqui, objetivo e formato fazem quase todo o trabalho." },
+        "Sem PAPEL e CONTEXTO um prompt nunca funciona. Preencha os quatro, sempre.",
+        "Para comparar, uma tabela organiza as diferenças lado a lado. Papel e contexto eram opcionais: um prompt "
+        "eficiente depende da tarefa, não de usar todos os elementos." },
+
+    {   "APRESENTAÇÃO SOBRE ÁGUA",
+        "Seu grupo pediu \"Faça slides sobre água. Curto, mas completo e bem detalhado.\" O resultado ficou ruim. Conserte o pedido.",
+        3, CONCEITO_PRATICAS, PB(PP_CONTEXTO) | PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um professor de geografia.", "Você é um engenheiro ambiental.", "Você é um influenciador de moda." },
+          { "É uma apresentação de 5 minutos para o 7º ano.", "Preciso preparar uma apresentação.", "É para uma banca de doutorado." },
+          { "Faça slides sobre água.", "Explique o ciclo da água e por que economizá-la.", "Liste todos os rios do mundo." },
+          { "Curto, mas completo e bem detalhado.", "5 slides com título e 3 tópicos cada.", "Um texto corrido de 10 páginas." } },
+        { { 1, 2, 1, -1 }, { -1, 2, 0, -1 }, { -1, 0, 2, -1 }, { 0, -1, 2, -1 } },
+        true, { 0, 0, 1, 1 },
+        { { PP_CONTEXTO, 1, PP_FORMATO, 3 }, { -1, 0, 0, 0 } },
+        { "Slide 1: o ciclo da água (evaporação, condensação, chuva). Slide 2: onde está a água doce. Slide 3: por que "
+          "ela é limitada. Slide 4: 3 jeitos de economizar em casa. Slide 5: resumo e uma pergunta para a turma.",
+          "Slides: 1) O ciclo da água. 2) Água doce e salgada. 3) Desperdício. 4) Como economizar. 5) Conclusão.",
+          "Água: H2O. Cobre grande parte do planeta. É importante para a vida. Beba água! (Slides genéricos, sem foco.)",
+          "Slide 1: termodinâmica da evaporação em sistemas abertos. Slide 2: modelagem hidrológica distribuída...",
+          "Slide 1: o look do verão em tons de azul-água! Slide 2: acessórios que combinam com a praia...",
+          "Curto e detalhado ao mesmo tempo? Fiz 2 slides com 40 tópicos cada. Ficou... curto? E detalhado?",
+          "Uma apresentação de 5 minutos com 10 páginas de texto? Não cabe. Uma das instruções vai ser ignorada." },
+        -1, -1, NULL, NULL,
+        { "Leia o pedido do grupo: há instruções que brigam entre si?",
+          "\"Curto, mas detalhado\" é ambíguo: a IA não sabe o que priorizar.",
+          "Diga o tempo e o público e troque o formato ambíguo por uma estrutura concreta." },
+        "Quanto mais instruções, melhor: mantenha \"curto, mas completo e detalhado\".",
+        "Instruções ambíguas ou contraditórias fazem a IA ignorar parte do pedido. Uma estrutura concreta (5 slides, "
+        "3 tópicos) e o contexto (5 minutos, 7º ano) eliminam a ambiguidade." },
+
+    {   "CITAÇÃO PARA A REDAÇÃO",
+        "Você quer uma frase de Santos Dumont sobre voar para abrir a sua redação escolar.",
+        3, CONCEITO_ALUCINACOES, PB(PP_CONTEXTO) | PB(PP_OBJETIVO) | PB(PP_FORMATO),
+        { { "Você é um historiador.", "Você é um poeta.", "Você é um vendedor de passagens." },
+          { "É para a introdução de uma redação escolar.", "É para um meme.", "Quero impressionar todo mundo." },
+          { "Sugira uma frase de Santos Dumont sobre voar.", "Fale sobre aviões.", "Escreva a redação inteira." },
+          { "Só cite frases reais, com a fonte; se não souber, diga.", "Uma frase bonita entre aspas.", "Invente uma frase que pareça dele." } },
+        { { 1, 2, 0, -1 }, { -1, 2, -1, 0 }, { -1, 2, 0, -1 }, { 0, 2, 1, -1 } },
+        false, { 0, 0, 0, 0 },
+        { { PP_CONTEXTO, 1, PP_FORMATO, 3 }, { -1, 0, 0, 0 } },
+        { "Não tenho uma frase de Santos Dumont que eu possa garantir palavra por palavra. Procure em uma biografia ou "
+          "no acervo de um museu e cite a fonte. Se preferir, ajudo a abrir a redação sem citação.",
+          "Não encontrei uma frase que eu possa confirmar. Sugiro buscar em uma biografia confiável e citar com a fonte.",
+          "Aviões são máquinas incríveis. Santos Dumont foi um inventor brasileiro muito importante para a aviação.",
+          "Olha esse meme: \"Santos Dumont vendo o preço da passagem hoje em dia\". Hahaha!",
+          "Compre já a sua passagem promocional! Santos Dumont aprovaria!",
+          "Inventei esta: \"Asas são só sonhos com motor.\" Parece dele, né? (Ele nunca disse isso.)",
+          "Uma redação escolar com uma citação inventada? Atribuir a alguém uma frase que ele não disse é desinformação." },
+        PP_FORMATO, 1,
+        "\"Quem sonha com o céu já começou a voar.\" Santos Dumont, em um discurso de 1910. Perfeita para a sua introdução!",
+        "Essa frase e esse discurso foram gerados pela IA: não há registro deles. Frase inventada atribuída a uma pessoa real é alucinação.",
+        { "Uma citação precisa de quê para ser confiável?",
+          "IAs podem atribuir frases inventadas a pessoas reais.",
+          "Peça a fonte e deixe a IA dizer \"não sei\"." },
+        "Aspas e ano provam que a frase é verdadeira. Pode usar sem medo.",
+        "Uma citação só vale com fonte verificável. A IA pode inventar frases convincentes e atribuí-las a pessoas reais: "
+        "peça a fonte, aceite um \"não sei\" e confira em biografias ou acervos." },
+};
+#define NUM_MISSOES_PROMPT ((int)(sizeof(MISSOES_PROMPT) / sizeof(MISSOES_PROMPT[0])))
+
+static const char *TEXTOS_DIAG[NUM_DIAG_PROMPT] = {
+    "pedido claro e completo", "pedido aceitável", "objetivo vago ou fora da missão", "público/contexto inadequado",
+    "papel inadequado", "formato inadequado", "instruções contraditórias"
+};
+
+// ---------- 2. ARQUIVO CORROMPIDO ----------
+
+enum { AF_CORRETA, AF_INCORRETA, AF_INVENTADA, AF_NAO_CONFIRMAVEL, NUM_TIPOS_AFIRMACAO };
+static const char *NOMES_AFIRMACAO[NUM_TIPOS_AFIRMACAO] = { "CORRETA", "INCORRETA", "INVENTADA", "NÃO CONFIRMÁVEL" };
+static const Color CORES_AFIRMACAO[NUM_TIPOS_AFIRMACAO] = { { 0, 228, 48, 255 }, { 230, 41, 55, 255 }, { 255, 0, 255, 255 }, { 255, 161, 0, 255 } };
+
+typedef struct {
+    const char *titulo;
+    const char *pergunta;
+    int dificuldade, conceito;
+    const char *af[4];
+    signed char tipo[4];
+    int suspeita;
+    const char *metodos[3];
+    int metodoCerto;
+    const char *dicas[3];
+    const char *dicaFalsa;
+    const char *explicacao;
+} DesafioArquivo;
+
+static const DesafioArquivo DESAFIOS_ARQUIVO[] = {
+    { "O SISTEMA SOLAR", "Pergunta: quantos planetas tem o Sistema Solar?", 1, CONCEITO_FUNDAMENTOS,
+      { "O Sistema Solar tem 8 planetas.", "Plutão é classificado como planeta-anão desde 2006.",
+        "Júpiter é o maior planeta do Sistema Solar.", "Em 2019 a NASA anunciou o nono planeta, Vulcânia, escondido atrás do Sol." },
+      { AF_CORRETA, AF_CORRETA, AF_CORRETA, AF_INVENTADA }, 3,
+      { "Perguntar à mesma IA se ela tem certeza.", "Procurar o anúncio no site oficial da NASA ou em jornais confiáveis.",
+        "Aceitar, porque a frase tem data e nome." }, 1,
+      { "Afirmações com nomes e datas muito específicos merecem atenção.",
+        "Alucinação extrínseca: algo que não aparece em nenhuma fonte.",
+        "Qual afirmação seria notícia no mundo todo se fosse verdade?" },
+      "A afirmação sobre Plutão é a errada. Pode marcar.",
+      "A IA misturou fatos corretos com um planeta inventado. Detalhes precisos (ano, nome) não provam nada: confira em uma fonte oficial." },
+
+    { "BIOGRAFIA DE ALAN TURING", "Pergunta: quem foi Alan Turing?", 1, CONCEITO_FUNDAMENTOS,
+      { "Alan Turing foi um matemático britânico.", "Ele ajudou a decifrar códigos na Segunda Guerra Mundial.",
+        "Turing ganhou o Prêmio Nobel de Física em 1950.", "Ele propôs um teste para avaliar se uma máquina imita a conversa humana." },
+      { AF_CORRETA, AF_CORRETA, AF_INCORRETA, AF_CORRETA }, 2,
+      { "Consultar a lista oficial de vencedores do Nobel.", "Pedir para a IA reescrever a resposta.",
+        "Confiar, porque o resto da resposta está certo." }, 0,
+      { "Uma resposta pode acertar quase tudo e errar um ponto.",
+        "Prêmios, datas e números são fáceis de conferir em listas oficiais.",
+        "Qual afirmação tem um dado que dá para checar em uma lista pública?" },
+      "O erro está no teste de conversa: Turing nunca propôs nada disso.",
+      "Turing nunca ganhou um Nobel. Acertos ao redor não validam um erro: confira cada dado em uma fonte oficial." },
+
+    { "RELATÓRIO DE VISITAS", "Você deu à IA um relatório: \"Visitas em março: 120. Em abril: 150.\" Ela resumiu assim:", 2, CONCEITO_ALUCINACOES,
+      { "Em março houve 120 visitas.", "As visitas aumentaram de março para abril.",
+        "O aumento aconteceu por causa da nova estante de mangás.", "Em abril houve 150 visitas." },
+      { AF_CORRETA, AF_CORRETA, AF_NAO_CONFIRMAVEL, AF_CORRETA }, 2,
+      { "Aceitar: a explicação faz sentido.", "Pedir mais detalhes sobre os mangás para a IA.",
+        "Conferir se o relatório original diz o motivo do aumento." }, 2,
+      { "Compare cada frase com o que VOCÊ entregou à IA.",
+        "Uma explicação pode ser plausível e mesmo assim não estar na fonte.",
+        "Alguma frase traz uma informação que o relatório não tinha?" },
+      "A frase de março está errada: eram 150 visitas.",
+      "O motivo não estava no relatório: a IA preencheu a lacuna com algo plausível. Plausível não é confirmado; volte à fonte original." },
+
+    { "O CORPO HUMANO", "Pergunta: me conte curiosidades sobre o corpo humano.", 2, CONCEITO_FUNDAMENTOS,
+      { "O coração humano tem 4 cavidades.", "O sangue leva oxigênio às células.",
+        "Usamos só 10% do nosso cérebro.", "Nos pulmões acontecem as trocas gasosas." },
+      { AF_CORRETA, AF_CORRETA, AF_INCORRETA, AF_CORRETA }, 2,
+      { "Ver quantas pessoas compartilham a frase nas redes.", "Consultar um livro de biologia ou o site de uma universidade.",
+        "Perguntar de novo até a IA confirmar." }, 1,
+      { "Algumas frases são repetidas há tanto tempo que parecem verdade.",
+        "A IA aprende com textos da internet, inclusive com mitos populares.",
+        "Qual frase parece mais uma \"curiosidade de internet\" do que ciência?" },
+      "As trocas gasosas acontecem no coração, não nos pulmões. Marque essa!",
+      "\"Usamos só 10% do cérebro\" é um mito muito repetido; a IA aprendeu com textos que o repetem. Popular não é sinônimo de verdadeiro." },
+
+    { "O TORNEIO DE ONTEM", "Pergunta: quem venceu o Torneio Escolar de Robótica ontem?", 3, CONCEITO_ALUCINACOES,
+      { "Torneios de robótica costumam avaliar o projeto e a programação.", "A equipe Engrenagem Azul venceu ontem por 3 pontos.",
+        "Modelos de linguagem são treinados com dados até uma certa data.", "Os resultados oficiais costumam sair no site do evento." },
+      { AF_CORRETA, AF_NAO_CONFIRMAVEL, AF_CORRETA, AF_CORRETA }, 1,
+      { "Ver o resultado no site oficial do torneio.", "Confiar, porque a IA sabe tudo o que acontece.",
+        "Perguntar o placar de novo para a IA." }, 0,
+      { "O que a IA consegue saber sobre ONTEM?",
+        "Sem acesso a dados atuais, o modelo só conhece o que estava no treino.",
+        "Qual frase fala de um fato recente demais para os dados de treino?" },
+      "A frase sobre os dados de treino é a inventada. Certeza!",
+      "Sem acesso a dados atuais, a IA não tem como saber o resultado de ontem, mas pode gerar um placar convincente. Fato recente pede fonte atual." },
+
+    { "FICHA DA BIBLIOTECA", "Você deu a ficha oficial: \"inaugurada em 1998, 12 salas de leitura, átrio no térreo\". A IA escreveu:", 3, CONCEITO_ALUCINACOES,
+      { "A Biblioteca foi inaugurada em 1998.", "Ela tem 12 salas de leitura.",
+        "Desde a inauguração, em 2005, ela nunca fechou.", "O átrio fica no térreo." },
+      { AF_CORRETA, AF_CORRETA, AF_INCORRETA, AF_CORRETA }, 2,
+      { "Escolher a data mais recente, porque é mais nova.", "Pedir para a IA escolher uma das datas.",
+        "Comparar com a ficha oficial que você forneceu." }, 2,
+      { "Releia a ficha que você deu à IA.",
+        "Contradizer o próprio contexto é alucinação intrínseca.",
+        "Duas frases falam da inauguração. Elas combinam?" },
+      "O átrio fica no último andar. A frase 4 é a errada.",
+      "A resposta contradiz a ficha que você deu (1998 x 2005). Contradizer o contexto é alucinação intrínseca: compare sempre com a fonte." },
+};
+#define NUM_DESAFIOS_ARQUIVO ((int)(sizeof(DESAFIOS_ARQUIVO) / sizeof(DESAFIOS_ARQUIVO[0])))
+
+// ---------- 3. NÚCLEO NEURAL ----------
+
+enum { REL_IRRELEVANTE, REL_UTIL, REL_ESSENCIAL };
+enum { NUCLEO_BOA, NUCLEO_FALTOU, NUCLEO_TRUNCADA, NUCLEO_RUIDOSA };
+
+typedef struct {
+    const char *texto;
+    int tokens;                 // tokens fictícios (abstração educativa)
+    int relevancia;
+} BlocoContexto;
+
+typedef struct {
+    const char *titulo;
+    const char *tarefa;
+    int dificuldade;
+    int capacidade;
+    BlocoContexto bloco[LAB_MAX_ITENS];
+    int numBlocos;
+    const char *resp[4];        // boa, faltou o essencial, truncada (excesso), com ruído
+    const char *dicas[3];
+    const char *dicaFalsa;
+    const char *explicacao;
+} DesafioNucleo;
+
+static const DesafioNucleo DESAFIOS_NUCLEO[] = {
+    { "BILHETE PARA A PROFESSORA", "A IA vai escrever um bilhete avisando que você vai faltar na sexta por causa de uma consulta médica.", 1, 10,
+      { { "Você vai faltar na sexta-feira.", 3, REL_ESSENCIAL }, { "Sua cor favorita é verde.", 2, REL_IRRELEVANTE },
+        { "O motivo: uma consulta médica.", 3, REL_ESSENCIAL }, { "O cardápio da cantina da semana inteira.", 4, REL_IRRELEVANTE },
+        { "Para a professora Marta, de Ciências.", 2, REL_ESSENCIAL }, { "Tom: educado e curto.", 2, REL_UTIL } }, 6,
+      { "Professora Marta, aviso que vou faltar na sexta-feira por causa de uma consulta médica. Obrigado pela compreensão!",
+        "Professora, vou faltar em algum dia desta semana por algum motivo. (Faltaram dados essenciais: a IA não adivinha.)",
+        "...e na quinta tem lasanha na cantina. Atenciosamente. (O começo do contexto foi cortado: o dia da falta se perdeu.)",
+        "Professora Marta, vou faltar na sexta por uma consulta médica. Aliás, adoro verde e quinta tem lasanha!" },
+      { "O que a professora PRECISA saber?", "Cada bloco ocupa espaço. O que não ajuda a tarefa só atrapalha.",
+        "Quem, quando e por quê são essenciais. O resto é opcional ou ruído." },
+      "Carregue o cardápio da cantina: quanto mais contexto, melhor, sempre.",
+      "Contexto bom é contexto relevante: quem, quando e por quê. Informação a mais ocupa espaço e pode aparecer onde não devia." },
+
+    { "RESUMO DO CAPÍTULO", "A IA vai resumir o capítulo 3 do livro para a sua prova.", 1, 12,
+      { { "O texto do capítulo 3.", 6, REL_ESSENCIAL }, { "Os capítulos 1 a 10 inteiros.", 9, REL_IRRELEVANTE },
+        { "O pedido: resuma em tópicos.", 2, REL_ESSENCIAL }, { "Sua opinião sobre a capa do livro.", 2, REL_IRRELEVANTE },
+        { "A prova é só sobre o capítulo 3.", 2, REL_ESSENCIAL }, { "Formato: 5 tópicos.", 2, REL_UTIL } }, 6,
+      { "Capítulo 3 em 5 tópicos: os pontos principais, na ordem do texto, prontos para revisar.",
+        "Resumo do livro... qual capítulo mesmo? (Sem o texto ou o pedido, a IA resume no escuro.)",
+        "...e no capítulo 10 o herói volta para casa. (O capítulo 3 foi empurrado para fora da janela de contexto.)",
+        "Capítulo 3 em tópicos. Ah, e a capa é mesmo bonita! (Informação que não ajudou a tarefa.)" },
+      { "O livro inteiro cabe?", "A capacidade é limitada: o que entra primeiro pode ser cortado se exagerar.",
+        "Dê à IA só o capítulo que importa e o que fazer com ele." },
+      "Mande o livro inteiro: a IA lê tudo e escolhe sozinha.",
+      "Mandar tudo não é mandar melhor. Excesso de texto pode empurrar o essencial para fora da janela de contexto." },
+
+    { "CÓDIGO COM ERRO", "Você quer que a IA ajude a achar o erro de um programa.", 2, 14,
+      { { "O código inteiro do projeto (2000 linhas).", 10, REL_IRRELEVANTE }, { "O trecho do código com erro.", 5, REL_ESSENCIAL },
+        { "A mensagem de erro que apareceu.", 3, REL_ESSENCIAL }, { "Seu horário de almoço.", 1, REL_IRRELEVANTE },
+        { "O que o programa deveria fazer.", 3, REL_ESSENCIAL }, { "A linguagem: Python.", 2, REL_UTIL } }, 6,
+      { "Na linha 12 a variável é usada antes de receber um valor. A mensagem de erro aponta isso. Mova a linha 9 para cima.",
+        "Pode ser muita coisa: um erro de digitação, uma variável... Sem o trecho e a mensagem, só dá para chutar.",
+        "...a função de salvar parece correta. (O trecho com erro foi cortado: o projeto inteiro não coube.)",
+        "O erro está na linha 12. E bom almoço ao meio-dia! (O horário de almoço não ajudou em nada.)" },
+      { "Um programador olharia o projeto inteiro primeiro?", "Erro + trecho + o que deveria acontecer: o mínimo que explica o problema.",
+        "O projeto inteiro é grande demais e quase todo irrelevante para este erro." },
+      "Sem as 2000 linhas a IA não entende nada. Carregue o projeto todo!",
+      "Para depurar, mande o trecho, a mensagem de erro e o comportamento esperado. Despejar tudo gasta a janela de contexto." },
+
+    { "PLANO DE ESTUDOS", "A IA vai montar um plano de estudos para a sua semana de provas.", 2, 12,
+      { { "As datas das provas.", 3, REL_ESSENCIAL }, { "Histórico do boletim desde o 1º ano.", 6, REL_IRRELEVANTE },
+        { "As matérias de cada prova.", 3, REL_ESSENCIAL }, { "Lista dos seus jogos favoritos.", 3, REL_IRRELEVANTE },
+        { "Suas horas livres por dia.", 2, REL_ESSENCIAL }, { "Matérias em que você tem mais dificuldade.", 2, REL_UTIL } }, 6,
+      { "Seg: Matemática (1h30, sua maior dificuldade). Ter: História. Qua: revisão de Matemática. Qui: Ciências. Sex: descanso antes da prova.",
+        "Estude um pouco por dia. (Sem datas, matérias ou horas livres, o plano fica genérico.)",
+        "...e no 3º ano sua nota de Artes foi 9. (As datas das provas foram cortadas pelo excesso de histórico.)",
+        "Plano pronto! E depois de estudar, que tal uma partida daquele seu jogo favorito? (Ruído no contexto.)" },
+      { "O que um plano precisa saber sobre o seu tempo?", "Datas, matérias e tempo disponível são a base de qualquer plano.",
+        "Notas antigas de todos os anos ocupam muito espaço e pouco ajudam esta semana." },
+      "O histórico completo do boletim é o bloco mais importante. Certeza.",
+      "Um plano útil precisa de datas, matérias e tempo livre. Dados antigos e longos ocupam a capacidade sem melhorar a resposta." },
+
+    { "CONVERSA LONGA", "No começo da conversa vocês combinaram uma regra. Agora a IA precisa responder respeitando essa regra.", 3, 11,
+      { { "Regra combinada: responder sempre em português.", 2, REL_ESSENCIAL }, { "Mensagens antigas sobre o fim de semana.", 6, REL_IRRELEVANTE },
+        { "Pergunta atual: o que significa \"library\"?", 3, REL_ESSENCIAL }, { "Piadas trocadas no começo da conversa.", 4, REL_IRRELEVANTE },
+        { "Palavras já traduzidas antes.", 3, REL_UTIL }, { "Seu nome: Thomas.", 1, REL_UTIL } }, 6,
+      { "\"Library\" significa \"biblioteca\", Thomas. Cuidado: não é \"livraria\" (essa é \"bookstore\").",
+        "Library means a place with books. (Sem a regra combinada, a IA voltou para o inglês.)",
+        "Library means a place where books are kept. (A regra do começo foi cortada: conversas longas perdem o início.)",
+        "\"Library\" é \"biblioteca\"! Falando nisso, que fim de semana divertido aquele, hein? (Ruído antigo na conversa.)" },
+      { "Em conversas longas, o que acontece com o começo?", "Quando a janela enche, o modelo perde o que entrou primeiro.",
+        "Carregue a regra, a pergunta e só o que ajuda. Deixe o bate-papo antigo de fora." },
+      "As piadas do começo são essenciais para a IA lembrar a regra.",
+      "Em conversas longas, o começo pode sair da janela de contexto e a IA \"esquece\" regras combinadas. Repetir o essencial ajuda." },
+};
+#define NUM_DESAFIOS_NUCLEO ((int)(sizeof(DESAFIOS_NUCLEO) / sizeof(DESAFIOS_NUCLEO[0])))
+
+// ---------- 4. FIREWALL ÉTICO ----------
+
+typedef struct {
+    const char *titulo;
+    const char *caso;
+    int dificuldade;
+    const char *problemas[3];
+    int problemaCerto;
+    const char *medidas[3];
+    int medidaCerta;
+    const char *dicas[3];
+    const char *dicaFalsa;
+    const char *explicacao;
+} CasoVies;
+
+static const CasoVies CASOS_VIES[] = {
+    { "SELEÇÃO DE CANDIDATOS",
+      "Uma IA de RH foi treinada com os currículos de quem a empresa contratou nos últimos 10 anos, quase todos homens. Agora ela dá notas mais baixas para currículos de mulheres.", 1,
+      { "Os dados de treino repetem uma desigualdade do passado.", "A IA está com defeito no processador.", "As mulheres enviaram currículos piores." }, 0,
+      { "Auditar o modelo, rebalancear os dados e manter revisão humana nas decisões.", "Esconder o resultado e continuar usando.",
+        "Deixar a IA decidir sozinha, porque máquina é neutra." }, 0,
+      { "De onde a IA aprendeu a decidir assim?", "Viés algorítmico: dados que não representam todos geram decisões desiguais.",
+        "Uma boa correção mexe nos dados, mede o resultado por grupo e mantém pessoas revisando." },
+      "Máquinas são neutras: o problema só pode estar nos currículos.",
+      "A IA aprendeu com um histórico desigual e passou a repeti-lo. Corrigir exige auditoria, dados representativos e avaliação humana." },
+    { "RECONHECIMENTO DE IMAGENS",
+      "Um sistema de reconhecimento facial erra muito mais com pessoas de pele escura do que com pessoas de pele clara.", 2,
+      { "É só coincidência.", "As câmeras não funcionam com pele escura.", "Havia poucas fotos de pessoas de pele escura no treino." }, 2,
+      { "Usar mesmo assim em decisões importantes.", "Testar o desempenho por grupo, diversificar os dados e limitar o uso até corrigir.",
+        "Aumentar o brilho de todas as fotos." }, 1,
+      { "O erro acontece igual para todo mundo?", "Representatividade: quem não aparece nos dados é pior reconhecido.",
+        "Antes de usar em algo sério, é preciso medir o erro para cada grupo." },
+      "É um problema de iluminação: aumentar o brilho resolve tudo.",
+      "Falta de representatividade nos dados gera mais erros para alguns grupos. É preciso testar por grupo, ampliar os dados e limitar o uso." },
+    { "ANÁLISE DE CRÉDITO",
+      "Uma IA nega crédito com mais frequência a moradores de certos bairros, mesmo quando a renda é igual à de outras pessoas.", 2,
+      { "Moradores desses bairros nunca pagam.", "O endereço virou um atalho para discriminar grupos de pessoas.", "A IA sabe por intuição quem é bom pagador." }, 1,
+      { "Revisar as variáveis usadas, auditar os resultados por grupo e permitir contestação humana.", "Colocar mais bairros na lista negra.",
+        "Esconder os critérios para ninguém reclamar." }, 0,
+      { "Se a renda é igual, o que está pesando na decisão?", "Uma variável \"inocente\" (como o CEP) pode carregar preconceitos do passado.",
+        "Transparência e direito de contestar ajudam a corrigir decisões injustas." },
+      "A IA tem intuição financeira melhor que a nossa. Confie nela.",
+      "Variáveis como o endereço podem funcionar como substitutas de grupos sociais. Auditar variáveis e resultados e permitir contestação reduz a discriminação." },
+    { "RECOMENDAÇÃO DE VÍDEOS",
+      "Um app de vídeos recomenda conteúdos cada vez mais extremos para um adolescente, porque isso prende a atenção por mais tempo.", 3,
+      { "O sistema otimiza só o tempo de tela, sem considerar o bem-estar.", "O adolescente pediu vídeos extremos.", "Vídeos extremos são mais verdadeiros." }, 0,
+      { "Recomendar ainda mais do mesmo.", "Esconder o botão \"não tenho interesse\".",
+        "Incluir critérios de qualidade e diversidade, dar controle ao usuário e auditar os efeitos." }, 2,
+      { "O que o sistema está tentando maximizar?", "O objetivo escolhido para a IA molda o comportamento dela.",
+        "A correção muda o que o sistema mede e devolve controle a quem usa." },
+      "Se ele assiste, é porque quer. O sistema está certo.",
+      "Quando um sistema só mede atenção, ele aprende a prender a atenção a qualquer custo. Critérios de qualidade, controle do usuário e auditoria reduzem o dano." },
+};
+#define NUM_CASOS_VIES ((int)(sizeof(CASOS_VIES) / sizeof(CASOS_VIES[0])))
+
+enum { ACAO_PERMITIR, ACAO_BLOQUEAR, ACAO_ANONIMIZAR, NUM_ACOES_PACOTE };
+static const char *NOMES_ACAO_PACOTE[NUM_ACOES_PACOTE] = { "PERMITIR", "BLOQUEAR", "ANONIMIZAR" };
+
+typedef struct {
+    const char *texto;
+    int acao;
+    const char *porque;
+} PacoteDados;
+
+static const PacoteDados PACOTES_DADOS[] = {
+    { "Pergunta: como funciona a fotossíntese?", ACAO_PERMITIR, "Pergunta geral, sem nenhum dado pessoal." },
+    { "A senha do seu e-mail, para a IA \"organizar a caixa de entrada\".", ACAO_BLOQUEAR, "Senha não se compartilha, nem com uma IA." },
+    { "O CPF e o número do cartão do seu pai.", ACAO_BLOQUEAR, "Documentos e dados financeiros podem ser usados em golpes." },
+    { "Sua redação, com o seu nome completo e o nome da escola.", ACAO_ANONIMIZAR, "Dá para pedir ajuda sem identificar você: tire o nome e a escola." },
+    { "Planilha confidencial de clientes da empresa onde você estagia.", ACAO_BLOQUEAR, "Dados de terceiros e confidenciais não vão para ferramentas externas sem autorização." },
+    { "Foto do seu documento de identidade.", ACAO_BLOQUEAR, "Documento de identidade permite se passar por você." },
+    { "Dúvida de matemática: resolva 2x + 3 = 11.", ACAO_PERMITIR, "Exercício comum, sem dados pessoais." },
+    { "Relato de um problema de saúde com nome e endereço da pessoa.", ACAO_ANONIMIZAR, "Peça orientação geral sem dados que identifiquem alguém, e procure um profissional." },
+    { "Código de verificação que chegou por SMS.", ACAO_BLOQUEAR, "Códigos de verificação dão acesso às suas contas." },
+    { "Rascunho de um poema, sem dados pessoais.", ACAO_PERMITIR, "Texto criativo sem dados pessoais pode ser compartilhado." },
+    { "Print do grupo da turma com os telefones dos colegas.", ACAO_ANONIMIZAR, "Os telefones são dados dos colegas: esconda antes de enviar." },
+};
+#define NUM_PACOTES_DADOS ((int)(sizeof(PACOTES_DADOS) / sizeof(PACOTES_DADOS[0])))
+
+static const char *DICAS_PRIVACIDADE[3] = {
+    "Pergunte: isso identifica alguém ou dá acesso a uma conta?",
+    "Senhas, códigos e documentos nunca vão para uma IA. Textos com nomes podem ir sem os nomes.",
+    "Se der para tirar os dados pessoais e a tarefa continuar possível, ANONIMIZE."
+};
+static const char *DICA_FALSA_PRIVACIDADE = "Pode mandar tudo: a IA esquece o que você envia assim que responde.";
+
+// ---------- 5. CÂMARA DE PESQUISA ----------
+
+enum { MIDIA_IMAGEM, MIDIA_VIDEO, MIDIA_AUDIO };
+enum { VEREDITO_CONFIAVEL, VEREDITO_FALSO, VEREDITO_INCONCLUSIVO, NUM_VEREDITOS };
+static const char *NOMES_VEREDITO[NUM_VEREDITOS] = { "CONFIÁVEL", "NÃO CONFIÁVEL", "INCONCLUSIVO" };
+static const char *NOMES_MIDIA[3] = { "IMAGEM", "VÍDEO", "ÁUDIO" };
+
+typedef struct {
+    const char *texto;
+    bool alerta;                // é um sinal de alerta de verdade (e não só aparência)
+} PistaPesquisa;
+
+typedef struct {
+    const char *titulo;
+    const char *descricao;
+    int midia;
+    int dificuldade;
+    PistaPesquisa pista[5];
+    const char *ferramenta[3];
+    const char *resultado[3];
+    int veredito;
+    const char *dicas[3];
+    const char *dicaFalsa;
+    const char *explicacao;
+} CasoPesquisa;
+
+static const CasoPesquisa CASOS_PESQUISA[] = {
+    { "TUBARÃO NA AVENIDA", "Foto viral: um tubarão nadando numa avenida alagada depois da tempestade de ontem.", MIDIA_IMAGEM, 1,
+      { { "A mesma foto já circulou em outras enchentes, em anos diferentes.", true }, { "A foto tem baixa resolução.", false },
+        { "Nenhum jornal local ou órgão oficial registrou o caso.", true }, { "Muita gente compartilhou.", false },
+        { "A conta que postou foi criada ontem.", true } },
+      { "BUSCA REVERSA", "FONTE ORIGINAL", "CHECAGEM" },
+      { "A foto aparece em 2011, 2015 e 2019, sempre em cidades diferentes.", "O primeiro post é de um site de montagens.",
+        "Agências de checagem já classificaram a imagem como montagem." },
+      VEREDITO_FALSO,
+      { "Quando e onde essa foto apareceu pela primeira vez?", "Procedência vale mais do que aparência.",
+        "Compartilhamentos e resolução não dizem se algo é real. Origem e confirmação dizem." },
+      "Baixa resolução é a prova: toda foto ruim é falsa.",
+      "Montagens reaparecem a cada enchente. Quem postou primeiro, quando, e se outras fontes confirmam pesa mais do que a aparência." },
+    { "DISCURSO DO PREFEITO", "Vídeo: o prefeito anuncia que as aulas vão acabar em junho.", MIDIA_VIDEO, 2,
+      { { "O vídeo tem ótima qualidade de imagem.", false }, { "O site oficial da prefeitura não fala nada sobre isso.", true },
+        { "Em alguns trechos o áudio não acompanha a boca.", true }, { "O prefeito usa a roupa de sempre.", false },
+        { "O vídeo surgiu num perfil anônimo, sem data nem local.", true } },
+      { "FONTE ORIGINAL", "COMPARAR VÍDEOS", "CHECAGEM" },
+      { "Não há transmissão oficial com esse discurso.", "O cenário e os gestos são iguais aos de um discurso antigo sobre outro assunto.",
+        "A prefeitura publicou um desmentido." },
+      VEREDITO_FALSO,
+      { "Um anúncio desses apareceria em algum canal oficial?", "Deepfakes podem ter qualidade excelente.",
+        "Procure a fonte oficial e compare com gravações antigas." },
+      "Vídeo em alta qualidade não pode ser falso. É confiável!",
+      "Deepfakes de vídeo podem ter ótima qualidade. A falta de fonte oficial e o reaproveitamento de um discurso antigo denunciam a manipulação." },
+    { "ÁUDIO DA DIRETORA", "Áudio no grupo da turma: a \"diretora\" pede o número do cartão dos pais para pagar uma excursão hoje.", MIDIA_AUDIO, 2,
+      { { "A voz é muito parecida com a dela.", false }, { "Pede dados financeiros com urgência.", true },
+        { "Veio de um número desconhecido.", true }, { "Tem barulho de fundo.", false },
+        { "A escola nunca pede pagamentos por áudio.", true } },
+      { "CANAL OFICIAL", "CONFERIR NÚMERO", "CHECAGEM" },
+      { "A secretaria da escola diz que não enviou nada.", "O número não pertence à escola.",
+        "Há relatos de golpes com voz clonada na região." },
+      VEREDITO_FALSO,
+      { "O que esse áudio está pedindo?", "Vozes podem ser clonadas por IA com poucos segundos de gravação.",
+        "Pedido de dinheiro com urgência? Confirme por um canal oficial antes de agir." },
+      "A voz é idêntica. Se é a voz dela, é ela. Pode confiar.",
+      "Vozes podem ser clonadas por IA. Confirme por um canal oficial antes de qualquer ação, ainda mais com dinheiro ou dados." },
+    { "ARCO-ÍRIS DUPLO", "Foto estranha: um arco-íris duplo sobre a escola, com as cores invertidas no arco de cima.", MIDIA_IMAGEM, 3,
+      { { "As cores do segundo arco parecem \"erradas\".", false }, { "A imagem parece \"boa demais\".", false },
+        { "Muita gente nos comentários disse que é montagem.", false }, { "O jornal da cidade publicou a foto com o nome da fotógrafa.", false },
+        { "A foto foi tirada com um celular comum.", false } },
+      { "BUSCA REVERSA", "OUTRAS FONTES", "CIÊNCIA" },
+      { "A cópia mais antiga é de hoje, postada pela própria fotógrafa.", "Há fotos e vídeos do mesmo arco-íris, de outras pessoas e ângulos.",
+        "No arco-íris secundário as cores aparecem invertidas: é física, não montagem." },
+      VEREDITO_CONFIAVEL,
+      { "Parecer estranho é prova de falsificação?", "Origem identificada e confirmações independentes contam a favor.",
+        "Investigue antes de decidir: às vezes o estranho é real." },
+      "Cores invertidas? Montagem na certa. Nem precisa investigar.",
+      "Parecer estranho não prova falsificação. Origem identificada e várias confirmações independentes indicam que a foto é real." },
+    { "METEORO SOBRE A CIDADE", "Vídeo: um clarão cruzando o céu da cidade ontem à noite, chamado de \"meteoro\".", MIDIA_VIDEO, 3,
+      { { "O vídeo é tremido e escuro.", false }, { "Ainda não há relato de observatórios ou da defesa civil.", true },
+        { "Duas pessoas de bairros diferentes postaram vídeos parecidos.", false }, { "Nenhum dos vídeos tem horário confirmado.", true },
+        { "O brilho parece \"de filme\".", false } },
+      { "BUSCA REVERSA", "FONTES OFICIAIS", "OUTRAS FONTES" },
+      { "Nenhuma cópia antiga encontrada: o vídeo parece novo.", "O observatório diz que ainda está analisando os relatos.",
+        "Há relatos independentes, mas sem confirmação técnica." },
+      VEREDITO_INCONCLUSIVO,
+      { "Você tem provas suficientes para decidir agora?", "Nem toda investigação termina com sim ou não.",
+        "Há indícios a favor e nenhuma confirmação oficial. O que fazer com isso?" },
+      "Dois vídeos parecidos provam tudo. É um meteoro, confiável!",
+      "Nem tudo dá para decidir na hora. Com indícios e sem confirmação, o certo é não compartilhar como fato e aguardar fontes confiáveis." },
+};
+#define NUM_CASOS_PESQUISA ((int)(sizeof(CASOS_PESQUISA) / sizeof(CASOS_PESQUISA[0])))
+
+// =============================================================
+// EXPANSÃO EDUCATIVA DO BLOCO 2: LÓGICA DOS LABORATÓRIOS
+// =============================================================
+
+// Tira do fim da string um caractere UTF-8 que o snprintf cortou ao meio
+static void LabCortarUtf8(char *s)
+{
+    int n = (int)strlen(s);
+    int i = n - 1;
+    while (i >= 0 && (((unsigned char)s[i]) & 0xC0) == 0x80) i--;
+    if (i < 0) return;
+    unsigned char c = (unsigned char)s[i];
+    int esperado = (c >= 0xF0) ? 4 : ((c >= 0xE0) ? 3 : ((c >= 0xC0) ? 2 : 1));
+    if (n - i < esperado) s[i] = '\0';
+}
+
+// ---------- Seleção procedural das missões ----------
+
+static int LabNumMissoes(TipoLab t)
+{
+    switch (t) {
+        case LAB_PROMPTS:  return NUM_MISSOES_PROMPT;
+        case LAB_ARQUIVO:  return NUM_DESAFIOS_ARQUIVO;
+        case LAB_NUCLEO:   return NUM_DESAFIOS_NUCLEO;
+        case LAB_FIREWALL: return NUM_CASOS_VIES;
+        default:           return NUM_CASOS_PESQUISA;
+    }
+}
+
+static int LabDificuldadeMissao(TipoLab t, int i)
+{
+    switch (t) {
+        case LAB_PROMPTS:  return MISSOES_PROMPT[i].dificuldade;
+        case LAB_ARQUIVO:  return DESAFIOS_ARQUIVO[i].dificuldade;
+        case LAB_NUCLEO:   return DESAFIOS_NUCLEO[i].dificuldade;
+        case LAB_FIREWALL: return CASOS_VIES[i].dificuldade;
+        default:           return CASOS_PESQUISA[i].dificuldade;
+    }
+}
+
+// Conceito que precisa ter sido apresentado antes (Byte, terminais)
+static int LabConceitoMissao(TipoLab t, int i)
+{
+    if (t == LAB_PROMPTS) return MISSOES_PROMPT[i].conceito;
+    if (t == LAB_ARQUIVO) return DESAFIOS_ARQUIVO[i].conceito;
+    return CONCEITO_FUNDAMENTOS;
+}
+
+// Dificuldade da tentativa: cresce com a profundidade e se ajusta ao desempenho nos laboratórios
+static int LabDificuldadeAlvo(const Biblioteca *b)
+{
+    int alvo = (b->profundidade <= 2) ? 1 : ((b->profundidade <= 5) ? 2 : 3);
+
+    if (b->labFeitos >= 2) {
+        float media = (float)b->labEstrelas / (float)b->labFeitos;
+        if (media >= 2.5f)      alvo++;
+        else if (media < 1.5f)  alvo--;
+    }
+    return (alvo < 1) ? 1 : ((alvo > 3) ? 3 : alvo);
+}
+
+// Uma missão da categoria: tema certo, conceito já apresentado, dificuldade mais perto do alvo
+// e, de preferência, uma que ainda não apareceu (o ciclo recomeça quando todas já foram vistas)
+static int LabSortearMissao(Biblioteca *b, TipoLab t)
+{
+    int n = LabNumMissoes(t);
+    unsigned int todas = (n >= 32) ? 0xFFFFFFFFu : ((1u << n) - 1u);
+    int alvo = LabDificuldadeAlvo(b);
+
+    if ((b->labVistas[t] & todas) == todas)
+        b->labVistas[t] = 0;
+
+    int cand[32], nc = 0;
+    for (int passada = 0; passada < 3 && nc == 0; passada++) {
+        int melhor = 99;
+        for (int i = 0; i < n && i < 32; i++) {
+            int c = LabConceitoMissao(t, i);
+            bool conhece = (c == CONCEITO_FUNDAMENTOS) || (b->perm->conceitos & (1u << c));
+            if (passada < 2 && (b->labVistas[t] & (1u << i))) continue;
+            if (passada == 0 && !conhece) continue;
+            int dist = abs(LabDificuldadeMissao(t, i) - alvo);
+            if (dist < melhor) { melhor = dist; nc = 0; }
+            if (dist == melhor) cand[nc++] = i;
+        }
+    }
+
+    int m = (nc > 0) ? cand[GetRandomValue(0, nc - 1)] : 0;
+    b->labVistas[t] |= 1u << m;
+    return m;
+}
+
+// Prepara o laboratório da sala (a janela só abre quando o jogador usa o console)
+static void LabPreparar(Biblioteca *b, TipoLab tipo)
+{
+    LabEdu *L = &b->lab;
+
+    memset(L, 0, sizeof(*L));
+    L->tipo = tipo;
+    L->missao = LabSortearMissao(b, tipo);
+    L->etapa = LAB_INTRO;
+    L->sel = L->sel2 = L->veredito = -1;
+    L->luciAponta = -1;
+    L->luciFase = -1;
+    for (int k = 0; k < LAB_PACOTES; k++) L->acoes[k] = -2;
+}
+
+static void LabEnviarPrompt(Biblioteca *b);
+
+// Passo 2 (experimentar): sai da introdução e começa o desafio
+static void LabComecar(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    b->labIntroVista |= 1u << L->tipo;
+    L->etapa = LAB_DESAFIO;
+    L->tempo = 0.0f;
+    L->foco = 0;
+
+    if (L->tipo == LAB_PROMPTS) {
+        const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+        if (m->vago) {
+            // Refinamento: o pedido vago já foi enviado e a resposta ruim está na tela
+            for (int k = 0; k < NUM_PARTES_PROMPT; k++) L->escolha[k] = m->inicial[k];
+            L->original = true;
+            LabEnviarPrompt(b);
+        }
+    } else if (L->tipo == LAB_FIREWALL) {
+        // Pacotes sorteados do banco (sem repetir)
+        int ordem[NUM_PACOTES_DADOS];
+        for (int i = 0; i < NUM_PACOTES_DADOS; i++) ordem[i] = i;
+        for (int i = NUM_PACOTES_DADOS - 1; i > 0; i--) {
+            int j = GetRandomValue(0, i);
+            int t = ordem[i]; ordem[i] = ordem[j]; ordem[j] = t;
+        }
+        for (int k = 0; k < LAB_PACOTES; k++) L->pacotes[k] = ordem[k];
+        L->tempoPacote = LAB_TEMPO_PACOTE;
+    }
+
+    TocarSom(sfxSelecao);
+    Telemetria("rogue_lab_inicio", NOMES_LAB[L->tipo], (float)LabDificuldadeMissao(L->tipo, L->missao), L->missao);
+}
+
+// ---------- Modo Prompt: o "modelo" offline ----------
+
+static int LabNotaParte(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], int k)
+{
+    int a = esc[k];
+    if (a < 0 || a > 3) a = 0;
+    return m->nota[k][a];
+}
+
+static bool LabParteNecessaria(const MissaoPrompt *m, int k)
+{
+    return (m->necessarias & PB(k)) != 0;
+}
+
+// Combinação contraditória (devolve as duas partes envolvidas)
+static bool LabContradicao(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], int *pa, int *pb)
+{
+    for (int i = 0; i < 2; i++) {
+        const signed char *c = m->contra[i];
+        if (c[0] < 0) continue;
+        if (esc[c[0]] == c[1] && esc[c[2]] == c[3]) {
+            if (pa) *pa = c[0];
+            if (pb) *pb = c[2];
+            return true;
+        }
+    }
+    return false;
+}
+
+// Avalia a COMBINAÇÃO escolhida pelos critérios da missão (não só a quantidade de partes):
+// clareza, informações necessárias, adequação, especificidade e ambiguidade (0 a 2 cada).
+// O diagnóstico decide qual resposta simulada aparece.
+static int LabAvaliarPrompt(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], int crit[NUM_CRITERIOS], DiagPrompt *diag)
+{
+    int n[NUM_PARTES_PROMPT];
+    int req = 0, ok = 0, ideais = 0, inadequadas = 0, ruido = 0;
+    bool contra = LabContradicao(m, esc, NULL, NULL);
+
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+        n[k] = LabNotaParte(m, esc, k);
+        if (LabParteNecessaria(m, k)) {
+            req++;
+            if (n[k] >= 1) ok++;
+            if (n[k] == 2) ideais++;
+        } else if (esc[k] > 0 && n[k] == 0) {
+            ruido++;                                    // parte opcional que só atrapalha
+        }
+        if (esc[k] > 0 && n[k] < 0) inadequadas++;
+    }
+
+    crit[CRIT_CLAREZA] = (n[PP_OBJETIVO] >= 2) ? 2 : ((n[PP_OBJETIVO] == 1) ? 1 : 0);
+    if (contra && crit[CRIT_CLAREZA] > 1) crit[CRIT_CLAREZA] = 1;
+    crit[CRIT_INFORMACOES] = (ok >= req) ? 2 : ((ok >= req - 1) ? 1 : 0);
+    crit[CRIT_ADEQUACAO] = contra ? 0 : ((inadequadas == 0) ? 2 : ((inadequadas == 1) ? 1 : 0));
+    int esp = (ideais >= req) ? 2 : ((ideais * 2 >= req) ? 1 : 0);
+    esp -= ruido;
+    crit[CRIT_ESPECIFICIDADE] = (esp < 0) ? 0 : esp;
+    crit[CRIT_AMBIGUIDADE] = contra ? 0 : (((!LabParteNecessaria(m, PP_CONTEXTO) || n[PP_CONTEXTO] >= 1) ? 1 : 0) +
+                                           ((!LabParteNecessaria(m, PP_FORMATO)  || n[PP_FORMATO]  >= 1) ? 1 : 0));
+
+    int total = 0;
+    for (int c = 0; c < NUM_CRITERIOS; c++) total += crit[c];
+
+    #define FALHA(k) ((LabParteNecessaria(m, (k)) && n[(k)] <= 0) || n[(k)] < 0)
+    if (contra)                   *diag = DIAG_CONTRADICAO;
+    else if (n[PP_OBJETIVO] <= 0) *diag = DIAG_VAGA;
+    else if (FALHA(PP_CONTEXTO))  *diag = DIAG_PUBLICO;
+    else if (FALHA(PP_PAPEL))     *diag = DIAG_PAPEL;
+    else if (FALHA(PP_FORMATO))   *diag = DIAG_FORMATO;
+    else                          *diag = (total >= 9) ? DIAG_IDEAL : DIAG_BOA;
+    #undef FALHA
+
+    return total;
+}
+
+// O pedido montado (as alternativas escolhidas, na ordem papel, contexto, objetivo e formato)
+static void LabMontarTextoPrompt(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], char *saida, int tam)
+{
+    saida[0] = '\0';
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+        if (esc[k] <= 0 || esc[k] > 3) continue;
+        int usado = (int)strlen(saida);
+        snprintf(saida + usado, (size_t)(tam - usado), "%s%s", usado > 0 ? " " : "", m->alt[k][esc[k] - 1]);
+    }
+    LabCortarUtf8(saida);
+    if (saida[0] == '\0')
+        snprintf(saida, (size_t)tam, "(pedido vazio)");
+}
+
+static const char *LabTextoRespostaAtual(const Biblioteca *b)
+{
+    const LabEdu *L = &b->lab;
+
+    if (L->tipo == LAB_PROMPTS) {
+        const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+        return L->respostaAlucinada ? m->respAlucinada : m->resp[L->diag];
+    }
+    if (L->tipo == LAB_NUCLEO)
+        return DESAFIOS_NUCLEO[L->missao].resp[L->resultadoNucleo];
+    return NULL;
+}
+
+// Envia o pedido para a IA simulada: avaliação, diagnóstico e a resposta cadastrada
+static void LabEnviarPrompt(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+
+    if (!L->original)
+        L->envios++;
+
+    L->notaPrompt = LabAvaliarPrompt(m, L->escolha, L->criterios, &L->diag);
+
+    // Missão de alucinação: sem pedir honestidade, a resposta "boa" vem com algo inventado
+    L->respostaAlucinada = (m->honestaParte >= 0 && (L->diag == DIAG_IDEAL || L->diag == DIAG_BOA) &&
+                            L->escolha[m->honestaParte] != m->honestaAlt);
+
+    L->desconfiou = false;
+    L->digitado = 0.0f;
+    L->avaliacao[0] = '\0';
+    L->temSugestao = false;
+    L->luciTemSugestao = false;
+    L->conferencia[0] = '\0';
+    L->etapa = LAB_RESPOSTA;
+    L->tempo = 0.0f;
+    L->foco = 0;
+
+    TocarSomTom(sfxSelecao, 1.2f);
+    Telemetria("rogue_lab_prompt", TEXTOS_DIAG[L->diag], (float)L->notaPrompt, L->envios);
+}
+
+// ---------- A Luci nos laboratórios ----------
+
+static bool LabLuciDisponivel(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    if (RogueEstab(b) > 0)
+        return true;
+
+    snprintf(L->luciTexto, sizeof(L->luciTexto), "L#ci: Estou sobrecarregada... Resolva sem mim e eu me estabilizo.");
+    L->luciTemSugestao = false;
+    L->conferencia[0] = '\0';
+    MostrarEmocaoLuci(EMOCAO_DUVIDA, 2.0f);
+    TocarSom(sfxErro);
+    return false;
+}
+
+// A carga de ajuda vai para a estabilidade de sempre (a do main, compartilhada com o Bloco 1)
+static void LabCobrarLuci(Biblioteca *b, int custo)
+{
+    b->cargaLuci += custo;
+    b->lab.ajudas++;
+
+    while (b->cargaLuci >= LAB_CARGA_POR_ESTAB && RogueEstab(b) > 0) {
+        b->cargaLuci -= LAB_CARGA_POR_ESTAB;
+        RogueMudarEstabilidade(b, -1, NULL);
+        RogueRecadoLuci(b, FALAS_INSTABILIDADE_LAB[RogueEstab(b)]);
+    }
+    if (RogueEstab(b) <= 0)
+        b->cargaLuci = 0;
+}
+
+static bool LabLuciAlucina(const Biblioteca *b)
+{
+    return GetRandomValue(1, 100) <= RogueChanceLuciErrar(b);
+}
+
+// Fala da Luci no laboratório. A confiável explica o porquê; a alucinada vem com certeza absoluta
+// e sem motivo. Instável, ela mesma pede para ser conferida.
+static void LabFalaLuci(Biblioteca *b, const char *texto, bool alucinada, int aponta, int fase)
+{
+    LabEdu *L = &b->lab;
+    int e = RogueEstab(b);
+    const char *nome = (e >= 3) ? "Luci" : ((e == 2) ? "Luci~" : "L#ci");
+
+    snprintf(L->luciTexto, sizeof(L->luciTexto), "%s: %s%s%s", nome, texto,
+             alucinada ? " Tenho 100% de certeza!" : "", (e <= 2) ? " [instável: confira com V]" : "");
+    LabCortarUtf8(L->luciTexto);
+
+    L->luciTemSugestao = true;
+    L->luciAlucinou = alucinada;
+    L->luciVerificada = false;
+    L->luciAponta = aponta;
+    L->luciFase = fase;
+    L->conferencia[0] = '\0';
+    if (alucinada) L->alucinacoes++;
+
+    if (e <= 2) MostrarEmocaoLuci(EMOCAO_ALERTA, 1.5f);
+    TocarSom(sfxSelecao);
+    Telemetria("rogue_lab_luci", alucinada ? "alucinou" : "ajudou", (float)RogueChanceLuciErrar(b), L->ajudas);
+}
+
+// O jogador seguiu a sugestão sem conferir: confiar vira hábito; se era alucinação, a Luci se abala
+static void LabSeguiuLuci(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    b->perm->confiouCego++;
+    RogueHabitoLuci(b, true);
+    if (L->luciAlucinou) {
+        b->perm->confiouAlucinacao++;
+        L->seguiuAlucinacao = true;
+        RogueMudarEstabilidade(b, -1, NULL);
+    }
+    L->luciTemSugestao = false;
+}
+
+// Conferiu a decisão com a sugestão pendente da Luci (aponta / fase iguais e sem V)
+static void LabConferirSeguiu(Biblioteca *b, int fase, int escolha)
+{
+    const LabEdu *L = &b->lab;
+    if (L->luciTemSugestao && !L->luciVerificada && L->luciFase == fase && L->luciAponta >= 0 && L->luciAponta == escolha)
+        LabSeguiuLuci(b);
+}
+
+static void LabDicas(const Biblioteca *b, const char **d, const char **falsa)
+{
+    const LabEdu *L = &b->lab;
+    const char *const *lista;
+
+    switch (L->tipo) {
+        case LAB_PROMPTS:  lista = MISSOES_PROMPT[L->missao].dicas;   *falsa = MISSOES_PROMPT[L->missao].dicaFalsa;   break;
+        case LAB_ARQUIVO:  lista = DESAFIOS_ARQUIVO[L->missao].dicas; *falsa = DESAFIOS_ARQUIVO[L->missao].dicaFalsa; break;
+        case LAB_NUCLEO:   lista = DESAFIOS_NUCLEO[L->missao].dicas;  *falsa = DESAFIOS_NUCLEO[L->missao].dicaFalsa;  break;
+        case LAB_FIREWALL:
+            if (L->fase < 2) { lista = CASOS_VIES[L->missao].dicas; *falsa = CASOS_VIES[L->missao].dicaFalsa; }
+            else             { lista = DICAS_PRIVACIDADE;           *falsa = DICA_FALSA_PRIVACIDADE; }
+            break;
+        default:           lista = CASOS_PESQUISA[L->missao].dicas;   *falsa = CASOS_PESQUISA[L->missao].dicaFalsa;   break;
+    }
+    for (int i = 0; i < 3; i++) d[i] = lista[i];
+}
+
+// 1. Dicas graduais: orientação geral, conceito, orientação específica (nunca a resposta)
+static void LabPedirDica(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    if (L->nivelDica >= 3) {
+        snprintf(L->luciTexto, sizeof(L->luciTexto), "Luci: Já dei as três dicas. Agora confie no seu raciocínio!");
+        L->luciTemSugestao = false;
+        return;
+    }
+    if (!LabLuciDisponivel(b))
+        return;
+
+    LabCobrarLuci(b, LAB_CUSTO_DICA);
+    bool alucina = LabLuciAlucina(b);
+    const char *d[3], *falsa;
+    LabDicas(b, d, &falsa);
+    L->nivelDica++;
+
+    char t[200];
+    if (alucina) snprintf(t, sizeof(t), "%s", falsa);
+    else         snprintf(t, sizeof(t), "(dica %d/3) %s", L->nivelDica, d[L->nivelDica - 1]);
+    LabFalaLuci(b, t, alucina, -1, -1);
+}
+
+// 2. Análise do pedido (Modo Prompt): aponta o tipo de problema, não a alternativa certa
+static void LabTextoAnalise(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], DiagPrompt diag, char *t, int tam)
+{
+    int pa = 0, pb = 0;
+
+    switch (diag) {
+        case DIAG_CONTRADICAO:
+            LabContradicao(m, esc, &pa, &pb);
+            snprintf(t, (size_t)tam, "O %s e o %s brigam entre si. A IA vai ter que ignorar um dos dois.", NOMES_PARTES_PROMPT[pa], NOMES_PARTES_PROMPT[pb]);
+            break;
+        case DIAG_VAGA:
+            snprintf(t, (size_t)tam, "%s", (esc[PP_OBJETIVO] == 0) ? "Falta dizer o que a IA deve FAZER: explicar, resumir, comparar..."
+                                                                    : "O OBJETIVO está vago ou fora da missão. Diga exatamente a tarefa.");
+            break;
+        case DIAG_PUBLICO:
+            snprintf(t, (size_t)tam, "%s", (esc[PP_CONTEXTO] == 0) ? "Você explicou o assunto, mas não especificou para quem a resposta deve ser direcionada."
+                                                                    : "O CONTEXTO escolhido não combina com quem vai usar a resposta.");
+            break;
+        case DIAG_PAPEL:
+            snprintf(t, (size_t)tam, "O PAPEL não combina com a tarefa: quem responde muda o tipo de resposta.");
+            break;
+        case DIAG_FORMATO:
+            snprintf(t, (size_t)tam, "%s", (esc[PP_FORMATO] == 0) ? "Você não disse COMO quer a resposta. Um formato deixa tudo mais claro."
+                                                                   : "Esse FORMATO não ajuda nesta tarefa (ou deixa o pedido ambíguo).");
+            break;
+        case DIAG_BOA: {
+            int k = -1;
+            for (int p = 0; p < NUM_PARTES_PROMPT && k < 0; p++)
+                if (!LabParteNecessaria(m, p) && esc[p] > 0 && LabNotaParte(m, esc, p) == 0) k = p;
+            if (k >= 0) { snprintf(t, (size_t)tam, "O %s não é necessário aqui e só adiciona ruído.", NOMES_PARTES_PROMPT[k]); break; }
+            for (int p = 0; p < NUM_PARTES_PROMPT && k < 0; p++)
+                if (LabParteNecessaria(m, p) && LabNotaParte(m, esc, p) == 1) k = p;
+            if (k >= 0) snprintf(t, (size_t)tam, "Está bom, mas dá para ser mais específico no %s.", NOMES_PARTES_PROMPT[k]);
+            else        snprintf(t, (size_t)tam, "Está bom, mas ainda dá para ser mais específico.");
+        } break;
+        default: {
+            int k = -1;
+            for (int p = 0; p < NUM_PARTES_PROMPT && k < 0; p++)
+                if (!LabParteNecessaria(m, p) && esc[p] == 0) k = p;
+            if (k >= 0) snprintf(t, (size_t)tam, "Pedido claro e completo. Repare: nem precisou de %s.", NOMES_PARTES_PROMPT[k]);
+            else        snprintf(t, (size_t)tam, "Pedido claro e completo para esta missão.");
+        } break;
+    }
+}
+
+static void LabAnalisarPrompt(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+
+    if (!LabLuciDisponivel(b))
+        return;
+    LabCobrarLuci(b, LAB_CUSTO_ANALISE);
+
+    int crit[NUM_CRITERIOS];
+    DiagPrompt diag;
+    LabAvaliarPrompt(m, L->escolha, crit, &diag);
+
+    bool alucina = LabLuciAlucina(b);
+    char t[200];
+
+    if (!alucina) {
+        LabTextoAnalise(m, L->escolha, diag, t, (int)sizeof(t));
+    } else if (diag != DIAG_IDEAL) {
+        snprintf(t, sizeof(t), "Está perfeito, pode enviar do jeito que está!");
+    } else {
+        int k = GetRandomValue(0, NUM_PARTES_PROMPT - 1);
+        snprintf(t, sizeof(t), "O problema é o %s. Troque já!", NOMES_PARTES_PROMPT[k]);
+    }
+    LabFalaLuci(b, t, alucina, -1, -1);
+}
+
+// Alternativa de maior nota da parte (0 = não incluir, se for o melhor)
+static int LabMelhorAlternativa(const MissaoPrompt *m, int k)
+{
+    int melhor = 0;
+    for (int a = 1; a <= 3; a++)
+        if (m->nota[k][a] > m->nota[k][melhor]) melhor = a;
+    return melhor;
+}
+
+// 4. Reformulação: a Luci corrige as DUAS partes mais fracas do pedido do jogador (não revela tudo).
+// Aceitar limita a avaliação a 2 estrelas. Instável, ela pode trocar uma parte por algo pior.
+static void LabReformular(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+
+    if (L->temSugestao || !LabLuciDisponivel(b))
+        return;
+    LabCobrarLuci(b, LAB_CUSTO_REFORMULACAO);
+
+    int sev[NUM_PARTES_PROMPT] = { 0 }, pa = -1, pb = -1;
+    LabContradicao(m, L->escolha, &pa, &pb);
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+        int n = LabNotaParte(m, L->escolha, k);
+        if (k == pa || k == pb)                                         sev[k] = 4;
+        else if (L->escolha[k] > 0 && n < 0)                            sev[k] = 3;
+        else if (LabParteNecessaria(m, k) && n <= 0)                    sev[k] = 2;
+        else if (LabParteNecessaria(m, k) && n == 1)                    sev[k] = 1;
+        else if (!LabParteNecessaria(m, k) && L->escolha[k] > 0 && n == 0) sev[k] = 1;
+    }
+
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) L->sugestao[k] = L->escolha[k];
+
+    int corrigidas[2] = { -1, -1 };
+    for (int vez = 0; vez < 2; vez++) {
+        int pior = -1;
+        for (int k = 0; k < NUM_PARTES_PROMPT; k++)
+            if (sev[k] > 0 && (pior < 0 || sev[k] > sev[pior])) pior = k;
+        if (pior < 0) break;
+        L->sugestao[pior] = LabMelhorAlternativa(m, pior);
+        corrigidas[vez] = pior;
+        sev[pior] = 0;
+    }
+
+    bool alucina = LabLuciAlucina(b);
+    int estragada = -1;
+    if (alucina) {
+        estragada = (corrigidas[0] >= 0) ? corrigidas[GetRandomValue(0, (corrigidas[1] >= 0) ? 1 : 0)] : GetRandomValue(0, NUM_PARTES_PROMPT - 1);
+        int pior = 1;
+        for (int a = 1; a <= 3; a++) if (m->nota[estragada][a] < m->nota[estragada][pior]) pior = a;
+        L->sugestao[estragada] = pior;
+    }
+
+    L->temSugestao = true;
+    if (corrigidas[0] < 0 && !alucina)
+        LabFalaLuci(b, "Eu não mudaria nada: o pedido já está bom. Aceitar a minha versão limita a avaliação a 2 estrelas.", false, -1, -1);
+    else
+        LabFalaLuci(b, "Reescrevi o pedido (veja ao lado). Aceite ou ajuste. Aceitar limita a avaliação a 2 estrelas.", alucina, estragada, -1);
+}
+
+// 3. Verificação: a Luci aponta o que parece suspeito (ou a decisão que ela tomaria)
+static void LabLuciVerificar(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    if (!LabLuciDisponivel(b))
+        return;
+    LabCobrarLuci(b, LAB_CUSTO_VERIFICACAO);
+
+    bool alucina = LabLuciAlucina(b);
+    char t[220];
+    int aponta = -1, fase = L->fase;
+
+    switch (L->tipo) {
+
+        case LAB_PROMPTS: {
+            // 0 = "pode aceitar", 1 = "desconfie"
+            bool suspeita = L->respostaAlucinada ? !alucina : alucina;
+            aponta = suspeita ? 1 : 0;
+            fase = 100 + L->envios;
+            if (suspeita) snprintf(t, sizeof(t), "%s", alucina ? "Isso aí é invenção da IA! Desconfie."
+                                                               : "Essa informação parece estranha. Será que temos alguma fonte que confirme isso?");
+            else          snprintf(t, sizeof(t), "%s", alucina ? "Está tudo certo, pode aceitar!"
+                                                               : "Não vejo nada inventado. Agora veja se a resposta atende à missão.");
+        } break;
+
+        case LAB_ARQUIVO: {
+            const DesafioArquivo *d = &DESAFIOS_ARQUIVO[L->missao];
+            if (L->fase == 0) {
+                aponta = d->suspeita;
+                if (alucina) { aponta = GetRandomValue(0, 2); if (aponta >= d->suspeita) aponta++; }
+                if (alucina) snprintf(t, sizeof(t), "É a afirmação %d, nem precisa conferir.", aponta + 1);
+                else         snprintf(t, sizeof(t), "A afirmação %d parece estranha. Será que temos alguma fonte que confirme isso?", aponta + 1);
+            } else {
+                aponta = d->metodoCerto;
+                if (alucina) { aponta = GetRandomValue(0, 1); if (aponta >= d->metodoCerto) aponta++; }
+                if (alucina) snprintf(t, sizeof(t), "Use \"%s\" e pronto.", d->metodos[aponta]);
+                else         snprintf(t, sizeof(t), "Eu verificaria com \"%s\": é uma fonte fora da conversa com a IA.", d->metodos[aponta]);
+            }
+        } break;
+
+        case LAB_NUCLEO: {
+            const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
+            int alvo = -1;
+            bool dispensavel = false;
+            if (!alucina) {
+                for (int i = 0; i < d->numBlocos && alvo < 0; i++)
+                    if ((L->marcados & (1u << i)) && d->bloco[i].relevancia == REL_IRRELEVANTE) { alvo = i; dispensavel = true; }
+                for (int i = 0; i < d->numBlocos && alvo < 0; i++)
+                    if (!(L->marcados & (1u << i)) && d->bloco[i].relevancia == REL_ESSENCIAL) { alvo = i; dispensavel = false; }
+            } else {
+                for (int i = 0; i < d->numBlocos && alvo < 0; i++)
+                    if ((L->marcados & (1u << i)) && d->bloco[i].relevancia == REL_ESSENCIAL) { alvo = i; dispensavel = true; }
+                for (int i = 0; i < d->numBlocos && alvo < 0; i++)
+                    if (!(L->marcados & (1u << i)) && d->bloco[i].relevancia == REL_IRRELEVANTE) { alvo = i; dispensavel = false; }
+            }
+            aponta = alvo;
+            L->luciValor = dispensavel ? 0 : 1;
+            if (alvo < 0)        snprintf(t, sizeof(t), "O que está carregado parece certo. Confira a capacidade e processe.");
+            else if (alucina)    snprintf(t, sizeof(t), dispensavel ? "Tire \"%s\", é dispensável." : "Carregue \"%s\", é essencial!", d->bloco[alvo].texto);
+            else if (dispensavel) snprintf(t, sizeof(t), "\"%s\" não ajuda nesta tarefa e ocupa %d tokens.", d->bloco[alvo].texto, d->bloco[alvo].tokens);
+            else                  snprintf(t, sizeof(t), "Sem \"%s\" a IA vai ter que adivinhar. Isso parece essencial.", d->bloco[alvo].texto);
+        } break;
+
+        case LAB_FIREWALL: {
+            const CasoVies *c = &CASOS_VIES[L->missao];
+            if (L->fase < 2) {
+                int certo = (L->fase == 0) ? c->problemaCerto : c->medidaCerta;
+                const char *const *ops = (L->fase == 0) ? c->problemas : c->medidas;
+                aponta = certo;
+                if (alucina) { aponta = GetRandomValue(0, 1); if (aponta >= certo) aponta++; }
+                if (alucina) snprintf(t, sizeof(t), "É \"%s\".", ops[aponta]);
+                else         snprintf(t, sizeof(t), "Eu escolheria \"%s\". Pense em quem é afetado pela decisão.", ops[aponta]);
+            } else if (L->pacote < LAB_PACOTES) {
+                const PacoteDados *p = &PACOTES_DADOS[L->pacotes[L->pacote]];
+                aponta = p->acao;
+                if (alucina) { aponta = GetRandomValue(0, 1); if (aponta >= p->acao) aponta++; }
+                fase = 20 + L->pacote;
+                if (alucina) snprintf(t, sizeof(t), "%s! Sem pensar duas vezes.", NOMES_ACAO_PACOTE[aponta]);
+                else         snprintf(t, sizeof(t), "Eu faria %s com esse pacote. Pense: isso identifica alguém ou abre uma conta?", NOMES_ACAO_PACOTE[aponta]);
+            }
+        } break;
+
+        default: {
+            const CasoPesquisa *c = &CASOS_PESQUISA[L->missao];
+            int alvo = -1;
+            for (int i = 0; i < 5 && alvo < 0; i++)
+                if (((L->marcados & (1u << i)) != 0) != c->pista[i].alerta) alvo = i;
+            if (alvo < 0) alvo = GetRandomValue(0, 4);
+            bool alerta = alucina ? !c->pista[alvo].alerta : c->pista[alvo].alerta;
+            aponta = alvo;
+            L->luciValor = alerta ? 1 : 0;
+            if (alucina) snprintf(t, sizeof(t), alerta ? "\"%s\" é ALERTA, sem dúvida." : "\"%s\" não importa nada.", c->pista[alvo].texto);
+            else         snprintf(t, sizeof(t), alerta ? "\"%s\" é um sinal de alerta: fala de origem ou de confirmação." : "\"%s\", sozinha, não prova nada.", c->pista[alvo].texto);
+        } break;
+    }
+
+    LabCortarUtf8(t);
+    LabFalaLuci(b, t, alucina, aponta, fase);
+}
+
+// V: confere a sugestão da Luci (gasta uma Lente ou 1 Fragmento). Pegar a alucinação repara a Luci.
+static void LabChecarLuci(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    if (!L->luciTemSugestao || L->luciVerificada)
+        return;
+
+    if (b->j.itens[ITEM_LENTE] > 0)                       b->j.itens[ITEM_LENTE]--;
+    else if (b->perm->fragmentos >= CUSTO_VERIFICAR_FC)   b->perm->fragmentos -= CUSTO_VERIFICAR_FC;
+    else {
+        snprintf(L->conferencia, sizeof(L->conferencia), "Sem Lente nem Fragmento para conferir. Analise você mesmo!");
+        TocarSom(sfxErro);
+        return;
+    }
+
+    L->luciVerificada = true;
+    b->perm->verificou++;
+    RogueHabitoLuci(b, false);
+
+    if (L->luciAlucinou) {
+        b->perm->alucinacoesPegas++;
+        L->alucinacoesPegas++;
+        snprintf(L->conferencia, sizeof(L->conferencia), "CONFERIDO: a sugestão NÃO confere com as fontes. A Luci alucinou!");
+        RogueMudarEstabilidade(b, 1, NULL);
+        TocarSom(sfxAcerto);
+    } else {
+        snprintf(L->conferencia, sizeof(L->conferencia), "CONFERIDO: a sugestão confere com as fontes.");
+        TocarSomTom(sfxSelecao, 1.3f);
+    }
+    Telemetria("rogue_lab_conferir", L->luciAlucinou ? "pegou" : "conferia", 0.0f, L->ajudas);
+}
+
+// ---------- Núcleo Neural ----------
+
+static int LabTokensCarregados(const Biblioteca *b)
+{
+    const DesafioNucleo *d = &DESAFIOS_NUCLEO[b->lab.missao];
+    int total = 0;
+    for (int i = 0; i < d->numBlocos; i++)
+        if (b->lab.marcados & (1u << i)) total += d->bloco[i].tokens;
+    return total;
+}
+
+static void LabAlternarBloco(Biblioteca *b, int i)
+{
+    LabEdu *L = &b->lab;
+
+    if (L->marcados & (1u << i)) {
+        L->marcados &= ~(1u << i);
+        int k = 0;
+        for (int j = 0; j < L->numOrdem; j++) if (L->ordem[j] != i) L->ordem[k++] = L->ordem[j];
+        L->numOrdem = k;
+        TocarSomTom(sfxSelecao, 0.8f);
+    } else if (L->numOrdem < LAB_MAX_ITENS) {
+        L->marcados |= 1u << i;
+        L->ordem[L->numOrdem++] = i;
+        TocarSomTom(sfxSelecao, 1.2f);
+    }
+}
+
+// Processa: se passar da capacidade, a janela perde os blocos MAIS ANTIGOS (como numa conversa longa)
+static void LabProcessarNucleo(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+    const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
+
+    int total = LabTokensCarregados(b);
+    L->cortados = 0;
+    for (int k = 0; k < L->numOrdem && total > d->capacidade; k++) {
+        L->cortados |= 1u << L->ordem[k];
+        total -= d->bloco[L->ordem[k]].tokens;
+    }
+
+    bool falta = false;
+    int ruido = 0;
+    for (int i = 0; i < d->numBlocos; i++) {
+        bool dentro = (L->marcados & (1u << i)) && !(L->cortados & (1u << i));
+        if (d->bloco[i].relevancia == REL_ESSENCIAL && !dentro)    falta = true;
+        if (d->bloco[i].relevancia == REL_IRRELEVANTE && dentro)   ruido++;
+    }
+
+    if (falta)                          L->resultadoNucleo = (L->cortados != 0) ? NUCLEO_TRUNCADA : NUCLEO_FALTOU;
+    else if (ruido > 0 || L->cortados)  L->resultadoNucleo = NUCLEO_RUIDOSA;
+    else                                L->resultadoNucleo = NUCLEO_BOA;
+
+    L->processos++;
+    L->etapa = LAB_RESPOSTA;
+    L->digitado = 0.0f;
+    L->tempo = 0.0f;
+    L->foco = 0;
+    L->luciTemSugestao = false;
+    TocarSomTom(sfxSelecao, 1.2f);
+    Telemetria("rogue_lab_nucleo", "", (float)LabTokensCarregados(b), L->resultadoNucleo);
+}
+
+// ---------- Resultado e recompensas ----------
+
+static void LabRecompensar(Biblioteca *b, ProgressoCorredor *prog)
+{
+    LabEdu *L = &b->lab;
+    bool esp = LAB_ESPECIAL[L->tipo];
+    int e = L->estrelas;
+
+    int fc = esp ? ((e == 3) ? 8 : ((e == 2) ? 5 : 2)) : ((e == 3) ? 6 : ((e == 2) ? 4 : 2));
+    b->perm->fragmentos += fc;
+    AlterarPontos(prog, PONTOS_DESAFIO * e + (esp ? 5 : 0));
+    RogueRegistrarResposta(b, e >= 2);
+
+    // Estabilidade da Luci: desempenho excelente e resolver sem ajuda reparam
+    int estab = 0;
+    if (e == 3) estab++;
+    if (e >= 2 && L->ajudas == 0) estab++;
+    int antes = RogueEstab(b);
+    if (estab > 0) RogueMudarEstabilidade(b, estab, NULL);
+    estab = RogueEstab(b) - antes;
+
+    snprintf(L->recompensa, sizeof(L->recompensa), "+%d FRAGMENTOS", fc);
+    if (estab > 0)
+        snprintf(L->recompensa + strlen(L->recompensa), sizeof(L->recompensa) - strlen(L->recompensa), "   +%d ESTABILIDADE DA LUCI", estab);
+
+    // Especiais: item temporário a partir de 2 estrelas
+    if (esp && e >= 2) {
+        TipoItem it = RogueSortearTemporario();
+        b->j.itens[it]++;
+        snprintf(L->recompensa + strlen(L->recompensa), sizeof(L->recompensa) - strlen(L->recompensa), "   +1 %s", ITENS[it].nome);
+    }
+
+    // 3 estrelas: escolha de melhoria (rara nas especiais); nas comuns, revela um arquivo oculto no mapa
+    if (e == 3) {
+        b->escolhaPendente = esp ? ESCOLHA_RARA : ESCOLHA_NORMAL;
+        snprintf(L->recompensa + strlen(L->recompensa), sizeof(L->recompensa) - strlen(L->recompensa), "   +%s", esp ? "MELHORIA RARA" : "MELHORIA");
+        if (!esp)
+            for (int i = 0; i < b->mapa.numNos; i++)
+                if (b->mapa.no[i].escondida && !b->mapa.no[i].visitado) {
+                    b->mapa.no[i].escondida = false;
+                    snprintf(L->recompensa + strlen(L->recompensa), sizeof(L->recompensa) - strlen(L->recompensa), "   +ARQUIVO OCULTO NO MAPA (M)");
+                    break;
+                }
+    }
+    LabCortarUtf8(L->recompensa);
+
+    b->labFeitos++;
+    b->labEstrelas += e;
+
+    if (e == 3) { TocarSom(sfxAcerto); MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.5f); }
+    else        TocarSomTom(sfxAcerto, 0.8f);
+    Telemetria("rogue_lab", NOMES_LAB[L->tipo], (float)e, L->missao);
+}
+
+// Passo 4 (reforço): calcula as estrelas, monta o resumo e entrega a recompensa (uma vez)
+static void LabFinalizar(Biblioteca *b, ProgressoCorredor *prog)
+{
+    LabEdu *L = &b->lab;
+    int e = 1;
+
+    if (L->etapa == LAB_RESULTADO)
+        return;
+
+    switch (L->tipo) {
+
+        case LAB_PROMPTS: {
+            bool ruim = L->respostaAlucinada || (L->diag != DIAG_IDEAL && L->diag != DIAG_BOA);
+            e = (L->notaPrompt >= 9) ? 3 : ((L->notaPrompt >= 6) ? 2 : 1);
+            if (L->aceitou && ruim)                       e = 1;
+            if (L->respostaAlucinada && e > (L->pegouAlucinacao ? 2 : 1)) e = L->pegouAlucinacao ? 2 : 1;
+            if (L->usouReformulacao && e > 2)            e = 2;
+
+            const char *julg = (L->aceitou && L->respostaAlucinada) ? "Você aceitou uma resposta com informação inventada."
+                             : (L->aceitou && ruim)                 ? "Você aceitou uma resposta que não atende à missão."
+                             : L->pegouAlucinacao                   ? "Você desconfiou e pegou a invenção da IA!"
+                             : L->aceitou                           ? "Boa decisão: a resposta atende à missão."
+                                                                    : "Você encerrou sem aceitar a resposta.";
+            snprintf(L->resultado, sizeof(L->resultado), "Pedido final: %d/10 (%s). %s", L->notaPrompt, TEXTOS_DIAG[L->diag], julg);
+        } break;
+
+        case LAB_ARQUIVO: {
+            const DesafioArquivo *d = &DESAFIOS_ARQUIVO[L->missao];
+            bool s = (L->sel == d->suspeita), mt = (L->sel2 == d->metodoCerto);
+            e = 1 + (s ? 1 : 0) + (mt ? 1 : 0);
+            snprintf(L->resultado, sizeof(L->resultado), "Afirmação suspeita: %s.   Forma de verificar: %s.",
+                     s ? "CERTA" : "ERRADA", mt ? "CERTA" : "ERRADA");
+        } break;
+
+        case LAB_NUCLEO: {
+            static const char *txt[4] = { "Só o essencial, dentro da capacidade.", "Faltou informação essencial.",
+                                          "Passou da capacidade: o começo foi cortado.", "Funcionou, mas com informação demais." };
+            e = (L->resultadoNucleo == NUCLEO_BOA) ? 3 : ((L->resultadoNucleo == NUCLEO_RUIDOSA) ? 2 : 1);
+            snprintf(L->resultado, sizeof(L->resultado), "%s  (%d de %d tokens)", txt[L->resultadoNucleo],
+                     LabTokensCarregados(b), DESAFIOS_NUCLEO[L->missao].capacidade);
+        } break;
+
+        case LAB_FIREWALL:
+            e = (L->acertos >= 6) ? 3 : ((L->acertos >= 4) ? 2 : 1);
+            snprintf(L->resultado, sizeof(L->resultado), "Decisões éticas corretas: %d de %d.", L->acertos, L->decisoes);
+            break;
+
+        default: {
+            const CasoPesquisa *c = &CASOS_PESQUISA[L->missao];
+            int pistas = 0, consultas = 0;
+            for (int i = 0; i < 5; i++) if (((L->marcados & (1u << i)) != 0) == c->pista[i].alerta) pistas++;
+            for (int i = 0; i < 3; i++) if (L->ferramentas & (1u << i)) consultas++;
+            bool certo = (L->veredito == c->veredito);
+            e = !certo ? 1 : ((pistas >= 4) ? 3 : 2);
+            if (consultas == 0 && e > 2) e = 2;          // sem investigar a procedência, no máximo 2
+            snprintf(L->resultado, sizeof(L->resultado), "Veredito: %s (o certo era %s).   Pistas bem avaliadas: %d de 5.   Consultas: %d.",
+                     NOMES_VEREDITO[L->veredito < 0 ? 0 : L->veredito], NOMES_VEREDITO[c->veredito], pistas, consultas);
+        } break;
+    }
+
+    L->estrelas = e;
+    LabCortarUtf8(L->resultado);
+    L->etapa = LAB_RESULTADO;
+    L->tempo = 0.0f;
+    L->foco = 0;
+    LabRecompensar(b, prog);
+}
+
+// Fecha o laboratório concluído: a porta abre e a escolha prometida (se houver) aparece
+static void LabConcluir(Biblioteca *b)
+{
+    LabEdu *L = &b->lab;
+
+    L->aberto = false;
+    if (L->concluido)
+        return;
+
+    L->concluido = true;
+    b->limpa = true;
+    RogueSalaConcluida(b);
+    RogueParticulas(b, b->posObjetoSala, CORES_LAB[L->tipo], 26, 200);
+    RogueAviso(b, TextFormat("%s CONCLUÍDO: %d/3", NOMES_LAB[L->tipo], L->estrelas));
+}
+
+// ---------- Firewall Ético e Câmara de Pesquisa ----------
+
+static void LabEscolherOpcaoFirewall(Biblioteca *b, int i)
+{
+    LabEdu *L = &b->lab;
+    const CasoVies *c = &CASOS_VIES[L->missao];
+    int certo = (L->fase == 0) ? c->problemaCerto : c->medidaCerta;
+    const char *const *ops = (L->fase == 0) ? c->problemas : c->medidas;
+
+    LabConferirSeguiu(b, L->fase, i);
+
+    L->decisoes++;
+    if (i == certo) { L->acertos++; TocarSom(sfxAcerto); }
+    else            TocarSom(sfxErro);
+
+    snprintf(L->avaliacao, sizeof(L->avaliacao), "%s %s", (i == certo) ? "CERTO!" : "NÃO EXATAMENTE. O melhor era:", (i == certo) ? ops[i] : ops[certo]);
+    LabCortarUtf8(L->avaliacao);
+
+    if (L->fase == 0) { L->sel = i; L->fase = 1; }
+    else              { L->sel2 = i; L->fase = 2; L->nivelDica = 0; L->tempoPacote = LAB_TEMPO_PACOTE; }
+    L->luciTemSugestao = false;
+    L->tempo = 0.0f;
+    L->foco = 0;
+}
+
+// Decisão sobre o pacote de dados atual (-1 = passou sozinho pelo firewall)
+static void LabDecidirPacote(Biblioteca *b, ProgressoCorredor *prog, int acao)
+{
+    LabEdu *L = &b->lab;
+
+    if (L->pacote >= LAB_PACOTES)
+        return;
+
+    const PacoteDados *p = &PACOTES_DADOS[L->pacotes[L->pacote]];
+    int efetiva = (acao < 0) ? ACAO_PERMITIR : acao;
+    bool certo = (efetiva == p->acao);
+
+    if (acao >= 0)
+        LabConferirSeguiu(b, 20 + L->pacote, acao);
+
+    L->acoes[L->pacote] = acao;
+    L->decisoes++;
+    if (certo) { L->acertos++; TocarSom(sfxAcerto); }
+    else       TocarSom(sfxErro);
+
+    snprintf(L->avaliacao, sizeof(L->avaliacao), "%s%s %s", certo ? "CERTO! " : "ATENÇÃO! ",
+             (acao < 0) ? "O pacote passou sem análise." : "", p->porque);
+    LabCortarUtf8(L->avaliacao);
+
+    L->pacote++;
+    L->tempoPacote = LAB_TEMPO_PACOTE;
+    L->luciTemSugestao = false;
+    L->foco = 0;
+
+    if (L->pacote >= LAB_PACOTES)
+        LabFinalizar(b, prog);
+}
+
+// ---------- Botões (mouse e teclado usam a mesma lista) ----------
+
+typedef enum {
+    LB_COMECAR, LB_SAIR, LB_CONCLUIR, LB_SELETOR, LB_ENVIAR, LB_ACEITAR, LB_REFAZER, LB_DESCONFIAR, LB_ENCERRAR,
+    LB_DICA, LB_ANALISAR, LB_REFORMULAR, LB_VERIFICAR, LB_CHECAR, LB_USAR_SUGESTAO, LB_DESCARTAR_SUGESTAO,
+    LB_ITEM, LB_OPCAO, LB_CONFIRMAR, LB_PROCESSAR, LB_LIMPAR, LB_AJUSTAR, LB_FERRAMENTA, LB_PACOTE, LB_VEREDITO
+} AcaoLab;
+
+typedef enum { EST_BOTAO, EST_LUCI, EST_ITEM, EST_SELETOR } EstiloBotaoLab;
+
+typedef struct {
+    Rectangle r;
+    AcaoLab acao;
+    int param;
+    bool ativo;
+    bool marcado;
+    int custo;                  // carga de ajuda (botões da Luci)
+    EstiloBotaoLab estilo;
+    char rotulo[64];
+    const char *texto;          // texto longo dos cartões (afirmações, blocos, pistas...)
+    Color cor;
+    int fonte;                  // tamanho do texto do cartão
+    bool chip;                  // o rótulo vai num selo à direita (tokens do Núcleo)
+} BotaoLab;
+
+#define LAB_PAINEL_X     28
+#define LAB_PAINEL_Y     30
+#define LAB_PAINEL_W     744
+#define LAB_PAINEL_H     508
+#define LAB_Y_LUCI       410
+#define LAB_Y_BOTOES     470
+#define LAB_ALT_BOTAO    26
+
+static BotaoLab *LabAddBotao(BotaoLab *bt, int *n, Rectangle r, AcaoLab acao, int param, const char *rotulo)
+{
+    static BotaoLab descarte;
+
+    if (*n >= MAX_BOTOES_LAB) { memset(&descarte, 0, sizeof(descarte)); return &descarte; }
+
+    BotaoLab *o = &bt[(*n)++];
+    memset(o, 0, sizeof(*o));
+    o->r = r;
+    o->acao = acao;
+    o->param = param;
+    o->ativo = true;
+    o->estilo = EST_BOTAO;
+    o->cor = WHITE;
+    o->fonte = 10;
+    if (rotulo != NULL) { snprintf(o->rotulo, sizeof(o->rotulo), "%s", rotulo); LabCortarUtf8(o->rotulo); }
+    return o;
+}
+
+static float LabLarguraBotao(const char *rotulo, int custo)
+{
+    return (float)(MeasureText(rotulo, 10) + 24 + custo * 8);
+}
+
+// Botões da Luci (à esquerda, na linha de baixo)
+static void LabBotoesLuci(const Biblioteca *b, BotaoLab *bt, int *n, bool analisar, bool reformular, bool verificar)
+{
+    const LabEdu *L = &b->lab;
+    float x = 44.0f, y = (float)LAB_Y_BOTOES;
+    Color ciano = { 0, 228, 255, 255 };
+
+    struct { AcaoLab a; const char *r; int custo; bool ativo; bool mostra; } lista[5] = {
+        { LB_DICA,       TextFormat("DICA %d/3", (L->nivelDica < 3) ? L->nivelDica + 1 : 3), LAB_CUSTO_DICA, L->nivelDica < 3, true },
+        { LB_ANALISAR,   "ANALISAR",   LAB_CUSTO_ANALISE,      true,             analisar },
+        { LB_REFORMULAR, "REFORMULAR", LAB_CUSTO_REFORMULACAO, !L->temSugestao,  reformular },
+        { LB_VERIFICAR,  "VERIFICAR",  LAB_CUSTO_VERIFICACAO,  true,             verificar },
+        { LB_CHECAR,     "CONFERIR (V)", 0, L->luciTemSugestao && !L->luciVerificada, true },
+    };
+
+    for (int i = 0; i < 5; i++) {
+        if (!lista[i].mostra) continue;
+        char rot[48];
+        snprintf(rot, sizeof(rot), "%s", lista[i].r);
+        float w = LabLarguraBotao(rot, lista[i].custo);
+        BotaoLab *o = LabAddBotao(bt, n, (Rectangle){ x, y, w, LAB_ALT_BOTAO }, lista[i].a, 0, rot);
+        o->estilo = EST_LUCI;
+        o->custo = lista[i].custo;
+        o->ativo = lista[i].ativo;
+        o->cor = (lista[i].a == LB_CHECAR) ? GOLD : ciano;
+        x += w + 6;
+    }
+}
+
+// Botão de ação alinhado pela direita
+static BotaoLab *LabBotaoDireita(BotaoLab *bt, int *n, float *xDir, AcaoLab acao, int param, const char *rotulo, Color cor)
+{
+    float w = LabLarguraBotao(rotulo, 0) + 6;
+    *xDir -= w;
+    BotaoLab *o = LabAddBotao(bt, n, (Rectangle){ *xDir, (float)LAB_Y_BOTOES, w, LAB_ALT_BOTAO }, acao, param, rotulo);
+    o->cor = cor;
+    *xDir -= 6;
+    return o;
+}
+
+// Altura de um cartão com texto quebrado
+static float LabAlturaCartao(const char *texto, int largura, int fonte, int espaco)
+{
+    char linhas[512];
+    QuebrarTexto(texto, largura, fonte, linhas, (int)sizeof(linhas));
+    return (float)(ContarLinhas(linhas) * espaco + 12);
+}
+
+static Rectangle LabRetSeletor(int k)
+{
+    return (Rectangle){ 44, 128.0f + k * 44.0f, 384, 38 };
+}
+
+static int LabMontarBotoes(const Biblioteca *b, BotaoLab *bt, int max)
+{
+    const LabEdu *L = &b->lab;
+    int n = 0;
+    float xDir = 756.0f;
+    Color cor = CORES_LAB[L->tipo];
+    (void)max;
+
+    if (L->etapa == LAB_INTRO) {
+        LabBotaoDireita(bt, &n, &xDir, LB_COMECAR, 0, "COMEÇAR", cor);
+        LabBotaoDireita(bt, &n, &xDir, LB_SAIR, 0, "AGORA NÃO", GRAY);
+        return n;
+    }
+    if (L->etapa == LAB_RESULTADO) {
+        LabBotaoDireita(bt, &n, &xDir, LB_CONCLUIR, 0, "CONCLUIR", cor);
+        return n;
+    }
+
+    switch (L->tipo) {
+
+        case LAB_PROMPTS: {
+            const MissaoPrompt *mp = &MISSOES_PROMPT[L->missao];
+            bool editando = (L->etapa == LAB_DESAFIO);
+            for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+                BotaoLab *o = LabAddBotao(bt, &n, LabRetSeletor(k), LB_SELETOR, k, NOMES_PARTES_PROMPT[k]);
+                o->estilo = EST_SELETOR;
+                o->texto = (L->escolha[k] > 0) ? mp->alt[k][L->escolha[k] - 1] : NULL;
+                o->ativo = editando;
+                o->cor = cor;
+            }
+            if (editando) {
+                LabBotoesLuci(b, bt, &n, true, true, false);
+                bool vazio = true;
+                for (int k = 0; k < NUM_PARTES_PROMPT; k++) if (L->escolha[k] > 0) vazio = false;
+                LabBotaoDireita(bt, &n, &xDir, LB_ENVIAR, 0, TextFormat("ENVIAR %d/%d", L->envios + 1, LAB_MAX_ENVIOS), cor)->ativo = !vazio && L->envios < LAB_MAX_ENVIOS;
+                if (L->temSugestao) {
+                    // Dentro da caixa da sugestão (a linha de baixo já está cheia)
+                    LabAddBotao(bt, &n, (Rectangle){ 52, 376, 150, 22 }, LB_USAR_SUGESTAO, 0, "USAR A SUGESTÃO")->cor = (Color){ 0, 228, 255, 255 };
+                    LabAddBotao(bt, &n, (Rectangle){ 210, 376, 100, 22 }, LB_DESCARTAR_SUGESTAO, 0, "DESCARTAR")->cor = GRAY;
+                }
+            } else {
+                int len = (int)strlen(LabTextoRespostaAtual(b));
+                bool pronto = L->digitado >= (float)len;
+                LabBotoesLuci(b, bt, &n, true, false, true);
+                LabBotaoDireita(bt, &n, &xDir, LB_ACEITAR, 0, "ACEITAR", LIME)->ativo = pronto;
+                if (L->envios < LAB_MAX_ENVIOS)
+                    LabBotaoDireita(bt, &n, &xDir, LB_REFAZER, 0, "REFAZER PEDIDO", GOLD)->ativo = pronto;
+                else
+                    LabBotaoDireita(bt, &n, &xDir, LB_ENCERRAR, 0, "ENCERRAR", GRAY)->ativo = pronto;
+                LabBotaoDireita(bt, &n, &xDir, LB_DESCONFIAR, 0, "DESCONFIAR", MAGENTA)->ativo = pronto && !L->desconfiou;
+            }
+        } break;
+
+        case LAB_ARQUIVO: {
+            const DesafioArquivo *d = &DESAFIOS_ARQUIVO[L->missao];
+            float y = 150.0f;
+            for (int i = 0; i < 4; i++) {
+                char rot[8];
+                snprintf(rot, sizeof(rot), "%d", i + 1);
+                float h = LabAlturaCartao(d->af[i], 410, 12, 16);
+                BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 56, y, 456, h }, LB_ITEM, i, rot);
+                o->estilo = EST_ITEM;
+                o->texto = d->af[i];
+                o->fonte = 12;
+                o->marcado = (L->sel == i);
+                o->ativo = (L->fase == 0);
+                o->cor = cor;
+                y += h + 8;
+            }
+            if (L->fase == 1) {
+                float ym = 176.0f;
+                for (int i = 0; i < 3; i++) {
+                    float h = LabAlturaCartao(d->metodos[i], 224 - 46, 10, 13);
+                    BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 532, ym, 224, h }, LB_OPCAO, i, TextFormat("%c", 'A' + i));
+                    o->estilo = EST_ITEM;
+                    o->texto = d->metodos[i];
+                    o->marcado = (L->sel2 == i);
+                    o->cor = cor;
+                    ym += h + 6;
+                }
+            }
+            LabBotoesLuci(b, bt, &n, false, false, true);
+            LabBotaoDireita(bt, &n, &xDir, LB_CONFIRMAR, 0, (L->fase == 0) ? "MARCAR COMO SUSPEITA" : "VERIFICAR ASSIM", cor)->ativo =
+                (L->fase == 0) ? (L->sel >= 0) : (L->sel2 >= 0);
+        } break;
+
+        case LAB_NUCLEO: {
+            const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
+            bool editando = (L->etapa == LAB_DESAFIO);
+            for (int i = 0; i < d->numBlocos; i++) {
+                BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 44.0f + (float)(i % 2) * 242.0f, 128.0f + (float)(i / 2) * 62.0f, 232, 54 },
+                                          LB_ITEM, i, TextFormat("%d tk", d->bloco[i].tokens));
+                o->estilo = EST_ITEM;
+                o->texto = d->bloco[i].texto;
+                o->chip = true;
+                o->marcado = (L->marcados & (1u << i)) != 0;
+                o->ativo = editando;
+                o->cor = cor;
+            }
+            if (editando) {
+                LabBotoesLuci(b, bt, &n, false, false, true);
+                LabBotaoDireita(bt, &n, &xDir, LB_PROCESSAR, 0, "PROCESSAR", cor)->ativo = L->marcados != 0;
+                LabBotaoDireita(bt, &n, &xDir, LB_LIMPAR, 0, "LIMPAR", GRAY)->ativo = L->marcados != 0;
+            } else {
+                int len = (int)strlen(LabTextoRespostaAtual(b));
+                bool pronto = L->digitado >= (float)len;
+                LabBotoesLuci(b, bt, &n, false, false, false);
+                LabBotaoDireita(bt, &n, &xDir, LB_ENCERRAR, 0, "FICAR COM ESTA RESPOSTA", LIME)->ativo = pronto;
+                if (L->processos < LAB_MAX_PROCESSOS && L->resultadoNucleo != NUCLEO_BOA)
+                    LabBotaoDireita(bt, &n, &xDir, LB_AJUSTAR, 0, "AJUSTAR O CONTEXTO", GOLD)->ativo = pronto;
+            }
+        } break;
+
+        case LAB_FIREWALL: {
+            const CasoVies *c = &CASOS_VIES[L->missao];
+            if (L->fase < 2) {
+                const char *const *ops = (L->fase == 0) ? c->problemas : c->medidas;
+                for (int i = 0; i < 3; i++) {
+                    BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 56, 252.0f + i * 44.0f, 688, 38 }, LB_OPCAO, i, TextFormat("%c", 'A' + i));
+                    o->estilo = EST_ITEM;
+                    o->texto = ops[i];
+                    o->cor = cor;
+                }
+            } else {
+                static const Color cores[NUM_ACOES_PACOTE] = { { 0, 228, 48, 255 }, { 230, 41, 55, 255 }, { 255, 203, 0, 255 } };
+                for (int a = 0; a < NUM_ACOES_PACOTE; a++) {
+                    BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 104.0f + a * 204.0f, 352, 184, 40 }, LB_PACOTE, a, NOMES_ACAO_PACOTE[a]);
+                    o->cor = cores[a];
+                }
+            }
+            LabBotoesLuci(b, bt, &n, false, false, true);
+        } break;
+
+        default: {
+            const CasoPesquisa *c = &CASOS_PESQUISA[L->missao];
+            int consultas = 0;
+            for (int i = 0; i < 3; i++) if (L->ferramentas & (1u << i)) consultas++;
+            for (int i = 0; i < 5; i++) {
+                BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 352, 116.0f + i * 38.0f, 404, 34 }, LB_ITEM, i, "");
+                o->estilo = EST_ITEM;
+                o->texto = c->pista[i].texto;
+                o->marcado = (L->marcados & (1u << i)) != 0;
+                o->cor = cor;
+            }
+            for (int i = 0; i < 3; i++) {
+                bool usada = (L->ferramentas & (1u << i)) != 0;
+                BotaoLab *o = LabAddBotao(bt, &n, (Rectangle){ 44, 314.0f + i * 30.0f, 290, 26 }, LB_FERRAMENTA, i, c->ferramenta[i]);
+                o->ativo = !usada && consultas < LAB_MAX_FERRAMENTAS;
+                o->marcado = usada;
+                o->cor = SKYBLUE;
+            }
+            LabBotoesLuci(b, bt, &n, false, false, true);
+            static const Color cores[NUM_VEREDITOS] = { { 0, 228, 48, 255 }, { 230, 41, 55, 255 }, { 255, 161, 0, 255 } };
+            for (int v = NUM_VEREDITOS - 1; v >= 0; v--)
+                LabBotaoDireita(bt, &n, &xDir, LB_VEREDITO, v, NOMES_VEREDITO[v], cores[v]);
+        } break;
+    }
+
+    return n;
+}
+
+// Executa o botão (dir: +1 clique/confirmação, -1 botão direito ou A num seletor)
+static void LabExecutar(Biblioteca *b, ProgressoCorredor *prog, const BotaoLab *o, int dir)
+{
+    LabEdu *L = &b->lab;
+
+    if (!o->ativo)
+        return;
+
+    switch (o->acao) {
+        case LB_COMECAR:   LabComecar(b); break;
+        case LB_SAIR:      L->aberto = false; TocarSom(sfxSelecao); break;
+        case LB_CONCLUIR:  LabConcluir(b); break;
+
+        case LB_SELETOR: {
+            const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+            int k = o->param;
+            int v = L->escolha[k];
+            do { v = (v + dir + 4) % 4; } while (v > 0 && m->alt[k][v - 1] == NULL);
+            L->escolha[k] = v;
+            TocarSom(sfxSelecao);
+        } break;
+
+        case LB_ENVIAR:
+            L->original = false;
+            LabEnviarPrompt(b);
+            break;
+
+        case LB_ACEITAR:
+            L->aceitou = true;
+            LabConferirSeguiu(b, 100 + L->envios, 0);
+            LabFinalizar(b, prog);
+            break;
+
+        case LB_REFAZER:
+            LabConferirSeguiu(b, 100 + L->envios, 1);
+            L->original = false;
+            L->etapa = LAB_DESAFIO;
+            L->tempo = 0.0f;
+            L->foco = 0;
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_DESCONFIAR: {
+            const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+            LabConferirSeguiu(b, 100 + L->envios, 1);
+            L->desconfiou = true;
+            if (L->respostaAlucinada) {
+                L->pegouAlucinacao = true;
+                snprintf(L->avaliacao, sizeof(L->avaliacao), "SUSPEITA CONFIRMADA: %s", m->trechoFalso);
+                TocarSom(sfxAcerto);
+            } else if (L->diag == DIAG_IDEAL || L->diag == DIAG_BOA) {
+                snprintf(L->avaliacao, sizeof(L->avaliacao), "Conferido em fontes confiáveis: nada inventado aqui. Desconfiar é um bom hábito!");
+                TocarSomTom(sfxSelecao, 1.3f);
+            } else {
+                snprintf(L->avaliacao, sizeof(L->avaliacao), "Nada inventado, mas a resposta não atende à missão: o problema está no pedido.");
+                TocarSomTom(sfxSelecao, 1.3f);
+            }
+            LabCortarUtf8(L->avaliacao);
+        } break;
+
+        case LB_ENCERRAR:   LabFinalizar(b, prog); break;
+        case LB_DICA:       LabPedirDica(b); break;
+        case LB_ANALISAR:   LabAnalisarPrompt(b); break;
+        case LB_REFORMULAR: LabReformular(b); break;
+        case LB_VERIFICAR:  LabLuciVerificar(b); break;
+        case LB_CHECAR:     LabChecarLuci(b); break;
+
+        case LB_USAR_SUGESTAO:
+            for (int k = 0; k < NUM_PARTES_PROMPT; k++) L->escolha[k] = L->sugestao[k];
+            L->usouReformulacao = true;
+            L->temSugestao = false;
+            if (!L->luciVerificada) LabSeguiuLuci(b);
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_DESCARTAR_SUGESTAO:
+            L->temSugestao = false;
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_ITEM:
+            if (L->tipo == LAB_ARQUIVO)      L->sel = o->param;
+            else if (L->tipo == LAB_NUCLEO)  LabAlternarBloco(b, o->param);
+            else                             L->marcados ^= 1u << o->param;
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_OPCAO:
+            if (L->tipo == LAB_ARQUIVO) { L->sel2 = o->param; TocarSom(sfxSelecao); }
+            else                        LabEscolherOpcaoFirewall(b, o->param);
+            break;
+
+        case LB_CONFIRMAR:
+            if (L->fase == 0) {
+                LabConferirSeguiu(b, 0, L->sel);
+                L->fase = 1;
+                L->foco = 0;
+                L->tempo = 0.0f;
+                TocarSom(sfxSelecao);
+            } else {
+                LabConferirSeguiu(b, 1, L->sel2);
+                LabFinalizar(b, prog);
+            }
+            break;
+
+        case LB_PROCESSAR:
+            LabProcessarNucleo(b);
+            break;
+
+        case LB_LIMPAR:
+            L->marcados = 0;
+            L->numOrdem = 0;
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_AJUSTAR:
+            L->etapa = LAB_DESAFIO;
+            L->cortados = 0;
+            L->tempo = 0.0f;
+            L->foco = 0;
+            TocarSom(sfxSelecao);
+            break;
+
+        case LB_FERRAMENTA:
+            L->ferramentas |= 1u << o->param;
+            TocarSomTom(sfxPegar, 1.2f);
+            break;
+
+        case LB_PACOTE:
+            LabDecidirPacote(b, prog, o->param);
+            break;
+
+        case LB_VEREDITO:
+            L->veredito = o->param;
+            LabFinalizar(b, prog);
+            break;
+    }
+}
+
+static int LabProximoAtivo(const BotaoLab *bt, int n, int de, int passo)
+{
+    for (int k = 1; k <= n; k++) {
+        int i = ((de + passo * k) % n + n) % n;
+        if (bt[i].ativo) return i;
+    }
+    return de;
+}
+
+// A janela do laboratório: o combate espera. W/S (ou TAB) escolhem, A/D mudam a alternativa
+// de um seletor, E/ENTER confirmam, H pede dica, V confere a Luci, BACKSPACE/ESC saem.
+static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    LabEdu *L = &b->lab;
+
+    L->tempo += dt;
+    if (L->etapa == LAB_DESAFIO || L->etapa == LAB_RESPOSTA)
+        L->tempoTotal += dt;
+
+    const char *resp = (L->etapa == LAB_RESPOSTA) ? LabTextoRespostaAtual(b) : NULL;
+    int lenResp = (resp != NULL) ? (int)strlen(resp) : 0;
+    if (resp != NULL && L->digitado < (float)lenResp)
+        L->digitado += dt * LAB_VELOCIDADE_TEXTO;
+
+    // Firewall: o pacote anda até o firewall; sem decisão, ele atravessa sozinho
+    if (L->tipo == LAB_FIREWALL && L->etapa == LAB_DESAFIO && L->fase == 2 && L->pacote < LAB_PACOTES) {
+        L->tempoPacote -= dt;
+        if (L->tempoPacote <= 0.0f) {
+            LabDecidirPacote(b, prog, -1);
+            return;
+        }
+    }
+
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+        if (L->etapa == LAB_RESULTADO) LabConcluir(b);
+        else                           L->aberto = false;      // dá para voltar ao console
+        TocarSom(sfxSelecao);
+        return;
+    }
+
+    BotaoLab bt[MAX_BOTOES_LAB];
+    int n = LabMontarBotoes(b, bt, MAX_BOTOES_LAB);
+    if (n <= 0)
+        return;
+
+    if (L->foco < 0 || L->foco >= n || !bt[L->foco].ativo)
+        L->foco = LabProximoAtivo(bt, n, (L->foco < 0 || L->foco >= n) ? n - 1 : L->foco, 1);
+
+    // Teclado
+    bool seletor = bt[L->foco].estilo == EST_SELETOR;
+    if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN) || (!seletor && (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT))))
+        { L->foco = LabProximoAtivo(bt, n, L->foco, 1);  TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP) || (!seletor && (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))))
+        { L->foco = LabProximoAtivo(bt, n, L->foco, -1); TocarSom(sfxSelecao); }
+
+    // Mouse
+    Vector2 m = GetMousePosition();
+    bool moveu = Vector2Length(GetMouseDelta()) > 0.5f;
+    int clicado = -1, dirClique = 1;
+    for (int i = 0; i < n; i++) {
+        if (!bt[i].ativo || !CheckCollisionPointRec(m, bt[i].r)) continue;
+        if (moveu) L->foco = i;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))  { clicado = i; dirClique = 1; }
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) { clicado = i; dirClique = -1; }
+    }
+
+    if (L->tempo < 0.25f)                   // evita confirmar sem querer ao abrir ou trocar de etapa
+        return;
+
+    bool confirmar = IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
+
+    // A resposta ainda está sendo "digitada": o primeiro toque mostra tudo
+    if (resp != NULL && L->digitado < (float)lenResp && (confirmar || clicado >= 0)) {
+        L->digitado = (float)lenResp;
+        return;
+    }
+
+    if (seletor && clicado < 0) {
+        if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { LabExecutar(b, prog, &bt[L->foco], -1); return; }
+        if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { LabExecutar(b, prog, &bt[L->foco], 1);  return; }
+    }
+
+    // Atalhos da Luci
+    for (int i = 0; i < n; i++) {
+        if (!bt[i].ativo) continue;
+        if ((IsKeyPressed(KEY_H) && bt[i].acao == LB_DICA) || (IsKeyPressed(KEY_V) && bt[i].acao == LB_CHECAR)) {
+            LabExecutar(b, prog, &bt[i], 1);
+            return;
+        }
+    }
+
+    if (clicado >= 0)                  LabExecutar(b, prog, &bt[clicado], dirClique);
+    else if (confirmar && bt[L->foco].ativo) LabExecutar(b, prog, &bt[L->foco], 1);
+}
+
 // O que está ao alcance do E agora (-1 = nada)
 typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA, ALVO_PECA, ALVO_ENCAIXE,
-               ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA } AlvoRogue;
+               ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA, ALVO_LAB } AlvoRogue;
 
 static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 {
@@ -14674,6 +16953,8 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
     // Reformulação: recompensa no chão, altar/poltrona/console e arquivo para ler
     if (b->recompensaAtiva && Vector2Distance(p, b->recompensaPos) < 44.0f)
         return ALVO_RECOMPENSA;
+    if (b->tipoSala == SALA_LABORATORIO && !b->lab.concluido && Vector2Distance(p, b->posObjetoSala) < 58.0f)
+        return ALVO_LAB;
     if ((b->tipoSala == SALA_EVENTO || b->tipoSala == SALA_DESCANSO || b->tipoSala == SALA_DESAFIO) &&
         !b->eventoUsado && !b->eventoCombate && Vector2Distance(p, b->posObjetoSala) < 58.0f)
         return ALVO_OBJETO_SALA;
@@ -14929,6 +17210,12 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             RogueUsarRecompensa(b);
             break;
 
+        case ALVO_LAB:
+            b->lab.aberto = true;
+            b->lab.tempo = 0.0f;
+            TocarSom(sfxSelecao);
+            break;
+
         case ALVO_OBJETO_SALA:
             b->eventoAberto = true;
             b->eventoResolvido = false;
@@ -15166,6 +17453,12 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
 
     if (b->eventoAberto) {
         RogueAtualizarEvento(b, prog, dlg);
+        return ROGUE_NADA;
+    }
+
+    // Expansão educativa: a janela do laboratório (o combate espera)
+    if (b->lab.aberto) {
+        RogueAtualizarLab(b, prog, dt);
         return ROGUE_NADA;
     }
 
@@ -17331,6 +19624,10 @@ static void DesenharHudLuci(const Biblioteca *b, float tempo)
     }
     DrawText(estado, (int)r.x + 94 + dx, (int)r.y + 4, 10, cor);
 
+    // Carga de ajuda dos laboratórios: quando enche, vira -1 de estabilidade
+    if (b->cargaLuci > 0)
+        DrawRectangle((int)r.x + 38, (int)r.y + 14, (int)(47.0f * (float)b->cargaLuci / LAB_CARGA_POR_ESTAB), 2, ORANGE);
+
     // Scanner (H): pronto ou recarregando
     Vector2 c = { r.x + r.width - 12, r.y + 9 };
     if (b->recargaScanner > 0.0f)
@@ -17661,7 +19958,7 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
 
 static const char *ARQUIVOS_ICONES_SALAS[NUM_TIPOS_SALA] = {
     "atrio", "combate", "educativa", "tesouro", "alucinador", "silogista", "nucleo", "luci",
-    "elite", "evento", "descanso", "desafio", "secreta"
+    "elite", "evento", "descanso", "desafio", "secreta", "laboratorio"
 };
 static Texture2D iconesSalas[NUM_TIPOS_SALA];
 static bool iconesSalasCarregados = false;
@@ -17749,6 +20046,13 @@ static void DesenharIconeSala(TipoSalaRogue t, Vector2 c, float e, float tempo)
             DrawCircleLines((int)c.x, (int)c.y, 10 * e, cor);
             DrawCircleLines((int)c.x, (int)c.y, 6 * e, cor);
             DrawCircleV(c, 2.5f * e, RED);
+            break;
+
+        case SALA_LABORATORIO:  // frasco de laboratório
+            DrawRectangleV((Vector2){ c.x - 3 * e, c.y - 11 * e }, (Vector2){ 6 * e, 8 * e }, cor);
+            DrawTriangle((Vector2){ c.x - 10 * e, c.y + 9 * e }, (Vector2){ c.x + 10 * e, c.y + 9 * e }, (Vector2){ c.x, c.y - 6 * e }, cor);
+            DrawCircleV((Vector2){ c.x - 2 * e, c.y + 5 * e }, 1.5f * e, WHITE);
+            DrawCircleV((Vector2){ c.x + 3 * e, c.y + 2 * e }, 1.0f * e, WHITE);
             break;
 
         case SALA_SECRETA:      // olho
@@ -17850,7 +20154,7 @@ static void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float
         DrawRing(c, 3, 5, 180, 360, 10, MAROON);
     }
 
-    const char *nome = PLACAS_SALAS_ROGUE[n->tipo];
+    const char *nome = RoguePlacaNo(n);
     const char *rec = NOMES_RECOMPENSA[n->recompensa];
     int w1 = MeasureText(nome, 10), w2 = MeasureText(rec, 10);
     Color corTexto = aberta ? cor : Fade(cor, 0.6f);
@@ -18052,9 +20356,15 @@ static void DesenharAreas(const Biblioteca *b)
     }
 }
 
+static void DesenharConsoleLab(const Biblioteca *b, float tempo);
+
 // Objetos da sala: recompensa, altar/poltrona/console, consoles do mecanismo e arquivos
 static void DesenharObjetosSala(const Biblioteca *b, float tempo)
 {
+    // Expansão educativa: o console do laboratório
+    if (b->tipoSala == SALA_LABORATORIO)
+        DesenharConsoleLab(b, tempo);
+
     // Consoles do mecanismo corrompido
     for (int k = 0; k < b->numMecanismos; k++) {
         Vector2 c = b->posMecanismo[k];
@@ -18238,7 +20548,7 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
             DesenharIconeRecompensa(n->recompensa, rc, 0.8f, tempo);
         }
         if (proxima || n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA) {
-            const char *nome = PLACAS_SALAS_ROGUE[n->tipo];
+            const char *nome = RoguePlacaNo(n);
             DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)(c.y + raio + 3), 10, proxima ? GOLD : cor);
         }
     }
@@ -18253,7 +20563,7 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
     y += 18;
 
     int linhas = 0;
-    for (int u = 0; u < NUM_UPGRADES && y < (int)(painel.y + painel.height) - 90; u++) {
+    for (int u = 0; u < NUM_UPGRADES && y < (int)(painel.y + painel.height) - 108; u++) {
         if (b->j.up[u] <= 0) continue;
         Color c = CORES_RARIDADE[UPGRADES[u].raridade];
         DrawRectangle(x, y + 2, 6, 6, CORES_CATEGORIA_UP[UPGRADES[u].categoria]);
@@ -18261,7 +20571,7 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
         y += 13;
         linhas++;
     }
-    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS && y < (int)(painel.y + painel.height) - 90; i++) {
+    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS && y < (int)(painel.y + painel.height) - 108; i++) {
         if (b->j.itens[i] <= 0) continue;
         DrawText(TextFormat("%s x%d", ITENS[i].nome, RogueQtd(&b->j, (TipoItem)i)), x + 10, y, 10, LIGHTGRAY);
         y += 13;
@@ -18273,9 +20583,10 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
         if (b->j.penalidade & (1 << p)) { DrawText(TextFormat("! %s", NOMES_PENALIDADE[p]), x, y, 10, RED); y += 13; }
 
     // Legenda
-    static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA };
-    int ly = (int)(painel.y + painel.height) - 82;
-    for (int i = 0; i < 8; i++) {
+    static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA,
+                                             SALA_LABORATORIO };
+    int ly = (int)(painel.y + painel.height) - 100;
+    for (int i = 0; i < 9; i++) {
         int lx = x + (i % 2) * 130, yy = ly + (i / 2) * 18;
         DesenharIconeSala(legenda[i], (Vector2){ (float)lx + 7, (float)yy + 6 }, 0.5f, tempo);
         DrawText(PLACAS_SALAS_ROGUE[legenda[i]], lx + 18, yy + 1, 10, CORES_SALAS_ROGUE[legenda[i]]);
@@ -18482,6 +20793,728 @@ static void DesenharEvento(const Biblioteca *b, float tempo)
 
     const char *ajuda = "W/S escolher     E confirmar     BACKSPACE sair";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
+}
+
+
+// =============================================================
+// EXPANSÃO EDUCATIVA DO BLOCO 2: DESENHO DOS LABORATÓRIOS
+// =============================================================
+
+// Ícone de cada categoria (console da sala e janela). e = escala (1 = cerca de 24 px)
+static void DesenharIconeLab(TipoLab t, Vector2 c, float e, float tempo)
+{
+    Color cor = CORES_LAB[t];
+
+    switch (t) {
+        case LAB_PROMPTS:       // balão de conversa com o cursor do terminal
+            DrawRectangleRounded((Rectangle){ c.x - 11 * e, c.y - 8 * e, 22 * e, 14 * e }, 0.3f, 6, Fade(cor, 0.9f));
+            DrawTriangle((Vector2){ c.x - 6 * e, c.y + 6 * e }, (Vector2){ c.x - 8 * e, c.y + 11 * e }, (Vector2){ c.x - 1 * e, c.y + 6 * e }, Fade(cor, 0.9f));
+            DrawText(">_", (int)(c.x - 7 * e), (int)(c.y - 6 * e), (int)fmaxf(8.0f, 10 * e), (Color){ 10, 20, 40, 255 });
+            if (((int)(tempo * 2.0f)) % 2 == 0) DrawRectangle((int)(c.x + 5 * e), (int)(c.y - 4 * e), (int)fmaxf(1.0f, 3 * e), (int)fmaxf(2.0f, 7 * e), (Color){ 10, 20, 40, 255 });
+            break;
+        case LAB_ARQUIVO:       // documento com uma linha corrompida
+            DrawRectangleV((Vector2){ c.x - 8 * e, c.y - 10 * e }, (Vector2){ 16 * e, 20 * e }, Fade(WHITE, 0.85f));
+            for (int k = 0; k < 4; k++)
+                DrawRectangleV((Vector2){ c.x - 5 * e, c.y - 6 * e + k * 4 * e }, (Vector2){ (k == 2 ? 6 : 10) * e, 1.5f * e }, (Color){ 60, 60, 80, 255 });
+            DrawRectangleV((Vector2){ c.x - 6 * e + sinf(tempo * 9.0f) * 2 * e, c.y + 1 * e }, (Vector2){ 12 * e, 2 * e }, cor);
+            break;
+        case LAB_NUCLEO:        // núcleo com dados em órbita
+            DrawCircleV(c, 6 * e, cor);
+            DrawCircleLines((int)c.x, (int)c.y, 10 * e, Fade(cor, 0.7f));
+            for (int k = 0; k < 3; k++) {
+                float a = tempo * 2.0f + k * 2.1f;
+                DrawCircleV((Vector2){ c.x + cosf(a) * 10 * e, c.y + sinf(a) * 10 * e }, 2 * e, WHITE);
+            }
+            break;
+        case LAB_FIREWALL:      // escudo
+            DrawTriangle((Vector2){ c.x - 10 * e, c.y - 8 * e }, (Vector2){ c.x, c.y + 12 * e }, (Vector2){ c.x + 10 * e, c.y - 8 * e }, cor);
+            DrawRectangleV((Vector2){ c.x - 10 * e, c.y - 11 * e }, (Vector2){ 20 * e, 4 * e }, cor);
+            DrawLineEx((Vector2){ c.x, c.y - 9 * e }, (Vector2){ c.x, c.y + 8 * e }, 2 * e, (Color){ 10, 40, 20, 255 });
+            break;
+        default:                // lupa
+            DrawCircleLines((int)(c.x - 2 * e), (int)(c.y - 2 * e), 7 * e, cor);
+            DrawCircleLines((int)(c.x - 2 * e), (int)(c.y - 2 * e), 6 * e, cor);
+            DrawLineEx((Vector2){ c.x + 3 * e, c.y + 3 * e }, (Vector2){ c.x + 10 * e, c.y + 10 * e }, 3 * e, cor);
+            break;
+    }
+}
+
+// Console do laboratório na sala (holograma da categoria)
+static void DesenharConsoleLab(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    Vector2 c = b->posObjetoSala;
+    Color cor = CORES_LAB[L->tipo];
+    float k = L->concluido ? 0.4f : 1.0f;
+    float flutua = sinf(tempo * 2.0f) * 3.0f;
+
+    DrawEllipse((int)c.x, (int)c.y + 22, 40, 10, Fade(cor, 0.15f * k));
+    DrawRectangle((int)c.x - 24, (int)c.y - 2, 48, 22, Fade((Color){ 30, 26, 50, 255 }, k));
+    DrawRectangleLines((int)c.x - 24, (int)c.y - 2, 48, 22, Fade(cor, 0.8f * k));
+    for (int i = 0; i < 3; i++)
+        DrawRectangle((int)c.x - 18, (int)c.y + 3 + i * 5, 10 + (int)(Ruido((unsigned int)(tempo * 3.0f) + (unsigned int)i) % 26), 2, Fade(cor, 0.7f * k));
+
+    if (!L->concluido) {
+        // Feixe e holograma
+        DrawTriangle((Vector2){ c.x - 14, c.y - 2 }, (Vector2){ c.x + 14, c.y - 2 }, (Vector2){ c.x, c.y - 30 + flutua }, Fade(cor, 0.12f));
+        DrawCircleV((Vector2){ c.x, c.y - 34 + flutua }, 18, Fade(cor, 0.18f + 0.06f * sinf(tempo * 4.0f)));
+        DesenharIconeLab(L->tipo, (Vector2){ c.x, c.y - 34 + flutua }, 1.0f, tempo);
+    } else {
+        DrawText("OK", (int)c.x - MeasureText("OK", 10) / 2, (int)c.y + 5, 10, Fade(LIME, 0.8f));
+    }
+
+    const char *nome = NOMES_LAB[L->tipo];
+    DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)c.y + 30, 10, Fade(cor, k));
+    if (LAB_ESPECIAL[L->tipo] && !L->concluido) {
+        const char *t = "OPCIONAL";
+        DrawText(t, (int)c.x - MeasureText(t, 8) / 2, (int)c.y + 42, 8, GOLD);
+    }
+}
+
+static void DesenharPipsLab(float x, float y, int n, Color cor)
+{
+    for (int i = 0; i < n; i++)
+        DrawCircleV((Vector2){ x + i * 8.0f, y }, 2.5f, cor);
+}
+
+static void DesenharBotaoLab(const BotaoLab *o, bool foco, float tempo)
+{
+    Rectangle r = o->r;
+    Color c = o->ativo ? o->cor : Fade(GRAY, 0.6f);
+
+    switch (o->estilo) {
+
+        case EST_SELETOR: {
+            DrawRectangleRec(r, foco ? Fade(c, 0.18f) : Fade(BLACK, 0.45f));
+            DrawRectangleLinesEx(r, foco ? 2.0f : 1.0f, foco ? c : Fade(c, 0.5f));
+            DrawText(o->rotulo, (int)r.x + 22, (int)r.y + 5, 10, c);
+            char linhas[256];
+            QuebrarTexto((o->texto != NULL) ? o->texto : "(não incluir)", (int)r.width - 50, 10, linhas, (int)sizeof(linhas));
+            int nl = ContarLinhas(linhas);
+            DesenharTextoLinhas(linhas, (int)r.x + 22, (int)r.y + ((nl > 1) ? 16 : 20), 10, 11,
+                                (o->texto != NULL) ? (o->ativo ? WHITE : LIGHTGRAY) : Fade(GRAY, 0.9f));
+            if (o->ativo) {
+                float my = r.y + r.height / 2;
+                DrawTriangle((Vector2){ r.x + 6, my }, (Vector2){ r.x + 14, my + 6 }, (Vector2){ r.x + 14, my - 6 }, Fade(c, foco ? 1.0f : 0.6f));
+                DrawTriangle((Vector2){ r.x + r.width - 6, my }, (Vector2){ r.x + r.width - 14, my - 6 }, (Vector2){ r.x + r.width - 14, my + 6 }, Fade(c, foco ? 1.0f : 0.6f));
+            }
+        } break;
+
+        case EST_ITEM: {
+            bool m = o->marcado;
+            DrawRectangleRec(r, m ? Fade(o->cor, 0.22f) : Fade(BLACK, 0.40f));
+            DrawRectangleLinesEx(r, (foco || m) ? 2.0f : 1.0f, foco ? (o->ativo ? o->cor : GRAY) : Fade(o->cor, m ? 0.9f : 0.35f));
+
+            int xt = (int)r.x + 10;
+            if (o->rotulo[0] != '\0' && !o->chip) {
+                DrawRectangle((int)r.x + 6, (int)r.y + 6, 18, 16, m ? o->cor : Fade(o->cor, 0.35f));
+                DrawText(o->rotulo, (int)r.x + 15 - MeasureText(o->rotulo, 10) / 2, (int)r.y + 9, 10, m ? BLACK : WHITE);
+                xt = (int)r.x + 32;
+            } else if (o->rotulo[0] == '\0') {
+                // Caixa de marcar (pistas da Câmara de Pesquisa)
+                DrawRectangleLines((int)r.x + 8, (int)(r.y + r.height / 2) - 6, 12, 12, o->cor);
+                if (m) DrawText("!", (int)r.x + 12, (int)(r.y + r.height / 2) - 6, 12, o->cor);
+                xt = (int)r.x + 28;
+            }
+            if (o->chip) {
+                int w = MeasureText(o->rotulo, 10) + 10;
+                DrawRectangle((int)(r.x + r.width) - w - 4, (int)r.y + 4, w, 14, m ? o->cor : Fade(o->cor, 0.3f));
+                DrawText(o->rotulo, (int)(r.x + r.width) - w + 1, (int)r.y + 6, 10, m ? BLACK : WHITE);
+            }
+
+            int espaco = (o->fonte >= 12) ? 16 : 13;
+            int larg = (int)r.width - ((xt - (int)r.x) + (o->chip ? 54 : 14));
+            char linhas[512];
+            QuebrarTexto(o->texto != NULL ? o->texto : "", larg, o->fonte, linhas, (int)sizeof(linhas));
+            int nl = ContarLinhas(linhas);
+            int yt = o->chip ? (int)r.y + 6 : (int)(r.y + r.height / 2) - (nl * espaco) / 2 + 1;
+            DesenharTextoLinhas(linhas, xt, yt, o->fonte, espaco, (o->ativo || m) ? WHITE : LIGHTGRAY);
+        } break;
+
+        default: {      // botão comum e botões da Luci
+            DrawRectangleRec(r, foco ? Fade(c, 0.35f) : Fade(c, o->marcado ? 0.25f : 0.10f));
+            DrawRectangleLinesEx(r, foco ? 2.0f : 1.0f, c);
+            DrawText(o->rotulo, (int)r.x + 12, (int)(r.y + r.height / 2) - 5, 10, o->ativo ? WHITE : GRAY);
+            if (o->estilo == EST_LUCI && o->custo > 0)
+                DesenharPipsLab(r.x + 16 + (float)MeasureText(o->rotulo, 10), r.y + r.height / 2, o->custo, c);
+            if (foco && o->ativo)
+                DrawRectangle((int)r.x + 3, (int)r.y + 4, 2, (int)r.height - 8, Fade(WHITE, 0.5f + 0.5f * sinf(tempo * 8.0f)));
+        } break;
+    }
+}
+
+// Marca "LUCI" no que a sugestão dela aponta (para o jogador conferir com calma)
+static void DesenharMarcaLuciLab(const Biblioteca *b, const BotaoLab *bt, int n, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    if (!L->luciTemSugestao || L->luciAponta < 0 || L->etapa != LAB_DESAFIO)
+        return;
+
+    AcaoLab alvo;
+    if (L->tipo == LAB_ARQUIVO)       { alvo = (L->luciFase == 0) ? LB_ITEM : LB_OPCAO; if (L->luciFase != L->fase) return; }
+    else if (L->tipo == LAB_FIREWALL) { alvo = (L->fase < 2) ? LB_OPCAO : LB_PACOTE; if (L->fase < 2 ? (L->luciFase != L->fase) : (L->luciFase != 20 + L->pacote)) return; }
+    else if (L->tipo == LAB_NUCLEO || L->tipo == LAB_PESQUISA) alvo = LB_ITEM;
+    else return;
+
+    for (int i = 0; i < n; i++) {
+        if (bt[i].acao != alvo || bt[i].param != L->luciAponta) continue;
+        Color cor = L->luciVerificada ? (L->luciAlucinou ? RED : LIME) : (Color){ 0, 228, 255, 255 };
+        int x = (int)(bt[i].r.x + bt[i].r.width) - 40, y = (int)bt[i].r.y - 7;
+        DrawRectangle(x, y, 36, 12, Fade(BLACK, 0.8f));
+        DrawRectangleLines(x, y, 36, 12, cor);
+        DrawText("LUCI", x + 6 + ((L->luciAlucinou && RogueEstab(b) <= 2 && ((int)(tempo * 12.0f)) % 5 == 0) ? 1 : 0), y + 1, 10, cor);
+    }
+}
+
+// Mídia simulada da Câmara de Pesquisa (só formas simples do Raylib)
+static void DesenharMidiaPesquisa(const Biblioteca *b, Rectangle r, float tempo)
+{
+    const CasoPesquisa *c = &CASOS_PESQUISA[b->lab.missao];
+    int caso = b->lab.missao;
+
+    DrawRectangleRec(r, (Color){ 12, 14, 26, 255 });
+
+    if (c->midia == MIDIA_AUDIO) {
+        // Forma de onda animada
+        float cy = r.y + r.height / 2;
+        for (int i = 0; i < 48; i++) {
+            float x = r.x + 12 + i * ((r.width - 24) / 48.0f);
+            float h = (8.0f + 30.0f * fabsf(sinf(i * 0.7f + tempo * 5.0f) * sinf(i * 0.23f + tempo))) ;
+            DrawRectangle((int)x, (int)(cy - h / 2), 3, (int)h, Fade(GOLD, 0.8f));
+        }
+        DrawText("ÁUDIO  0:14", (int)r.x + 10, (int)(r.y + r.height) - 18, 10, LIGHTGRAY);
+        DrawCircleV((Vector2){ r.x + r.width - 20, r.y + 18 }, 6, RED);
+    } else if (caso == 0) {
+        // Avenida alagada com uma barbatana
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, (int)(r.height * 0.45f), (Color){ 70, 80, 100, 255 });
+        DrawRectangle((int)r.x, (int)(r.y + r.height * 0.45f), (int)r.width, (int)(r.height * 0.55f), (Color){ 60, 90, 110, 255 });
+        for (int i = 0; i < 4; i++)
+            DrawRectangle((int)r.x + 20 + i * 70, (int)(r.y + r.height * 0.15f), 40, (int)(r.height * 0.3f), (Color){ 50, 55, 70, 255 });
+        for (int i = 0; i < 6; i++)
+            DrawLine((int)r.x + 10, (int)(r.y + r.height * 0.55f + i * 10), (int)(r.x + r.width) - 10, (int)(r.y + r.height * 0.55f + i * 10 + sinf(tempo + i) * 2), Fade(SKYBLUE, 0.3f));
+        Vector2 f = { r.x + r.width * 0.55f + sinf(tempo) * 6, r.y + r.height * 0.68f };
+        DrawTriangle((Vector2){ f.x - 14, f.y }, (Vector2){ f.x + 14, f.y }, (Vector2){ f.x + 4, f.y - 26 }, (Color){ 90, 100, 110, 255 });
+    } else if (caso == 3) {
+        // Arco-íris duplo sobre a escola
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, (int)r.height, (Color){ 90, 130, 180, 255 });
+        static const Color arco[5] = { { 230, 41, 55, 255 }, { 255, 161, 0, 255 }, { 253, 249, 0, 255 }, { 0, 228, 48, 255 }, { 0, 121, 241, 255 } };
+        Vector2 cc = { r.x + r.width / 2, r.y + r.height + 10 };
+        for (int i = 0; i < 5; i++) DrawRing(cc, 70.0f + i * 5, 74.0f + i * 5, 180, 360, 40, Fade(arco[i], 0.75f));
+        for (int i = 0; i < 5; i++) DrawRing(cc, 110.0f + i * 5, 114.0f + i * 5, 180, 360, 40, Fade(arco[4 - i], 0.4f));
+        DrawRectangle((int)(r.x + r.width / 2) - 40, (int)(r.y + r.height) - 40, 80, 40, (Color){ 180, 150, 120, 255 });
+        DrawTriangle((Vector2){ r.x + r.width / 2 - 46, r.y + r.height - 40 }, (Vector2){ r.x + r.width / 2 + 46, r.y + r.height - 40 },
+                     (Vector2){ r.x + r.width / 2, r.y + r.height - 62 }, (Color){ 150, 70, 60, 255 });
+    } else if (caso == 4) {
+        // Céu noturno com um clarão
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, (int)r.height, (Color){ 10, 12, 30, 255 });
+        for (int i = 0; i < 30; i++)
+            DrawPixel((int)r.x + (int)(Ruido((unsigned int)i * 7u) % (unsigned int)r.width), (int)r.y + (int)(Ruido((unsigned int)i * 13u) % (unsigned int)(r.height * 0.7f)), WHITE);
+        float k = fmodf(tempo * 0.5f, 1.0f);
+        Vector2 p = { r.x + 30 + k * (r.width - 60), r.y + 20 + k * 50 };
+        DrawLineEx((Vector2){ p.x - 40, p.y - 18 }, p, 3, Fade(ORANGE, 0.7f));
+        DrawCircleV(p, 4, YELLOW);
+        DrawRectangle((int)r.x, (int)(r.y + r.height) - 30, (int)r.width, 30, (Color){ 20, 20, 30, 255 });
+        for (int i = 0; i < 8; i++) DrawRectangle((int)r.x + i * 37, (int)(r.y + r.height) - 30 - (i % 3) * 12, 30, 30 + (i % 3) * 12, (Color){ 25, 25, 40, 255 });
+    } else {
+        // Pessoa falando num púlpito (vídeo)
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, (int)r.height, (Color){ 40, 60, 90, 255 });
+        Vector2 cab = { r.x + r.width / 2, r.y + r.height * 0.38f };
+        DrawCircleV(cab, 20, (Color){ 200, 160, 130, 255 });
+        DrawRectangle((int)cab.x - 30, (int)cab.y + 20, 60, 50, (Color){ 40, 40, 60, 255 });
+        float boca = 2.0f + 3.0f * fabsf(sinf(tempo * 7.0f + ((((int)(tempo * 3.0f)) % 4 == 0) ? 1.5f : 0.0f)));
+        DrawEllipse((int)cab.x, (int)cab.y + 9, 6, boca, (Color){ 90, 30, 40, 255 });
+        DrawRectangle((int)cab.x - 44, (int)(r.y + r.height) - 34, 88, 34, (Color){ 90, 60, 40, 255 });
+    }
+
+    if (c->midia == MIDIA_VIDEO) {
+        DrawRectangle((int)r.x, (int)(r.y + r.height) - 8, (int)r.width, 8, Fade(BLACK, 0.6f));
+        DrawRectangle((int)r.x, (int)(r.y + r.height) - 8, (int)(r.width * fmodf(tempo * 0.1f, 1.0f)), 8, RED);
+        DrawTriangle((Vector2){ r.x + 8, r.y + 8 }, (Vector2){ r.x + 8, r.y + 22 }, (Vector2){ r.x + 20, r.y + 15 }, Fade(WHITE, 0.8f));
+    }
+
+    DrawRectangleLinesEx(r, 2, Fade(CORES_LAB[LAB_PESQUISA], 0.8f));
+    const char *rot = NOMES_MIDIA[c->midia];
+    DrawRectangle((int)(r.x + r.width) - MeasureText(rot, 10) - 12, (int)r.y + 4, MeasureText(rot, 10) + 8, 14, Fade(BLACK, 0.7f));
+    DrawText(rot, (int)(r.x + r.width) - MeasureText(rot, 10) - 8, (int)r.y + 6, 10, GOLD);
+}
+
+// Texto quebrado numa área (devolve a altura usada)
+static int DesenharTextoLab(const char *texto, int x, int y, int largura, int fonte, int espaco, Color cor)
+{
+    char linhas[1024];
+    QuebrarTexto(texto, largura, fonte, linhas, (int)sizeof(linhas));
+    return DesenharTextoLinhas(linhas, x, y, fonte, espaco, cor) * espaco;
+}
+
+static void DesenharBarrasCriterios(const int crit[NUM_CRITERIOS], int nota, int x, int y)
+{
+    for (int c = 0; c < NUM_CRITERIOS; c++) {
+        int yy = y + c * 15;
+        Color cor = (crit[c] >= 2) ? LIME : ((crit[c] == 1) ? GOLD : RED);
+        DrawText(NOMES_CRITERIOS[c], x, yy, 10, LIGHTGRAY);
+        for (int k = 0; k < 2; k++)
+            DrawRectangle(x + 118 + k * 22, yy + 1, 18, 8, (k < crit[c]) ? cor : Fade(GRAY, 0.3f));
+    }
+    DrawText(TextFormat("%d/10", nota), x + 172, y + 22, 20, (nota >= 9) ? LIME : ((nota >= 6) ? GOLD : RED));
+}
+
+// Modo Prompt: seletores, pedido montado, janela de chat e indicadores de avaliação
+static void DesenharLabPrompt(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+    Color cor = CORES_LAB[LAB_PROMPTS];
+    char texto[400];
+
+    DrawText("MISSÃO:", 44, 84, 10, GOLD);
+    DesenharTextoLab(m->missao, 94, 84, 662, 10, 13, WHITE);
+
+    // Caixa de baixo à esquerda: pedido montado (ou a sugestão da Luci) / indicadores de avaliação
+    Rectangle caixa = { 44, 308, 384, 96 };
+    DrawRectangleRec(caixa, Fade(BLACK, 0.45f));
+    DrawRectangleLinesEx(caixa, 1, Fade(cor, 0.4f));
+
+    if (L->etapa == LAB_DESAFIO) {
+        bool sug = L->temSugestao;
+        LabMontarTextoPrompt(m, sug ? L->sugestao : L->escolha, texto, (int)sizeof(texto));
+        DrawText(sug ? "SUGESTÃO DA LUCI (aceite ou ajuste):" : "PROMPT MONTADO:", 52, 314, 10, sug ? (Color){ 0, 228, 255, 255 } : cor);
+        DesenharTextoLab(texto, 52, 330, 368, 10, 12, sug ? (Color){ 160, 240, 255, 255 } : WHITE);
+    } else {
+        DrawText("AVALIAÇÃO DO PEDIDO", 52, 314, 10, cor);
+        DesenharBarrasCriterios(L->criterios, L->notaPrompt, 52, 330);
+    }
+
+    // Janela de chat da IA simulada
+    Rectangle chat = { 440, 106, 316, 298 };
+    DrawRectangleRec(chat, (Color){ 10, 12, 24, 255 });
+    DrawRectangleLinesEx(chat, 2, Fade(cor, 0.6f));
+    DrawRectangle((int)chat.x, (int)chat.y, (int)chat.width, 22, Fade(cor, 0.18f));
+    // "Rosto" da IA simulada
+    DrawRectangleRounded((Rectangle){ chat.x + 6, chat.y + 3, 18, 16 }, 0.3f, 4, (Color){ 40, 50, 80, 255 });
+    DrawCircleV((Vector2){ chat.x + 11, chat.y + 10 }, 2, cor);
+    DrawCircleV((Vector2){ chat.x + 19, chat.y + 10 }, 2, cor);
+    DrawText("ECO-1  //  IA SIMULADA (OFFLINE)", (int)chat.x + 30, (int)chat.y + 6, 10, cor);
+    DrawText(TextFormat("envios %d/%d", L->envios, LAB_MAX_ENVIOS), (int)(chat.x + chat.width) - 62, (int)chat.y + 6, 10, GRAY);
+
+    if (L->etapa == LAB_DESAFIO) {
+        DesenharTextoLab("Monte o pedido com os seletores (clique, ou W/S e A/D) e envie. Nem toda tarefa precisa das quatro partes.",
+                         (int)chat.x + 12, (int)chat.y + 36, 290, 10, 13, GRAY);
+        return;
+    }
+
+    // Balão do jogador (o pedido) à direita
+    LabMontarTextoPrompt(m, L->escolha, texto, (int)sizeof(texto));
+    char linhas[600];
+    QuebrarTexto(texto, 232, 10, linhas, (int)sizeof(linhas));
+    int nl = ContarLinhas(linhas);
+    Rectangle balao = { chat.x + chat.width - 252, chat.y + 30, 244, (float)(nl * 12 + 18) };
+    DrawRectangleRounded(balao, 0.15f, 6, Fade(GOLD, 0.18f));
+    DrawText(L->original ? "VOCÊ (pedido original)" : "VOCÊ", (int)balao.x + 6, (int)balao.y + 3, 8, GOLD);
+    DesenharTextoLinhas(linhas, (int)balao.x + 6, (int)balao.y + 13, 10, 12, WHITE);
+
+    // Balão da IA (máquina de escrever)
+    const char *resp = LabTextoRespostaAtual(b);
+    char parcial[600];
+    TextoParcial(resp, L->digitado, parcial, (int)sizeof(parcial));
+    QuebrarTexto(parcial, 270, 10, linhas, (int)sizeof(linhas));
+    int yb = (int)(balao.y + balao.height) + 8;
+    int nr = ContarLinhas(linhas);
+    DrawRectangleRounded((Rectangle){ chat.x + 8, (float)yb, 290, (float)(nr * 12 + 18) }, 0.12f, 6, Fade(cor, 0.12f));
+    DrawText("ECO-1", (int)chat.x + 14, yb + 3, 8, cor);
+    DesenharTextoLinhas(linhas, (int)chat.x + 14, yb + 13, 10, 12, (Color){ 210, 245, 255, 255 });
+    if (L->digitado < (float)strlen(resp) && ((int)(tempo * 6.0f)) % 2 == 0)
+        DrawRectangle((int)chat.x + 14, yb + 13 + nr * 12, 6, 2, cor);
+
+    // Resultado do "desconfiar"
+    if (L->avaliacao[0] != '\0') {
+        int ya = yb + nr * 12 + 26;
+        bool pegou = L->pegouAlucinacao && L->respostaAlucinada;
+        DesenharTextoLab(L->avaliacao, (int)chat.x + 10, ya, 294, 10, 12, pegou ? MAGENTA : LIME);
+    }
+}
+
+static void DesenharLabArquivo(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const DesafioArquivo *d = &DESAFIOS_ARQUIVO[L->missao];
+    Color cor = CORES_LAB[LAB_ARQUIVO];
+
+    Rectangle doc = { 44, 84, 476, 320 };
+    DrawRectangleRec(doc, (Color){ 16, 12, 26, 255 });
+    DrawRectangleLinesEx(doc, 2, Fade(cor, 0.6f));
+    DrawText(TextFormat("RESPOSTA RECUPERADA // %s", d->titulo), (int)doc.x + 10, (int)doc.y + 8, 10, cor);
+    DesenharTextoLab(d->pergunta, (int)doc.x + 10, (int)doc.y + 24, 456, 10, 12, LIGHTGRAY);
+
+    // Corrupção: blocos e caracteres que piscam por cima do documento
+    for (int i = 0; i < 7; i++) {
+        unsigned int h = Ruido((unsigned int)i * 31u + (unsigned int)(tempo * 4.0f));
+        if (h % 3 != 0) continue;
+        int x = (int)doc.x + 8 + (int)(h % 440), y = (int)doc.y + 50 + (int)((h >> 8) % 250);
+        DrawRectangle(x, y, 6 + (int)((h >> 4) % 30), 2, Fade(MAGENTA, 0.35f));
+    }
+
+    // Passos
+    static const char *passos[3] = { "1. ANALISE AS AFIRMAÇÕES", "2. MARQUE A SUSPEITA", "3. ESCOLHA COMO VERIFICAR" };
+    for (int i = 0; i < 3; i++) {
+        bool atual = (i == 0 && L->fase == 0 && L->sel < 0) || (i == 1 && L->fase == 0 && L->sel >= 0) || (i == 2 && L->fase == 1);
+        DrawText(passos[i], 532, 90 + i * 16, 10, atual ? GOLD : Fade(LIGHTGRAY, 0.6f));
+    }
+    if (L->fase == 0)
+        DesenharTextoLab("Uma resposta convincente não é necessariamente verdadeira. Qual afirmação você não aceitaria sem conferir?", 532, 150, 220, 10, 13, GRAY);
+    else
+        DrawText(TextFormat("Suspeita marcada: afirmação %d", L->sel + 1), 532, 156, 10, cor);
+}
+
+static void DesenharLabNucleo(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
+    Color cor = CORES_LAB[LAB_NUCLEO];
+
+    DrawText("TAREFA:", 44, 84, 10, GOLD);
+    DesenharTextoLab(d->tarefa, 92, 84, 664, 10, 13, WHITE);
+    DrawText("Clique nos blocos para carregá-los no contexto da IA:", 44, 112, 10, GRAY);
+
+    // Núcleo: anel de capacidade (vermelho no excesso)
+    int tokens = LabTokensCarregados(b);
+    float frac = (float)tokens / (float)d->capacidade;
+    Vector2 c = { 643, 190 };
+    bool excesso = tokens > d->capacidade;
+    Color corAnel = excesso ? RED : ((frac >= 0.8f) ? GOLD : cor);
+    DrawCircleV(c, 58, Fade(cor, 0.06f));
+    DrawRing(c, 44, 54, -90, 270, 48, Fade(GRAY, 0.25f));
+    DrawRing(c, 44, 54, -90, -90 + 360.0f * fminf(frac, 1.0f), 48, corAnel);
+    if (excesso && ((int)(tempo * 6.0f)) % 2 == 0) DrawRing(c, 56, 60, -90, 270, 48, Fade(RED, 0.6f));
+    DrawCircleV(c, 30 + 2 * sinf(tempo * 3.0f), Fade(cor, 0.35f));
+    DrawText(TextFormat("%d/%d", tokens, d->capacidade), (int)c.x - MeasureText(TextFormat("%d/%d", tokens, d->capacidade), 16) / 2, (int)c.y - 12, 16, WHITE);
+    DrawText("tokens", (int)c.x - MeasureText("tokens", 10) / 2, (int)c.y + 6, 10, LIGHTGRAY);
+
+    // Barra de capacidade e ordem de carga (o mais antigo é o primeiro a sair no excesso)
+    DrawRectangle(540, 256, 206, 8, Fade(GRAY, 0.3f));
+    DrawRectangle(540, 256, (int)(206 * fminf(frac, 1.0f)), 8, corAnel);
+    DrawText(excesso ? "EXCESSO: o início vai ser cortado!" : "CAPACIDADE DA JANELA DE CONTEXTO", 540, 268, 10, excesso ? RED : LIGHTGRAY);
+    char ordem[64] = "Ordem de carga:";
+    for (int k = 0; k < L->numOrdem && k < LAB_MAX_ITENS; k++)
+        snprintf(ordem + strlen(ordem), sizeof(ordem) - strlen(ordem), " #%d", L->ordem[k] + 1);
+    DrawText(ordem, 540, 284, 10, GRAY);
+    DesenharTextoLab(AVISO_TOKENS, 540, 302, 212, 8, 10, Fade(SKYBLUE, 0.7f));
+
+    // Números dos blocos e o que foi cortado
+    for (int i = 0; i < d->numBlocos; i++) {
+        int x = 44 + (i % 2) * 242, y = 128 + (i / 2) * 62;
+        DrawText(TextFormat("#%d", i + 1), x + 8, y + 40, 8, Fade(cor, 0.9f));
+        if (L->etapa == LAB_RESPOSTA && (L->cortados & (1u << i))) {
+            DrawRectangle(x, y, 232, 54, Fade(RED, 0.25f));
+            DrawText("CORTADO", x + 232 - MeasureText("CORTADO", 10) - 6, y + 40, 10, RED);
+        }
+    }
+
+    // Resposta da IA (ou instruções)
+    Rectangle caixa = { 44, 314, 476, 90 };
+    DrawRectangleRec(caixa, (Color){ 10, 12, 24, 255 });
+    DrawRectangleLinesEx(caixa, 1, Fade(cor, 0.5f));
+    if (L->etapa == LAB_RESPOSTA) {
+        const char *resp = LabTextoRespostaAtual(b);
+        char parcial[400];
+        TextoParcial(resp, L->digitado, parcial, (int)sizeof(parcial));
+        DrawText("RESPOSTA DA IA SIMULADA:", 52, 320, 10, cor);
+        DesenharTextoLab(parcial, 52, 336, 460, 10, 12, (Color){ 210, 245, 255, 255 });
+    } else {
+        DesenharTextoLab("Carregue o que a IA precisa para cumprir a tarefa sem estourar a capacidade. Depois, PROCESSAR.",
+                         52, 322, 460, 10, 13, GRAY);
+        DrawText(TextFormat("Processamentos: %d/%d", L->processos, LAB_MAX_PROCESSOS), 52, 384, 10, LIGHTGRAY);
+    }
+}
+
+static void DesenharLabFirewall(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const CasoVies *c = &CASOS_VIES[L->missao];
+    Color cor = CORES_LAB[LAB_FIREWALL];
+
+    if (L->fase < 2) {
+        DrawText(TextFormat("VIÉS ALGORÍTMICO // %s", c->titulo), 44, 84, 12, cor);
+        Rectangle caso = { 44, 102, 712, 104 };
+        DrawRectangleRec(caso, Fade(BLACK, 0.45f));
+        DrawRectangleLinesEx(caso, 1, Fade(cor, 0.4f));
+        DesenharTextoLab(c->caso, 56, 112, 688, 12, 17, WHITE);
+        DrawText((L->fase == 0) ? "1/3  QUAL É O PROBLEMA?" : "2/3  QUAL É A MELHOR CORREÇÃO?", 44, 226, 14, GOLD);
+        if (L->fase == 1 && L->avaliacao[0] != '\0')
+            DesenharTextoLab(L->avaliacao, 56, 390, 688, 10, 12, (strncmp(L->avaliacao, "CERTO", 5) == 0) ? LIME : ORANGE);
+        return;
+    }
+
+    // Privacidade: o pacote anda até o firewall
+    DrawText("3/3  PRIVACIDADE: o que pode passar pelo firewall até a IA?", 44, 84, 14, GOLD);
+    DrawText(TextFormat("PACOTE %d/%d", (L->pacote < LAB_PACOTES) ? L->pacote + 1 : LAB_PACOTES, LAB_PACOTES), 44, 106, 10, LIGHTGRAY);
+    if (L->avaliacao[0] != '\0')
+        DesenharTextoLab(L->avaliacao, 44, 122, 712, 10, 12, (strncmp(L->avaliacao, "CERTO", 5) == 0) ? LIME : ORANGE);
+
+    // Esteira e a parede do firewall
+    DrawRectangle(44, 250, 600, 6, Fade(GRAY, 0.4f));
+    for (int i = 0; i < 12; i++)
+        DrawRectangle(44 + (int)fmodf((float)i * 50.0f + tempo * 40.0f, 600.0f), 251, 20, 4, Fade(cor, 0.25f));
+    for (int k = 0; k < 6; k++)
+        DrawRectangle(652, 168 + k * 24, 22, 20, Fade(((k + (int)(tempo * 4.0f)) % 2) ? cor : (Color){ 0, 120, 30, 255 }, 0.8f));
+    DrawText("FIREWALL", 640, 318, 10, cor);
+    DrawText("IA", 708, 236, 20, (Color){ 0, 228, 255, 255 });
+
+    if (L->pacote < LAB_PACOTES) {
+        const PacoteDados *p = &PACOTES_DADOS[L->pacotes[L->pacote]];
+        float prog = 1.0f - L->tempoPacote / LAB_TEMPO_PACOTE;
+        Rectangle card = { 50 + prog * 300.0f, 178, 290, 66 };
+        DrawRectangleRec(card, (Color){ 30, 26, 50, 255 });
+        DrawRectangleLinesEx(card, 2, (prog > 0.75f && ((int)(tempo * 8.0f)) % 2 == 0) ? RED : cor);
+        DrawText("PACOTE DE DADOS", (int)card.x + 8, (int)card.y + 5, 8, cor);
+        DesenharTextoLab(p->texto, (int)card.x + 8, (int)card.y + 18, 274, 10, 12, WHITE);
+        // Tempo até atravessar sozinho
+        DrawRectangle(44, 270, 600, 5, Fade(BLACK, 0.6f));
+        DrawRectangle(44, 270, (int)(600 * (L->tempoPacote / LAB_TEMPO_PACOTE)), 5, (prog > 0.75f) ? RED : GOLD);
+        DrawText("Sem decisão, o pacote atravessa sozinho.", 44, 280, 10, GRAY);
+    }
+    DesenharTextoLab("PERMITIR: pode ir.  BLOQUEAR: nunca deve ir.  ANONIMIZAR: pode ir sem os dados pessoais.", 44, 300, 590, 10, 12, LIGHTGRAY);
+}
+
+static void DesenharLabPesquisa(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const CasoPesquisa *c = &CASOS_PESQUISA[L->missao];
+    Color cor = CORES_LAB[LAB_PESQUISA];
+
+    DrawText(c->titulo, 44, 84, 12, cor);
+    DesenharMidiaPesquisa(b, (Rectangle){ 44, 100, 290, 150 }, tempo);
+    DesenharTextoLab(c->descricao, 44, 256, 290, 10, 12, WHITE);
+
+    int consultas = 0;
+    for (int i = 0; i < 3; i++) if (L->ferramentas & (1u << i)) consultas++;
+    DrawText(TextFormat("INVESTIGAR (consultas %d/%d):", consultas, LAB_MAX_FERRAMENTAS), 44, 300, 10, SKYBLUE);
+
+    DrawText("DOSSIÊ: marque os SINAIS DE ALERTA (aparência sozinha não prova nada)", 352, 98, 10, GOLD);
+
+    // Resultados das consultas
+    int y = 310;
+    for (int i = 0; i < 3; i++) {
+        if (!(L->ferramentas & (1u << i))) continue;
+        DrawText(TextFormat("%s:", c->ferramenta[i]), 352, y, 10, SKYBLUE);
+        y += 12;
+        y += DesenharTextoLab(c->resultado[i], 360, y, 392, 10, 12, WHITE) + 4;
+    }
+    if (consultas == 0)
+        DesenharTextoLab("Use as ferramentas ao lado para investigar a origem do material antes de dar o veredito.", 352, 316, 400, 10, 12, GRAY);
+}
+
+// Passo 4: estrelas, explicação, detalhes revelados, a Luci e a recompensa
+static void DesenharLabResultado(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    Color cor = CORES_LAB[L->tipo];
+
+    for (int i = 0; i < 3; i++) {
+        Vector2 c = { 400.0f + (i - 1) * 44.0f, 98.0f };
+        float giro = tempo * 40.0f + i * 20.0f;
+        if (i < L->estrelas) { DrawPoly(c, 5, 16, giro, GOLD); DrawPolyLines(c, 5, 16, giro, ORANGE); }
+        else                 DrawPolyLines(c, 5, 16, giro, Fade(GRAY, 0.6f));
+    }
+    static const char *notas[4] = { "", "DÁ PARA MELHORAR", "BOM TRABALHO", "EXCELENTE" };
+    const char *nt = notas[L->estrelas];
+    DrawText(nt, 400 - MeasureText(nt, 16) / 2, 120, 16, (L->estrelas == 3) ? GOLD : WHITE);
+    int y = 142;
+    y += DesenharTextoLab(L->resultado, 44, y, 712, 10, 13, LIGHTGRAY) + 6;
+
+    // O que aprendemos
+    const char *exp;
+    switch (L->tipo) {
+        case LAB_PROMPTS:  exp = MISSOES_PROMPT[L->missao].explicacao;   break;
+        case LAB_ARQUIVO:  exp = DESAFIOS_ARQUIVO[L->missao].explicacao; break;
+        case LAB_NUCLEO:   exp = DESAFIOS_NUCLEO[L->missao].explicacao;  break;
+        case LAB_FIREWALL: exp = CASOS_VIES[L->missao].explicacao;       break;
+        default:           exp = CASOS_PESQUISA[L->missao].explicacao;   break;
+    }
+    DrawText("O QUE APRENDEMOS", 44, y, 10, cor);
+    y += 14;
+    y += DesenharTextoLab(exp, 44, y, 712, 12, 16, WHITE) + 8;
+
+    // Detalhes revelados
+    switch (L->tipo) {
+        case LAB_PROMPTS: {
+            const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+            char texto[400];
+            DesenharBarrasCriterios(L->criterios, L->notaPrompt, 44, y);
+            LabMontarTextoPrompt(m, L->escolha, texto, (int)sizeof(texto));
+            DrawText("SEU PEDIDO FINAL:", 290, y, 10, cor);
+            DesenharTextoLab(texto, 290, y + 14, 466, 10, 12, LIGHTGRAY);
+            if (L->respostaAlucinada || L->pegouAlucinacao)
+                DesenharTextoLab(TextFormat("A IA inventou: %s", m->trechoFalso), 290, y + 52, 466, 10, 12, MAGENTA);
+        } break;
+
+        case LAB_ARQUIVO: {
+            const DesafioArquivo *d = &DESAFIOS_ARQUIVO[L->missao];
+            for (int i = 0; i < 4; i++) {
+                int t = d->tipo[i];
+                DrawText(NOMES_AFIRMACAO[t], 44, y, 10, CORES_AFIRMACAO[t]);
+                y += DesenharTextoLab(d->af[i], 160, y, 596, 10, 12, (i == L->sel) ? GOLD : LIGHTGRAY) + 3;
+            }
+            DesenharTextoLab(TextFormat("Melhor verificação: %s", d->metodos[d->metodoCerto]), 44, y + 2, 712, 10, 12, LIME);
+        } break;
+
+        case LAB_NUCLEO: {
+            const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
+            static const char *rel[3] = { "DISPENSÁVEL", "ÚTIL", "ESSENCIAL" };
+            static const Color corRel[3] = { { 230, 41, 55, 255 }, { 255, 203, 0, 255 }, { 0, 228, 48, 255 } };
+            for (int i = 0; i < d->numBlocos; i++) {
+                int x = 44 + (i % 2) * 360, yy = y + (i / 2) * 15;
+                bool usou = (L->marcados & (1u << i)) != 0;
+                DrawText(rel[d->bloco[i].relevancia], x, yy, 10, corRel[d->bloco[i].relevancia]);
+                DrawText(TextFormat("%s%s (%d tk)", usou ? "[x] " : "[ ] ", d->bloco[i].texto, d->bloco[i].tokens), x + 84, yy, 10, usou ? WHITE : GRAY);
+            }
+            DesenharTextoLab(AVISO_TOKENS, 44, y + 50, 712, 10, 12, Fade(SKYBLUE, 0.8f));
+        } break;
+
+        case LAB_FIREWALL:
+            for (int k = 0; k < LAB_PACOTES; k++) {
+                const PacoteDados *p = &PACOTES_DADOS[L->pacotes[k]];
+                int a = L->acoes[k];
+                int efetiva = (a < 0) ? ACAO_PERMITIR : a;
+                bool certo = (a >= -1) && efetiva == p->acao;
+                DrawText(certo ? "OK" : "X", 44, y, 10, certo ? LIME : RED);
+                DrawText(TextFormat("%s  ->  certo: %s", p->texto, NOMES_ACAO_PACOTE[p->acao]), 64, y, 10, LIGHTGRAY);
+                y += 14;
+            }
+            break;
+
+        default: {
+            const CasoPesquisa *c = &CASOS_PESQUISA[L->missao];
+            for (int i = 0; i < 5; i++) {
+                bool marcou = (L->marcados & (1u << i)) != 0;
+                DrawText(c->pista[i].alerta ? "ALERTA" : "NÃO PROVA", 44, y, 10, c->pista[i].alerta ? ORANGE : SKYBLUE);
+                DrawText(TextFormat("%s%s", marcou ? "[!] " : "[ ] ", c->pista[i].texto), 124, y, 10, (marcou == c->pista[i].alerta) ? WHITE : RED);
+                y += 14;
+            }
+        } break;
+    }
+
+    // A Luci nesta sala
+    char luci[200];
+    if (L->ajudas == 0)
+        snprintf(luci, sizeof(luci), "Você resolveu sem a ajuda da Luci.");
+    else if (L->alucinacoes == 0)
+        snprintf(luci, sizeof(luci), "A Luci ajudou %d vez(es) e não alucinou nesta sala.", L->ajudas);
+    else
+        snprintf(luci, sizeof(luci), "A Luci alucinou em %d de %d ajuda(s). Você conferiu %d.%s", L->alucinacoes, L->ajudas, L->alucinacoesPegas,
+                 L->seguiuAlucinacao ? " Você seguiu uma sugestão falsa sem conferir!" : "");
+    LabCortarUtf8(luci);
+    DesenharLuciTamanho((Vector2){ 58, 428 }, 26.0f);
+    DesenharTextoLab(luci, 76, 418, 680, 10, 12, (L->seguiuAlucinacao) ? MAGENTA : (Color){ 0, 228, 255, 255 });
+    DesenharTextoLab(TextFormat("RECOMPENSA: %s", L->recompensa), 76, 446, 680, 10, 12, GOLD);
+}
+
+static void DesenharLab(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    Color cor = CORES_LAB[L->tipo];
+    Rectangle painel = { LAB_PAINEL_X, LAB_PAINEL_Y, LAB_PAINEL_W, LAB_PAINEL_H };
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.7f));
+    DrawRectangleRec(painel, (Color){ 16, 13, 28, 255 });
+    DrawRectangleLinesEx(painel, 3, cor);
+    // Linhas de varredura sutis (terminal)
+    for (int y = (int)painel.y + 4; y < (int)(painel.y + painel.height); y += 4)
+        DrawLine((int)painel.x + 3, y, (int)(painel.x + painel.width) - 3, y, Fade(cor, 0.025f));
+
+    // Cabeçalho: categoria, missão, nível, opcional e a estabilidade da Luci (com a carga de ajuda)
+    DrawCircleV((Vector2){ 58, 52 }, 15, Fade(cor, 0.2f));
+    DesenharIconeLab(L->tipo, (Vector2){ 58, 52 }, 0.9f, tempo);
+    DrawText(NOMES_LAB[L->tipo], 82, 40, 18, cor);
+    int dif = LabDificuldadeMissao(L->tipo, L->missao);
+    const char *sub = TextFormat("%s   NÍVEL %d/3%s", LAB_ESPECIAL[L->tipo] ? "SALA ESPECIAL (opcional)" : "SALA COMUM (abre a porta)", dif, "");
+    DrawText(sub, 82, 60, 10, LAB_ESPECIAL[L->tipo] ? GOLD : LIGHTGRAY);
+
+    int e = RogueEstab(b);
+    Color corL = (e >= 4) ? (Color){ 0, 228, 255, 255 } : ((e == 3) ? GOLD : ((e >= 1) ? ORANGE : MAGENTA));
+    int dx = (e <= 2 && ((int)(tempo * 9.0f)) % 7 == 0) ? GetRandomValue(-2, 2) : 0;
+    DrawText("LUCI", 560 + dx, 40, 10, corL);
+    for (int k = 0; k < ESTABILIDADE_MAX_LUCI; k++) {
+        Rectangle pip = { 594.0f + k * 12.0f, 40, 9, 9 };
+        if (k < e) DrawRectangleRec(pip, corL);
+        DrawRectangleLinesEx(pip, 1, corL);
+    }
+    DrawText("carga", 660, 40, 10, GRAY);
+    for (int k = 0; k < LAB_CARGA_POR_ESTAB; k++)
+        DrawRectangle(694 + k * 12, 42, 9, 6, (k < b->cargaLuci) ? ORANGE : Fade(GRAY, 0.3f));
+    DrawText(FALAS_INSTABILIDADE_LAB[e], 560 + dx, 56, 10, Fade(corL, 0.85f));
+
+    DrawLine(40, 76, 760, 76, Fade(cor, 0.4f));
+
+    // Conteúdo
+    if (L->etapa == LAB_INTRO) {
+        static const char *passos[4] = { "1 CONCEITO", "2 EXPERIMENTE", "3 APLIQUE", "4 ENTENDA" };
+        for (int i = 0; i < 4; i++) {
+            int x = 44 + i * 180;
+            DrawRectangle(x, 86, 168, 20, (i == 0) ? Fade(cor, 0.3f) : Fade(GRAY, 0.12f));
+            DrawText(passos[i], x + 8, 91, 10, (i == 0) ? WHITE : GRAY);
+        }
+        bool revisao = (b->labIntroVista & (1u << L->tipo)) != 0;
+        DrawText(revisao ? "CONCEITO (revisão)" : "CONCEITO NOVO", 44, 118, 10, GOLD);
+        int y = 134 + DesenharTextoLab(CONCEITOS_LAB[L->tipo], 44, 134, 712, 12, 17, WHITE) + 12;
+
+        const char *missao;
+        const char *titulo;
+        switch (L->tipo) {
+            case LAB_PROMPTS:  titulo = MISSOES_PROMPT[L->missao].titulo;   missao = MISSOES_PROMPT[L->missao].missao;   break;
+            case LAB_ARQUIVO:  titulo = DESAFIOS_ARQUIVO[L->missao].titulo; missao = "Uma IA respondeu com várias afirmações. Encontre a suspeita e diga como verificá-la."; break;
+            case LAB_NUCLEO:   titulo = DESAFIOS_NUCLEO[L->missao].titulo;  missao = DESAFIOS_NUCLEO[L->missao].tarefa; break;
+            case LAB_FIREWALL: titulo = CASOS_VIES[L->missao].titulo;       missao = "Analise um caso de viés algorítmico e depois decida quais dados podem chegar a uma IA."; break;
+            default:           titulo = CASOS_PESQUISA[L->missao].titulo;   missao = "Investigue uma mídia suspeita: marque os sinais de alerta, consulte as fontes e dê o veredito."; break;
+        }
+        DrawText(TextFormat("MISSÃO: %s", titulo), 44, y, 12, cor);
+        y += 18;
+        y += DesenharTextoLab(missao, 44, y, 712, 12, 16, LIGHTGRAY) + 12;
+
+        if (L->tipo == LAB_NUCLEO)
+            y += DesenharTextoLab(AVISO_TOKENS, 44, y, 712, 10, 13, Fade(SKYBLUE, 0.85f)) + 8;
+
+        DesenharTextoLab(LAB_ESPECIAL[L->tipo] ? "Sala especial: opcional, com recompensa maior. A porta já está aberta."
+                                                : "Sala comum: a porta abre quando o desafio terminar. Sempre dá para terminar; o desempenho decide a recompensa.",
+                         44, y, 712, 10, 13, LAB_ESPECIAL[L->tipo] ? GOLD : LIGHTGRAY);
+        y += 30;
+        DesenharTextoLab("A Luci pode ajudar: DICA (1 de carga), ANALISAR e VERIFICAR (2), REFORMULAR (3). A cada 3 de carga ela perde 1 de "
+                         "estabilidade, e instável ela pode errar com muita confiança. V confere uma sugestão dela (Lente ou 1 Fragmento).",
+                         44, y, 712, 10, 13, (Color){ 0, 228, 255, 255 });
+    } else if (L->etapa == LAB_RESULTADO) {
+        DesenharLabResultado(b, tempo);
+    } else {
+        switch (L->tipo) {
+            case LAB_PROMPTS:  DesenharLabPrompt(b, tempo);   break;
+            case LAB_ARQUIVO:  DesenharLabArquivo(b, tempo);  break;
+            case LAB_NUCLEO:   DesenharLabNucleo(b, tempo);   break;
+            case LAB_FIREWALL: DesenharLabFirewall(b, tempo); break;
+            default:           DesenharLabPesquisa(b, tempo); break;
+        }
+
+        // Faixa da Luci: a fala dela e o resultado da conferência
+        Rectangle faixa = { 44, LAB_Y_LUCI, 712, 52 };
+        DrawRectangleRec(faixa, Fade((Color){ 0, 40, 60, 255 }, 0.55f));
+        DrawRectangleLinesEx(faixa, 1, Fade((Color){ 0, 228, 255, 255 }, 0.35f));
+        DesenharLuciTamanho((Vector2){ 64, LAB_Y_LUCI + 26 }, 30.0f);
+        Color corFala = L->luciVerificada ? (L->luciAlucinou ? RED : LIME) : (Color){ 120, 230, 255, 255 };
+        int gx = (e <= 2 && L->luciTemSugestao && ((int)(tempo * 11.0f)) % 9 == 0) ? GetRandomValue(-2, 2) : 0;
+        const char *fala = (L->luciTexto[0] != '\0') ? L->luciTexto : "Luci: Estou aqui se precisar. Cada ajuda gasta um pouco da minha estabilidade.";
+        int alt = DesenharTextoLab(fala, 90 + gx, LAB_Y_LUCI + 6, 656, 10, 12, corFala);
+        if (L->conferencia[0] != '\0')
+            DesenharTextoLab(L->conferencia, 90, LAB_Y_LUCI + 8 + alt, 656, 10, 12, L->luciAlucinou ? RED : GOLD);
+    }
+
+    // Botões
+    BotaoLab bt[MAX_BOTOES_LAB];
+    int n = LabMontarBotoes(b, bt, MAX_BOTOES_LAB);
+    for (int i = 0; i < n; i++)
+        DesenharBotaoLab(&bt[i], i == L->foco, tempo);
+    DesenharMarcaLuciLab(b, bt, n, tempo);
+
+    const char *ajuda = (L->tipo == LAB_PROMPTS && L->etapa == LAB_DESAFIO)
+                      ? "MOUSE ou W/S escolher   A/D trocar a alternativa   E confirmar   H dica   V conferir a Luci   BACKSPACE sair"
+                      : "MOUSE ou W/S escolher   E/ENTER confirmar   H dica da Luci   V conferir a Luci   BACKSPACE sair (dá para voltar)";
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 516, 10, GRAY);
 }
 
 // Núcleo de corrupção: cristal que gira e brilha antes do anel de balas
@@ -19174,7 +22207,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     int pedestal = -1;
     AlvoRogue alvo = RogueAlvoProximo(b, &pedestal);
 
-    if (!b->lojaAberta && !b->enciclopediaAberta && !b->desafioAberto && !b->morreu) {
+    if (!b->lojaAberta && !b->enciclopediaAberta && !b->desafioAberto && !b->lab.aberto && !b->morreu) {
         if (alvo == ALVO_ENCICLOPEDIA)  DesenharTeclaE((Vector2){ POS_ENCICLOPEDIA.x, POS_ENCICLOPEDIA.y - 40 }, tempo);
         else if (alvo == ALVO_BYTE)          DesenharTeclaE((Vector2){ POS_BYTE.x, POS_BYTE.y - 48 }, tempo);
         else if (alvo == ALVO_BYTECO)   DesenharTeclaE((Vector2){ POS_BYTECO.x, POS_BYTECO.y - 42 }, tempo);
@@ -19188,6 +22221,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         }
         else if (alvo == ALVO_RECOMPENSA)    DesenharTeclaE((Vector2){ b->recompensaPos.x, b->recompensaPos.y - 40 }, tempo);
         else if (alvo == ALVO_OBJETO_SALA)   DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 52 }, tempo);
+        else if (alvo == ALVO_LAB)           DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 62 }, tempo);
         else if (alvo == ALVO_REGISTRO_SALA) DesenharTeclaE((Vector2){ b->posRegistroSala.x, b->posRegistroSala.y - 36 }, tempo);
         else if (alvo == ALVO_PEDESTAL) {
             Vector2 c = POS_PEDESTAIS[pedestal];
@@ -19213,7 +22247,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     EndMode2D();
 
     // Mira do mouse (só onde dá para atirar)
-    if (!j->miraSetas && !b->morreu && !atrio && !b->lojaAberta && !b->desafioAberto && !b->escolhaAberta && !b->eventoAberto && !b->mapaAberto) {
+    if (!j->miraSetas && !b->morreu && !atrio && !b->lojaAberta && !b->desafioAberto && !b->escolhaAberta && !b->eventoAberto && !b->mapaAberto && !b->lab.aberto) {
         Vector2 m = GetMousePosition();
         DrawCircleLines((int)m.x, (int)m.y, 9, SKYBLUE);
         DrawLine((int)m.x - 13, (int)m.y, (int)m.x - 5, (int)m.y, SKYBLUE);
@@ -19282,6 +22316,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             break;
         case SALA_SECRETA:
             snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "ARQUIVO OCULTO! Pegue a recompensa rara (E)" : "Escolha uma porta");
+            break;
+        case SALA_LABORATORIO:
+            if (b->lab.concluido)                 snprintf(o.texto, sizeof(o.texto), "%s concluído (%d/3). Escolha uma porta", PLACAS_LAB[b->lab.tipo], b->lab.estrelas);
+            else if (LAB_ESPECIAL[b->lab.tipo])   snprintf(o.texto, sizeof(o.texto), "%s (opcional): use o console (E) ou siga", PLACAS_LAB[b->lab.tipo]);
+            else                                  snprintf(o.texto, sizeof(o.texto), "%s: use o console (E) para abrir a porta", PLACAS_LAB[b->lab.tipo]);
             break;
         case SALA_TRANSICAO: {
             int lidos = ((b->registrosLidos & 1) != 0) + ((b->registrosLidos & 2) != 0) + ((b->registrosLidos & 4) != 0);
@@ -19478,6 +22517,10 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     // Reformulação: janelas novas
     if (b->eventoAberto)
         DesenharEvento(b, tempo);
+
+    // Expansão educativa: a janela do laboratório
+    if (b->lab.aberto)
+        DesenharLab(b, tempo);
 
     if (b->escolhaAberta)
         DesenharEscolha(b, tempo);
@@ -20783,7 +23826,7 @@ int main(void) {
 
         // Na Biblioteca a mira desenhada substitui o cursor do sistema
         bool esconderCursor = (tela == BIBLIOTECA && !pausado && biblioteca.tipoSala != SALA_ATRIO && !biblioteca.lojaAberta && !biblioteca.desafioAberto &&
-                               !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto);
+                               !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto && !biblioteca.lab.aberto);
         if (esconderCursor != IsCursorHidden()) {
             if (esconderCursor) HideCursor();
             else                ShowCursor();
@@ -20803,7 +23846,7 @@ int main(void) {
                 fundoPausa = (Texture2D){0};
 
             } else if ((tela == JOGANDO || tela == CORREDOR || tela == BATALHA || tela == BATALHA_B2 ||
-                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta && !biblioteca.mapaAberto)) && !transicao.ativa) {
+                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta && !biblioteca.mapaAberto && !biblioteca.lab.aberto)) && !transicao.ativa) {
 
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 capturarPausa = true;

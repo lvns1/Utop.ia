@@ -576,6 +576,16 @@ static const Dialogo dialogoChefe = {
     .numPaginas = 3
 };
 
+// Versão de treino (MESTRE_TREINO_COMBATE): a Mestre foge e a luta é na sala dela
+static const Dialogo dialogoChefeTreino = {
+    .paginas = {
+        "Luci: Os 3 monitores se apagaram... espera! As alucinações estão se juntando!",
+        "Luci: É a ALUCINAÇÃO MESTRE! Ela fugiu pela porta da direita.",
+        "Luci: Desta vez, só argumento não basta. Vamos atrás dela!"
+    },
+    .numPaginas = 3
+};
+
 static const Dialogo dialogoChefeVolta = {
     .paginas = { "Luci: A ALUCINAÇÃO MESTRE ainda bloqueia a saída. Vamos de novo!" },
     .numPaginas = 1
@@ -5170,6 +5180,7 @@ static const Color CORES_RARIDADE[NUM_RARIDADES] = { { 200, 200, 200, 255 }, { 0
 #define FC_POR_DESAFIO           1
 #define DANO_SELO_CERTO          0.5f     // acertou: o guardião perde metade da vida
 #define ATORDOADO_SELO           2.5f     // ... e fica parado esse tempo
+#define TEMPO_RESPOSTA_SELO      15.0f    // segundos para responder o desafio do Guardião (esgotou = erro)
 #define BALAS_ATAQUE_ESPECIAL    14       // errou: anel de balas
 
 // ---------- A Luci na Biblioteca (AJUSTE AQUI) ----------
@@ -5221,6 +5232,8 @@ static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 
 #define OBJ_LUCI_FINAL           -20
 #define OBJ_REGISTRO             -21      // registros de memória do corredor do núcleo
 #define OBJ_REGISTRO_SALA        -22      // reformulação: arquivo de ameaça ou memória numa sala da missão
+#define OBJ_MESTRE_ARMA          -23      // fim do Bloco 1: pegou o Disparador de Dados no pedestal
+#define OBJ_MESTRE_VITORIA       -24      // fim do Bloco 1: venceu a ALUCINAÇÃO MESTRE
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
 static const Rectangle ARENA_ROGUE         = { 40, 60, 720, 470 };
@@ -5242,6 +5255,7 @@ typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_C
                SALA_ELITE, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_SECRETA,
                SALA_LABORATORIO,    // expansão educativa: os cinco laboratórios (a categoria fica no nó do mapa)
                SALA_ESPECIAL,       // expansão da progressão: elites e mini-chefe obrigatórios (o tipo fica no nó)
+               SALA_MESTRE,         // fim do Bloco 1: a arma, o tutorial de combate e a ALUCINAÇÃO MESTRE
                NUM_TIPOS_SALA } TipoSalaRogue;
 
 // =============================================================
@@ -5865,6 +5879,14 @@ typedef struct {
     int estrelas;
     char resultado[220];
     char recompensa[160];
+
+    // Laboratório de prompts reformulado: montagem por peças e luzes por encaixe
+    int slotAtivo;              // encaixe em edição (PAPEL, CONTEXTO, OBJETIVO, FORMATO)
+    float animPeca;             // > 0: a peça escolhida voando do cartão até o encaixe
+    int animSlot, animDe;       // encaixe de destino e cartão de origem (0 a 3)
+    int enviado[4];             // as peças do último envio (NUM_PARTES_PROMPT): a luz vale enquanto a peça não muda
+    bool temEnvio;
+    float tempoResposta;        // desde o envio (o holograma se monta)
 } LabEdu;
 
 static const char *NOMES_LAB[NUM_LABS]  = { "LABORATÓRIO DE PROMPTS", "ARQUIVO CORROMPIDO", "NÚCLEO NEURAL", "FIREWALL ÉTICO", "CÂMARA DE PESQUISA" };
@@ -5895,16 +5917,17 @@ typedef struct {
 #define MAX_ANEIS 8
 
 static const char *NOMES_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "EDUCATIVA", "RECOMPENSA", "ALUCINADOR", "SILOGISTA", "NÚCLEO", "LUCI",
-                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA", "LABORATÓRIO", "ESPECIAL" };
+                                                         "ELITE", "EVENTO", "DESCANSO", "DESAFIO", "SECRETA", "LABORATÓRIO", "ESPECIAL", "MESTRE" };
 static const Color CORES_SALAS_ROGUE[NUM_TIPOS_SALA] = {
     { 102, 191, 255, 255 }, { 230, 41, 55, 255 }, { 0, 228, 255, 255 }, { 255, 203, 0, 255 }, { 230, 41, 255, 255 },
     { 120, 110, 255, 255 }, { 255, 0, 255, 255 }, { 255, 0, 255, 255 },
     { 255, 120, 20, 255 }, { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 190, 33, 255, 255 },
-    { 40, 220, 170, 255 }, { 255, 70, 100, 255 }
+    { 40, 220, 170, 255 }, { 255, 70, 100, 255 }, { 255, 0, 255, 255 }
 };
 // Nome que aparece na porta (o que o jogador vai encontrar)
 static const char *PLACAS_SALAS_ROGUE[NUM_TIPOS_SALA] = { "ÁTRIO", "COMBATE", "TERMINAL", "TESOURO", "ALUCINADOR", "CÂMARA DA INFERÊNCIA", "NÚCLEO", "LUCI",
-                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO", "LABORATÓRIO", "ENCONTRO ESPECIAL" };
+                                                          "ELITE", "EVENTO", "SALA DE LEITURA", "DESAFIO", "ARQUIVO OCULTO", "LABORATÓRIO", "ENCONTRO ESPECIAL",
+                                                          "ALUCINAÇÃO MESTRE" };
 
 // Placa de um nó do mapa (o laboratório mostra a categoria)
 static const char *RoguePlacaNo(const NoMapa *n)
@@ -6496,6 +6519,70 @@ typedef struct {
     bool recompensaDada;
 } JanelaContexto;
 
+// =============================================================
+// FIM DO BLOCO 1: A SALA DA ALUCINAÇÃO MESTRE (arma, tutorial de combate e a luta-treino)
+//   Vencidos os 3 monitores, a Mestre foge pela porta da direita. A sala dela usa o
+//   motor da Biblioteca (o mesmo combate do Bloco 2), uma mecânica de cada vez:
+//     ARMA      o Disparador de Dados num pedestal (a Luci apresenta)
+//     TIRO      3 alvos de treino (mouse mira e atira)
+//     ESQUIVA   ela atira anéis de balas lentas (ESPAÇO atravessa)
+//     ABERTURA  depois de atacar ela cansa: escudo DOURADO = hora de atirar
+//     PARRY     brilho VERMELHO = golpe corpo a corpo; V no impacto (o anel fecha)
+//     LUTA      tudo junto; na metade, as 3 alucinações dos monitores ajudam
+//   No tutorial a Luci não deixa a vida cair abaixo de MESTRE_TREINO_HP_MIN; na luta,
+//   cair só reergue o Thomas (ensinar, não punir). Vencida: ranking e o átrio do Bloco 2.
+// =============================================================
+#define MESTRE_TREINO_COMBATE    1        // 1 = sala de treino com a arma (atual); 0 = o debate com fontes (versão anterior)
+#define MESTRE_HP                260.0f   // uns 26 tiros do Disparador (AJUSTE AQUI)
+#define MESTRE_RAIO              44.0f
+#define MESTRE_FASE2             0.5f     // fração da vida em que as 3 alucinações chegam
+#define MESTRE_DANO_BALA         7.0f
+#define MESTRE_DANO_BALA_TREINO  4.0f
+#define MESTRE_DANO_GOLPE        12.0f
+#define MESTRE_TELEGRAFIA        1.0f     // brilho vermelho antes do golpe (no tutorial, x1,3)
+#define MESTRE_INVESTIDA_VEL     420.0f
+#define MESTRE_INVESTIDA_TEMPO   0.5f
+#define MESTRE_DIST_GOLPE        150.0f   // ela para nesta distância antes de investir (o ritmo é sempre o mesmo)
+#define MESTRE_ABERTURA          2.6f     // escudo aberto depois de uma rajada
+#define MESTRE_RECUPERA          1.1f     // depois de um golpe que errou (brecha menor)
+#define MESTRE_STUN              2.8f     // atordoada depois de um parry
+#define MESTRE_TREINO_HP_MIN     0.35f    // no tutorial a vida do Thomas não cai abaixo disto
+#define MESTRE_TREINO_HP_CHEFE   0.6f     // ... nem a da Mestre (a luta de verdade começa depois)
+#define MESTRE_ALVOS             3
+#define MESTRE_ESQUIVAS          2        // esquivas para passar da etapa
+#define MESTRE_ACERTOS_ABERTURA  3        // tiros no escudo aberto para passar da etapa
+#define MESTRE_PONTOS            PONTOS_POR_ACERTO
+
+typedef enum { MT_ARMA, MT_TIRO, MT_ESQUIVA, MT_ABERTURA, MT_PARRY, MT_LUTA, MT_FIM } EtapaMestre;
+typedef enum { MA_PAUSA, MA_RAJADA, MA_ABERTA, MA_APROXIMA, MA_TELEGRAFA, MA_INVESTE, MA_RECUPERA, MA_ATORDOADA } AcaoMestre;
+
+typedef struct {
+    bool ativo;
+    EtapaMestre etapa;
+    float tempoEtapa;
+    Vector2 pos;
+    float hp, flash, anim;
+    bool visivel;               // ela aparece depois do treino de tiro
+    float surgindo;             // > 0: materializando
+
+    Vector2 alvo[MESTRE_ALVOS]; // alvos de treino (etapa do tiro)
+    bool alvoVivo[MESTRE_ALVOS];
+
+    AcaoMestre acao;
+    float tempoAcao, cronoTiro;
+    int padrao, disparos;       // rajada atual (0 anel, 1 leque, 2 espiral) e quantos tiros dela já saíram
+    Vector2 dirGolpe;
+    bool acertouGolpe;
+    bool proximoGolpe;          // na luta: alterna rajada e golpe
+
+    int esquivas, acertosAbertura, parries, quedas, golpesLevados;
+    bool estavaEsquivando;
+    int fase;                   // luta: 1 e 2
+    float cronoOrbita;          // fase 2: as alucinações dos monitores atiram
+    float avisoEscudo;          // "ESCUDO!" quando o tiro bate no escudo fechado
+    float morrendo;
+} MestreTreino;
+
 typedef struct {
     JogadorRogue j;
     ProgressoBiblioteca *perm;  // o que não se perde (fica no main e vai para o save)
@@ -6613,6 +6700,8 @@ typedef struct {
     int alvoDesafio;            // guardião selado (índice em ini)
     int selecaoDesafio;
     float tempoDesafio;
+    float tempoRespostaSelo;    // cronômetro do desafio (TEMPO_RESPOSTA_SELO até 0)
+    bool tempoEsgotadoSelo;     // a resposta foi dada pelo tempo (conta como erro)
     bool respondido;            // mostrando a explicação
     bool acertouDesafio;
     bool opcaoRiscada[4];       // eliminada pela Lente ou pela tentativa errada (Manual)
@@ -6631,6 +6720,8 @@ typedef struct {
     // ALUCINADOR
     ChefeRogue chefe;
     bool vitoriaPendente;           // venceu o Alucinador: o main abre o ranking
+    MestreTreino mestre;            // fim do Bloco 1: a sala da ALUCINAÇÃO MESTRE
+    bool mestreVencidoPendente;     // venceu a Mestre: o main marca o fim do Bloco 1 e abre o ranking
 
     // O SILOGISTA (Câmara da Inferência)
     Silogista silogista;
@@ -6959,6 +7050,48 @@ static const Dialogo dialogoTerminalPraticas = {
 
 // ---------- Falas e afirmações do Alucinador ----------
 
+// Fim do Bloco 1: a sala da ALUCINAÇÃO MESTRE (falas curtas, uma ideia por vez)
+static const Vector2 POS_ARMA_MESTRE   = { 400, 300 };     // o pedestal do Disparador de Dados
+static const Vector2 POS_MESTRE_INICIO = { 400, 170 };
+static const Vector2 POS_ALVOS_MESTRE[MESTRE_ALVOS] = { { 270, 200 }, { 400, 150 }, { 530, 200 } };
+
+static const Dialogo dialogoMestreChegada = {
+    .paginas = {
+        "* Uma sala esquecida do arquivo. No centro, algo brilha num pedestal.",
+        "Luci: A ALUCINAÇÃO MESTRE fugiu para cá. Mas antes... olhe aquilo!"
+    },
+    .numPaginas = 2
+};
+
+static const Dialogo dialogoMestreArma = {
+    .paginas = {
+        "* Você pegou o DISPARADOR DE DADOS.",
+        "Luci: Ele dispara fatos verificados. Alucinação nenhuma resiste a um fato!",
+        "Luci: Vamos treinar. Mire com o MOUSE e clique nos três alvos."
+    },
+    .numPaginas = 3
+};
+
+static const Dialogo dialogoMestreVitoria = {
+    .paginas = {
+        "* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.",
+        "Luci: Conseguimos! Você esquivou, achou a brecha e rebateu o golpe.",
+        "Luci: Adiante fica a Biblioteca dos Ecos. Lá as alucinações são mais espertas.",
+        "Luci: Leve o disparador. Agora você está pronto!"
+    },
+    .numPaginas = 4
+};
+
+static const char *FALAS_MESTRE_ETAPA[MT_FIM + 1] = {
+    NULL,
+    NULL,
+    "Luci: Na mosca! Ela vem aí. ESPAÇO esquiva: você atravessa os ataques!",
+    "Luci: Viu? Depois de atacar ela cansa e o escudo fica DOURADO. Atire nessa hora!",
+    "Luci: Agora ela vem para cima. Brilho VERMELHO = golpe. Aperte V quando o anel fechar!",
+    "Luci: PARRY perfeito! Agora junte tudo: esquive, espere a brecha e rebata o golpe.",
+    NULL
+};
+
 static const Dialogo dialogoAlucinadorIntro = {
     .paginas = {
         "* A sala escurece. Livros flutuam, reescrevendo as próprias páginas.",
@@ -7105,7 +7238,7 @@ static const Dialogo dialogoSilogistaIntroBH = {
     .paginas = {
         "* A Câmara da Inferência gira. Símbolos lógicos orbitam o Silogista como projéteis.",
         "Silogista: Um visitante voluntário! Prove que sabe raciocinar e eu entrego o meu SELO... amplificado. Fuja, e ninguém vai notar.",
-        "Luci: Ele vai lançar CONCLUSÕES. As premissas ficam lá em cima. Atire (ou dê PARRY com X / botão direito) SÓ na conclusão que DECORRE delas.",
+        "Luci: Ele vai lançar CONCLUSÕES. As premissas ficam lá em cima. Atire (ou dê PARRY com V / botão direito) SÓ na conclusão que DECORRE delas.",
         "Luci: Segure SHIFT (ou continue segurando ESPAÇO depois da esquiva) para o FOCUS MODE: o tempo desacelera e o símbolo mais perto mostra o argumento completo. Gasta EP.",
         "Luci: Acertar uma falácia, ou ser atingido por ela, abala a sua estabilidade (EP). Três conclusões certas derrubam cada camada da armadura."
     },
@@ -9198,6 +9331,8 @@ static void RogueAbrirDesafio(Biblioteca *b, int indiceInimigo)
     b->desafiosUsados |= 1u << b->desafio;
     b->selecaoDesafio = 0;
     b->tempoDesafio = 0.0f;
+    b->tempoRespostaSelo = TEMPO_RESPOSTA_SELO;
+    b->tempoEsgotadoSelo = false;
     b->respondido = false;
     b->acertouDesafio = false;
     b->usouManual = false;
@@ -9320,15 +9455,19 @@ static void RogueVerificarDica(Biblioteca *b)
     Telemetria("rogue_verificar", b->luciMentiu ? "pegou" : "conferia", 0.0f, b->desafio);
 }
 
-static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog)
+// esgotou = o cronômetro chegou a zero: é um erro comum (o Manual não salva e não conta como seguir a Luci)
+static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog, bool esgotou)
 {
     const DesafioEdu *d = &DESAFIOS[b->desafio];
     int s = b->selecaoDesafio;
 
-    if (b->opcaoRiscada[s])
+    if (b->respondido)
         return;
 
-    if (s != d->correta && b->j.itens[ITEM_MANUAL] > 0 && !b->usouManual) {
+    if (!esgotou && b->opcaoRiscada[s])
+        return;
+
+    if (!esgotou && s != d->correta && b->j.itens[ITEM_MANUAL] > 0 && !b->usouManual) {
 
         // Manual do Conhecimento: o erro não conta, a opção errada fica riscada
         b->j.itens[ITEM_MANUAL]--;
@@ -9343,12 +9482,13 @@ static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog)
     }
 
     b->respondido = true;
-    b->acertouDesafio = (s == d->correta);
+    b->tempoEsgotadoSelo = esgotou;
+    b->acertouDesafio = !esgotou && (s == d->correta);
     b->desafiosRespondidos++;
     RogueRegistrarResposta(b, b->acertouDesafio);
 
     // Confiar: seguiu a dica sem verificar. Certa = bônus; alucinada = a Luci se abala.
-    if (b->dicaDaLuci && b->opcaoDica >= 0 && !b->verificouDica && s == b->opcaoDica) {
+    if (!esgotou && b->dicaDaLuci && b->opcaoDica >= 0 && !b->verificouDica && s == b->opcaoDica) {
         b->perm->confiouCego++;
         RogueHabitoLuci(b, true);
         if (b->luciMentiu) {
@@ -9373,7 +9513,7 @@ static void RogueResponderDesafio(Biblioteca *b, ProgressoCorredor *prog)
         TocarSom(sfxErro);
     }
 
-    Telemetria("rogue_desafio", b->acertouDesafio ? "certo" : "errado",
+    Telemetria("rogue_desafio", b->acertouDesafio ? "certo" : (esgotou ? "tempo" : "errado"),
                (float)((b->dicaDaLuci ? 1 : 0) + (b->luciMentiu ? 2 : 0)), b->desafio);
 }
 
@@ -9417,6 +9557,19 @@ static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float 
 
     b->tempoDesafio += dt;
 
+    // Cronômetro: começa quando a pergunta aparece e só corre enquanto ela espera resposta
+    // (o RogueAtualizar não roda na pausa nem nas transições). Chegou a zero: erro, uma vez
+    // só (respondido = true trava a volta e o tempo para de descer).
+    if (!b->respondido) {
+        b->tempoRespostaSelo -= dt;
+        if (b->tempoRespostaSelo <= 0.0f) {
+            b->tempoRespostaSelo = 0.0f;
+            RogueResponderDesafio(b, prog, true);
+            b->tempoDesafio = 0.0f;         // a explicação não fecha com uma tecla apertada no susto
+            return;
+        }
+    }
+
     if (b->tempoDesafio < 0.4f)             // evita responder sem querer
         return;
 
@@ -9440,7 +9593,7 @@ static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float 
     if (IsKeyPressed(KEY_V)) RogueVerificarDica(b);
 
     if (confirmar)
-        RogueResponderDesafio(b, prog);
+        RogueResponderDesafio(b, prog, false);
 }
 
 // ---------- Inimigos da expansão: utilidades e sinergias ----------
@@ -12195,7 +12348,7 @@ static void RogueAtualizarLuci(Biblioteca *b, ProgressoCorredor *prog, float dt)
     }
 
     // No átrio e na fase 2 do Alucinador (C, F e H respondem às afirmações) não há contradição nem scanner
-    if (b->tipoSala == SALA_ATRIO || (b->chefe.ativo && b->chefe.fase == 2)) {
+    if (b->tipoSala == SALA_ATRIO || b->tipoSala == SALA_MESTRE || (b->chefe.ativo && b->chefe.fase == 2)) {
         b->contradicao = 0.0f;
         return;
     }
@@ -12219,7 +12372,7 @@ static void RogueAtualizarLuci(Biblioteca *b, ProgressoCorredor *prog, float dt)
 //               as CONTRADIÇÕES (armadura + 2 cópias; C contesta).
 //      Queda 1: o áudio congela em estática e ela desaba por 2 s.
 //      2ª barra SURTO FÍSICO (vermelha): investidas corpo a corpo, cada uma
-//               uma falácia. PARRY (X ou botão direito) no impacto: hit freeze,
+//               uma falácia. PARRY (V ou botão direito) no impacto: hit freeze,
 //               tremor, zoom e onda de luz; ela fica atordoada e aceita o COMBO
 //               DEDUTIVO (até 3 golpes corpo a corpo).
 //      Queda 2: explosão de estática.
@@ -12679,7 +12832,7 @@ static const Dialogo dialogoLuciSurto = {
     .paginas = {
         "* O som some. Só sobra estática. A barra dela apagou... e a Luci levanta.",
         "Luci: Achou que era só isso? Uma barra vazia não prova nada. Eu ainda tenho RESPOSTAS!",
-        "* Agora ela vem para cima. Quando os olhos dela piscarem em VERMELHO, o golpe está chegando: aperte X (ou o botão direito) no instante do impacto. É o PARRY!",
+        "* Agora ela vem para cima. Quando os olhos dela piscarem em VERMELHO, o golpe está chegando: aperte V (ou o botão direito) no instante do impacto. É o PARRY!",
         "* Defendeu na hora? Ela fica atordoada: chegue perto e ataque (clique) para o COMBO DEDUTIVO. O Pulso continua no Q."
     },
     .numPaginas = 4
@@ -13305,11 +13458,12 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     j->ep += ROGUE_EP_POR_SEGUNDO * dt;
     if (j->ep > RogueEpMax(b)) j->ep = RogueEpMax(b);
 
-    // Bloco 3: PARRY (X ou botão direito, só na arena da Luci). A janela é curta e
+    // Bloco 3: PARRY (V ou botão direito, só na arena da Luci). A janela é curta e
     // uma janela perdida tem recarga (não dá para ficar apertando sem parar).
     JogadorParryState *pr = &j->parry;
     bool arenaLuci = (b->tipoSala == SALA_LUCI);
-    bool arenaParry = arenaLuci || (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH);     // na Câmara bullet-hell: rebater símbolos
+    bool arenaParry = arenaLuci || (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH)      // na Câmara bullet-hell: rebater símbolos
+                   || (b->tipoSala == SALA_MESTRE && b->mestre.etapa >= MT_PARRY);              // fim do Bloco 1: o parry é ensinado aqui
     if (pr->cooldownParry > 0.0f) pr->cooldownParry -= dt;
     if (pr->golpeAnim > 0.0f)     pr->golpeAnim -= dt;
     if (pr->tempoHitFreeze > 0.0f) { pr->tempoHitFreeze -= dt; if (pr->tempoHitFreeze <= 0.0f) pr->hitFreezeAtivo = false; }
@@ -13317,7 +13471,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
         pr->tempoJanelaParry -= dt;
         if (pr->tempoJanelaParry <= 0.0f) { pr->emParry = false; pr->cooldownParry = PARRY_RECARGA; }
     }
-    if (arenaParry && !pr->emParry && pr->cooldownParry <= 0.0f && (IsKeyPressed(KEY_X) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
+    if (arenaParry && !pr->emParry && pr->cooldownParry <= 0.0f && (IsKeyPressed(KEY_V) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
         pr->emParry = true;
         pr->tempoJanelaParry = PARRY_JANELA;
         TocarSomTom(sfxSelecao, 1.8f);
@@ -13408,6 +13562,8 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
 
     // Arma equipada (no átrio não se atira)
     bool atirando = usandoSetas || IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+    if (b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA)
+        atirando = false;                       // fim do Bloco 1: ainda sem a arma
 
     // Bloco 3: a Luci atordoada e perto -> o ataque vira GOLPE DEDUTIVO (corpo a corpo) em vez de tiro
     if (arenaLuci && b->luci.ativo && b->luci.atordoada && Vector2Distance(j->pos, b->luci.pos) < MELEE_ALCANCE + LUCI_RAIO) {
@@ -16560,18 +16716,33 @@ static int LabAvaliarPrompt(const MissaoPrompt *m, const int esc[NUM_PARTES_PROM
     return total;
 }
 
-// O pedido montado (as alternativas escolhidas, na ordem papel, contexto, objetivo e formato)
-static void LabMontarTextoPrompt(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], char *saida, int tam)
+// Luz de cada encaixe depois do envio: o retorno imediato da montagem (tentativa e erro)
+typedef enum { LUZ_IDEAL, LUZ_OK, LUZ_DISPENSAVEL, LUZ_VAGA, LUZ_FALTOU, LUZ_ATRAPALHOU, LUZ_CONFLITO, NUM_LUZES } LuzParte;
+static const char *NOMES_LUZ[NUM_LUZES] = { "IDEAL", "OK", "DISPENSÁVEL", "VAGA", "FALTOU", "ATRAPALHOU", "CONFLITO" };
+static const Color CORES_LUZ[NUM_LUZES] = {
+    { 0, 228, 48, 255 }, { 253, 249, 0, 255 }, { 150, 150, 170, 255 }, { 255, 161, 0, 255 },
+    { 230, 41, 55, 255 }, { 230, 41, 55, 255 }, { 255, 0, 255, 255 }
+};
+
+static LuzParte LabLuzParte(const MissaoPrompt *m, const int esc[NUM_PARTES_PROMPT], int k)
 {
-    saida[0] = '\0';
-    for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
-        if (esc[k] <= 0 || esc[k] > 3) continue;
-        int usado = (int)strlen(saida);
-        snprintf(saida + usado, (size_t)(tam - usado), "%s%s", usado > 0 ? " " : "", m->alt[k][esc[k] - 1]);
-    }
-    LabCortarUtf8(saida);
-    if (saida[0] == '\0')
-        snprintf(saida, (size_t)tam, "(pedido vazio)");
+    int pa = -1, pb = -1;
+    if (LabContradicao(m, esc, &pa, &pb) && (k == pa || k == pb))
+        return LUZ_CONFLITO;
+
+    int n = LabNotaParte(m, esc, k);
+    if (n < 0)  return LUZ_ATRAPALHOU;
+    if (n == 0) return (esc[k] == 0) ? LUZ_FALTOU : LUZ_VAGA;
+    if (esc[k] == 0) return LUZ_DISPENSAVEL;           // vazio e tudo bem: nem toda tarefa precisa dos quatro
+    return (n == 2) ? LUZ_IDEAL : LUZ_OK;
+}
+
+// A luz que aparece no encaixe agora (-1: ainda não enviou, ou a peça mudou desde o envio)
+static int LabLuzVisivel(const LabEdu *L, const MissaoPrompt *m, int k)
+{
+    if (!L->temEnvio || L->escolha[k] != L->enviado[k])
+        return -1;
+    return (int)LabLuzParte(m, L->enviado, k);
 }
 
 static const char *LabTextoRespostaAtual(const Biblioteca *b)
@@ -16601,6 +16772,11 @@ static void LabEnviarPrompt(Biblioteca *b)
     // Missão de alucinação: sem pedir honestidade, a resposta "boa" vem com algo inventado
     L->respostaAlucinada = (m->honestaParte >= 0 && (L->diag == DIAG_IDEAL || L->diag == DIAG_BOA) &&
                             L->escolha[m->honestaParte] != m->honestaAlt);
+
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) L->enviado[k] = L->escolha[k];
+    L->temEnvio = true;
+    L->animPeca = 0.0f;
+    L->tempoResposta = 0.0f;
 
     L->desconfiou = false;
     L->digitado = 0.0f;
@@ -16873,7 +17049,7 @@ static void LabReformular(Biblioteca *b)
     if (corrigidas[0] < 0 && !alucina)
         LabFalaLuci(b, "Eu não mudaria nada: o pedido já está bom. Aceitar a minha versão limita a avaliação a 2 estrelas.", false, -1, -1);
     else
-        LabFalaLuci(b, "Reescrevi o pedido (veja ao lado). Aceite ou ajuste. Aceitar limita a avaliação a 2 estrelas.", alucina, estragada, -1);
+        LabFalaLuci(b, "Reescrevi o pedido (veja nos encaixes). Aceite ou ajuste. Aceitar limita a avaliação a 2 estrelas.", alucina, estragada, -1);
 }
 
 // 3. Verificação: a Luci aponta o que parece suspeito (ou a decisão que ela tomaria)
@@ -17274,10 +17450,11 @@ static void LabDecidirPacote(Biblioteca *b, ProgressoCorredor *prog, int acao)
 typedef enum {
     LB_COMECAR, LB_SAIR, LB_CONCLUIR, LB_SELETOR, LB_ENVIAR, LB_ACEITAR, LB_REFAZER, LB_DESCONFIAR, LB_ENCERRAR,
     LB_DICA, LB_ANALISAR, LB_REFORMULAR, LB_VERIFICAR, LB_CHECAR, LB_USAR_SUGESTAO, LB_DESCARTAR_SUGESTAO,
-    LB_ITEM, LB_OPCAO, LB_CONFIRMAR, LB_PROCESSAR, LB_LIMPAR, LB_AJUSTAR, LB_FERRAMENTA, LB_PACOTE, LB_VEREDITO
+    LB_ITEM, LB_OPCAO, LB_CONFIRMAR, LB_PROCESSAR, LB_LIMPAR, LB_AJUSTAR, LB_FERRAMENTA, LB_PACOTE, LB_VEREDITO,
+    LB_PECA
 } AcaoLab;
 
-typedef enum { EST_BOTAO, EST_LUCI, EST_ITEM, EST_SELETOR } EstiloBotaoLab;
+typedef enum { EST_BOTAO, EST_LUCI, EST_ITEM, EST_SELETOR, EST_ENCAIXE, EST_PECA } EstiloBotaoLab;
 
 typedef struct {
     Rectangle r;
@@ -17291,7 +17468,8 @@ typedef struct {
     const char *texto;          // texto longo dos cartões (afirmações, blocos, pistas...)
     Color cor;
     int fonte;                  // tamanho do texto do cartão
-    bool chip;                  // o rótulo vai num selo à direita (tokens do Núcleo)
+    bool chip;                  // o rótulo vai num selo à direita (tokens do Núcleo); encaixe: peça trocada pela Luci
+    int luz;                    // encaixe do laboratório de prompts: LuzParte (-1 = sem luz)
 } BotaoLab;
 
 #define LAB_PAINEL_X     28
@@ -17317,6 +17495,7 @@ static BotaoLab *LabAddBotao(BotaoLab *bt, int *n, Rectangle r, AcaoLab acao, in
     o->estilo = EST_BOTAO;
     o->cor = WHITE;
     o->fonte = 10;
+    o->luz = -1;
     if (rotulo != NULL) { snprintf(o->rotulo, sizeof(o->rotulo), "%s", rotulo); LabCortarUtf8(o->rotulo); }
     return o;
 }
@@ -17374,9 +17553,42 @@ static float LabAlturaCartao(const char *texto, int largura, int fonte, int espa
     return (float)(ContarLinhas(linhas) * espaco + 12);
 }
 
-static Rectangle LabRetSeletor(int k)
+// Laboratório de prompts: os 4 encaixes formam a "frase" do pedido, lado a lado
+#define LAB_ANIM_PECA   0.28f    // segundos da peça voando até o encaixe
+
+static Rectangle LabRetEncaixe(int k)
 {
-    return (Rectangle){ 44, 128.0f + k * 44.0f, 384, 38 };
+    return (Rectangle){ 44.0f + k * 180.0f, 102, 172, 66 };
+}
+
+// Cartões das peças do encaixe ativo (0 a 2 = alternativas, 3 = deixar vazio)
+static Rectangle LabRetPeca(int c)
+{
+    return (Rectangle){ 44, 202.0f + c * 49.0f, 392, 43 };
+}
+
+static const Color CORES_PARTES_PROMPT[NUM_PARTES_PROMPT] = {
+    { 200, 122, 255, 255 }, { 102, 191, 255, 255 }, { 255, 203, 0, 255 }, { 40, 220, 170, 255 }
+};
+static const char *DICAS_PARTES_PROMPT[NUM_PARTES_PROMPT] = { "QUEM responde", "PARA QUEM", "O QUE fazer", "COMO entregar" };
+
+// Coloca a peça (0 = vazio) no encaixe ativo e segue para o próximo
+static void LabColocarPeca(Biblioteca *b, int alt)
+{
+    LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+    int k = L->slotAtivo;
+
+    if (alt < 0 || alt > 3 || (alt > 0 && m->alt[k][alt - 1] == NULL))
+        return;
+
+    L->escolha[k] = alt;
+    L->animPeca = LAB_ANIM_PECA;
+    L->animSlot = k;
+    L->animDe = (alt == 0) ? 3 : alt - 1;
+    if (k < NUM_PARTES_PROMPT - 1)
+        L->slotAtivo = k + 1;
+    TocarSomTom(sfxPegar, 1.0f + 0.12f * (float)k);
 }
 
 static int LabMontarBotoes(const Biblioteca *b, BotaoLab *bt, int max)
@@ -17402,30 +17614,50 @@ static int LabMontarBotoes(const Biblioteca *b, BotaoLab *bt, int max)
         case LAB_PROMPTS: {
             const MissaoPrompt *mp = &MISSOES_PROMPT[L->missao];
             bool editando = (L->etapa == LAB_DESAFIO);
+            bool sugestao = editando && L->temSugestao;
+            const int *esc = sugestao ? L->sugestao : L->escolha;
+
+            // Os 4 encaixes (clicar escolhe qual editar)
             for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
-                BotaoLab *o = LabAddBotao(bt, &n, LabRetSeletor(k), LB_SELETOR, k, NOMES_PARTES_PROMPT[k]);
-                o->estilo = EST_SELETOR;
-                o->texto = (L->escolha[k] > 0) ? mp->alt[k][L->escolha[k] - 1] : NULL;
-                o->ativo = editando;
-                o->cor = cor;
+                BotaoLab *o = LabAddBotao(bt, &n, LabRetEncaixe(k), LB_SELETOR, k, NOMES_PARTES_PROMPT[k]);
+                o->estilo = EST_ENCAIXE;
+                o->texto = (esc[k] > 0) ? mp->alt[k][esc[k] - 1] : NULL;
+                o->ativo = editando && !sugestao;
+                o->marcado = editando && !sugestao && k == L->slotAtivo;
+                o->chip = sugestao && L->sugestao[k] != L->escolha[k];
+                o->luz = sugestao ? -1 : LabLuzVisivel(L, mp, k);
+                o->cor = CORES_PARTES_PROMPT[k];
             }
+
             if (editando) {
+                if (sugestao) {
+                    // A sugestão da Luci aparece nos encaixes: usar ou descartar
+                    LabAddBotao(bt, &n, (Rectangle){ 60, 262, 170, 26 }, LB_USAR_SUGESTAO, 0, "USAR A SUGESTÃO")->cor = (Color){ 0, 228, 255, 255 };
+                    LabAddBotao(bt, &n, (Rectangle){ 240, 262, 110, 26 }, LB_DESCARTAR_SUGESTAO, 0, "DESCARTAR")->cor = GRAY;
+                } else {
+                    // As peças do encaixe ativo (1 a 3) e "deixar vazio" (0)
+                    int k = L->slotAtivo;
+                    for (int c = 0; c < 4; c++) {
+                        int alt = (c < 3) ? c + 1 : 0;
+                        if (alt > 0 && mp->alt[k][alt - 1] == NULL) continue;
+                        BotaoLab *o = LabAddBotao(bt, &n, LabRetPeca(c), LB_PECA, alt, (alt > 0) ? TextFormat("%d", alt) : "0");
+                        o->estilo = EST_PECA;
+                        o->texto = (alt > 0) ? mp->alt[k][alt - 1] : "Deixar vazio";
+                        o->marcado = (L->escolha[k] == alt);
+                        o->cor = CORES_PARTES_PROMPT[k];
+                    }
+                }
                 LabBotoesLuci(b, bt, &n, true, true, false);
                 bool vazio = true;
                 for (int k = 0; k < NUM_PARTES_PROMPT; k++) if (L->escolha[k] > 0) vazio = false;
-                LabBotaoDireita(bt, &n, &xDir, LB_ENVIAR, 0, TextFormat("ENVIAR %d/%d", L->envios + 1, LAB_MAX_ENVIOS), cor)->ativo = !vazio && L->envios < LAB_MAX_ENVIOS;
-                if (L->temSugestao) {
-                    // Dentro da caixa da sugestão (a linha de baixo já está cheia)
-                    LabAddBotao(bt, &n, (Rectangle){ 52, 376, 150, 22 }, LB_USAR_SUGESTAO, 0, "USAR A SUGESTÃO")->cor = (Color){ 0, 228, 255, 255 };
-                    LabAddBotao(bt, &n, (Rectangle){ 210, 376, 100, 22 }, LB_DESCARTAR_SUGESTAO, 0, "DESCARTAR")->cor = GRAY;
-                }
+                LabBotaoDireita(bt, &n, &xDir, LB_ENVIAR, 0, TextFormat("ENVIAR %d/%d", L->envios + 1, LAB_MAX_ENVIOS), cor)->ativo = !vazio && L->envios < LAB_MAX_ENVIOS && !sugestao;
             } else {
                 int len = (int)strlen(LabTextoRespostaAtual(b));
                 bool pronto = L->digitado >= (float)len;
                 LabBotoesLuci(b, bt, &n, true, false, true);
                 LabBotaoDireita(bt, &n, &xDir, LB_ACEITAR, 0, "ACEITAR", LIME)->ativo = pronto;
                 if (L->envios < LAB_MAX_ENVIOS)
-                    LabBotaoDireita(bt, &n, &xDir, LB_REFAZER, 0, "REFAZER PEDIDO", GOLD)->ativo = pronto;
+                    LabBotaoDireita(bt, &n, &xDir, LB_REFAZER, 0, "TROCAR PEÇAS", GOLD)->ativo = pronto;
                 else
                     LabBotaoDireita(bt, &n, &xDir, LB_ENCERRAR, 0, "ENCERRAR", GRAY)->ativo = pronto;
                 LabBotaoDireita(bt, &n, &xDir, LB_DESCONFIAR, 0, "DESCONFIAR", MAGENTA)->ativo = pronto && !L->desconfiou;
@@ -17544,6 +17776,7 @@ static int LabMontarBotoes(const Biblioteca *b, BotaoLab *bt, int max)
 static void LabExecutar(Biblioteca *b, ProgressoCorredor *prog, const BotaoLab *o, int dir)
 {
     LabEdu *L = &b->lab;
+    (void)dir;              // (o seletor antigo usava a direção; os encaixes novos não precisam)
 
     if (!o->ativo)
         return;
@@ -17553,14 +17786,14 @@ static void LabExecutar(Biblioteca *b, ProgressoCorredor *prog, const BotaoLab *
         case LB_SAIR:      L->aberto = false; TocarSom(sfxSelecao); break;
         case LB_CONCLUIR:  LabConcluir(b); break;
 
-        case LB_SELETOR: {
-            const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
-            int k = o->param;
-            int v = L->escolha[k];
-            do { v = (v + dir + 4) % 4; } while (v > 0 && m->alt[k][v - 1] == NULL);
-            L->escolha[k] = v;
+        case LB_SELETOR:            // encaixe do laboratório de prompts: passa a editar este
+            L->slotAtivo = o->param;
             TocarSom(sfxSelecao);
-        } break;
+            break;
+
+        case LB_PECA:
+            LabColocarPeca(b, o->param);
+            break;
 
         case LB_ENVIAR:
             L->original = false;
@@ -17573,14 +17806,20 @@ static void LabExecutar(Biblioteca *b, ProgressoCorredor *prog, const BotaoLab *
             LabFinalizar(b, prog);
             break;
 
-        case LB_REFAZER:
+        case LB_REFAZER: {
             LabConferirSeguiu(b, 100 + L->envios, 1);
             L->original = false;
             L->etapa = LAB_DESAFIO;
             L->tempo = 0.0f;
             L->foco = 0;
+            // Volta direto ao primeiro encaixe que acendeu em vermelho/laranja (ou em conflito)
+            const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+            for (int k = NUM_PARTES_PROMPT - 1; k >= 0; k--) {
+                LuzParte z = LabLuzParte(m, L->escolha, k);
+                if (z != LUZ_IDEAL && z != LUZ_OK && z != LUZ_DISPENSAVEL) L->slotAtivo = k;
+            }
             TocarSom(sfxSelecao);
-            break;
+        } break;
 
         case LB_DESCONFIAR: {
             const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
@@ -17697,6 +17936,11 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
     L->tempo += dt;
     if (L->etapa == LAB_DESAFIO || L->etapa == LAB_RESPOSTA)
         L->tempoTotal += dt;
+    if (L->animPeca > 0.0f) L->animPeca -= dt;
+    if (L->etapa == LAB_RESPOSTA) L->tempoResposta += dt;
+
+    // Montagem do pedido: A/D trocam o encaixe, 1-3 escolhem a peça, 0 deixa vazio, ENTER envia
+    bool montagemPrompt = (L->tipo == LAB_PROMPTS && L->etapa == LAB_DESAFIO && !L->temSugestao);
 
     const char *resp = (L->etapa == LAB_RESPOSTA) ? LabTextoRespostaAtual(b) : NULL;
     int lenResp = (resp != NULL) ? (int)strlen(resp) : 0;
@@ -17729,9 +17973,10 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
 
     // Teclado
     bool seletor = bt[L->foco].estilo == EST_SELETOR;
-    if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN) || (!seletor && (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT))))
+    bool lados = !seletor && !montagemPrompt;           // na montagem, A/D trocam o encaixe
+    if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN) || (lados && (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT))))
         { L->foco = LabProximoAtivo(bt, n, L->foco, 1);  TocarSom(sfxSelecao); }
-    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP) || (!seletor && (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))))
+    if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP) || (lados && (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))))
         { L->foco = LabProximoAtivo(bt, n, L->foco, -1); TocarSom(sfxSelecao); }
 
     // Mouse
@@ -17756,6 +18001,18 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
         return;
     }
 
+    if (montagemPrompt && clicado < 0) {
+        if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { L->slotAtivo = (L->slotAtivo + NUM_PARTES_PROMPT - 1) % NUM_PARTES_PROMPT; TocarSom(sfxSelecao); return; }
+        if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { L->slotAtivo = (L->slotAtivo + 1) % NUM_PARTES_PROMPT;                     TocarSom(sfxSelecao); return; }
+        for (int a = 1; a <= 3; a++)
+            if (IsKeyPressed(KEY_ZERO + a)) { LabColocarPeca(b, a); return; }
+        if (IsKeyPressed(KEY_ZERO) || IsKeyPressed(KEY_FOUR)) { LabColocarPeca(b, 0); return; }
+        if (IsKeyPressed(KEY_ENTER)) {
+            for (int i = 0; i < n; i++)
+                if (bt[i].acao == LB_ENVIAR && bt[i].ativo) { LabExecutar(b, prog, &bt[i], 1); return; }
+        }
+    }
+
     if (seletor && clicado < 0) {
         if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { LabExecutar(b, prog, &bt[L->foco], -1); return; }
         if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { LabExecutar(b, prog, &bt[L->foco], 1);  return; }
@@ -17776,7 +18033,490 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
 
 // O que está ao alcance do E agora (-1 = nada)
 typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA, ALVO_PECA, ALVO_ENCAIXE,
-               ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA, ALVO_LAB } AlvoRogue;
+               ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA, ALVO_LAB,
+               ALVO_ARMA_MESTRE } AlvoRogue;
+
+// ---------- Fim do Bloco 1: a sala da ALUCINAÇÃO MESTRE ----------
+
+static bool MestreVulneravel(const MestreTreino *m)
+{
+    if (m->morrendo > 0.0f || !m->visivel || m->surgindo > 0.0f)
+        return false;
+    if (m->acao == MA_ATORDOADA || m->acao == MA_ABERTA)
+        return true;
+    return m->acao == MA_RECUPERA && m->etapa == MT_LUTA;      // brecha menor: só na luta
+}
+
+// Tempo que falta até o golpe acertar (o anel em volta do Thomas fecha nesse instante; < 0 = sem golpe)
+static float MestreTempoAteGolpe(const MestreTreino *m, Vector2 jogador, float telegrafia)
+{
+    float dist = fmaxf(0.0f, Vector2Distance(m->pos, jogador) - MESTRE_RAIO - RAIO_CORPO_JOGADOR);
+    if (m->acao == MA_TELEGRAFA) return m->tempoAcao + dist / MESTRE_INVESTIDA_VEL;
+    if (m->acao == MA_INVESTE && !m->acertouGolpe) return dist / MESTRE_INVESTIDA_VEL;
+    (void)telegrafia;
+    return -1.0f;
+}
+
+static float MestreTelegrafia(const MestreTreino *m)
+{
+    return (m->etapa == MT_LUTA) ? MESTRE_TELEGRAFIA * ((m->fase == 2) ? 0.85f : 1.0f) : MESTRE_TELEGRAFIA * 1.3f;
+}
+
+// Entra na sala (o main chama ao sair do corredor pela porta da direita)
+static void RogueEntrarSalaMestre(Biblioteca *b)
+{
+    MestreTreino *m = &b->mestre;
+
+    b->noAtual = -1;
+    b->ladoEntrada = LADO_BAIXO;
+    b->fatorVidaInimigos = b->fatorRitmoInimigos = b->fatorDanoSala = 1.0f;
+    RogueLimparSala(b, SALA_MESTRE, SPAWN_ROGUE);
+    RogueUsarLayout(b, &LAYOUT_CHEFE);
+    RogueLimparEfeitos(&b->j);
+    b->j.hp = RogueHpMax(b);
+    b->j.ep = RogueEpMax(b);
+    b->j.direcao = DIR_COSTAS;
+
+    memset(m, 0, sizeof(*m));
+    m->ativo = true;
+    m->etapa = MT_ARMA;
+    m->pos = POS_MESTRE_INICIO;
+    m->hp = MESTRE_HP;
+    m->fase = 1;
+    for (int i = 0; i < MESTRE_ALVOS; i++) { m->alvo[i] = POS_ALVOS_MESTRE[i]; m->alvoVivo[i] = false; }
+
+    b->conversaPendente = &dialogoMestreChegada;
+    b->objConversa = OBJ_NENHUM;
+    Telemetria("mestre_entrada", "", 0.0f, 0);
+}
+
+static void MestreMudarEtapa(Biblioteca *b, EtapaMestre etapa)
+{
+    MestreTreino *m = &b->mestre;
+
+    m->etapa = etapa;
+    m->tempoEtapa = 0.0f;
+    m->acao = MA_PAUSA;
+    m->tempoAcao = 1.2f;
+    m->proximoGolpe = false;
+    for (int i = 0; i < MAX_PROJETEIS; i++)                 // a etapa nova começa sem balas no ar
+        if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+
+    if (etapa == MT_TIRO) {
+        for (int i = 0; i < MESTRE_ALVOS; i++) m->alvoVivo[i] = true;
+    } else if (etapa == MT_ESQUIVA) {
+        m->visivel = true;
+        m->surgindo = 1.0f;
+        m->tempoAcao = 1.6f;
+        RogueParticulas(b, m->pos, MAGENTA, 40, 260);
+        TocarSom(sfxEstatica);
+    } else if (etapa == MT_LUTA) {
+        b->j.hp = RogueHpMax(b);
+        RogueAviso(b, "ALUCINAÇÃO MESTRE: AGORA É PRA VALER!");
+    }
+
+    if (FALAS_MESTRE_ETAPA[etapa] != NULL)
+        b->falaPendente = FALAS_MESTRE_ETAPA[etapa];
+    Telemetria("mestre_etapa", "", (float)m->tempoEtapa, (int)etapa);
+}
+
+// Parry perfeito na investida: congela, aproxima a câmera e ela fica atordoada (brecha grande)
+static void MestreParry(Biblioteca *b, Vector2 ponto)
+{
+    MestreTreino *m = &b->mestre;
+    JogadorRogue *j = &b->j;
+
+    m->acao = MA_ATORDOADA;
+    m->tempoAcao = MESTRE_STUN;
+    m->parries++;
+    m->pos = Vector2Subtract(m->pos, Vector2Scale(m->dirGolpe, 26.0f));
+    RogueEmpurrarParaFora(&m->pos, MESTRE_RAIO, NULL, 0);
+
+    j->parry.emParry = false;
+    j->parry.tempoJanelaParry = 0.0f;
+    j->parry.cooldownParry = 0.15f;
+    j->parry.hitFreezeAtivo = true;
+    j->parry.tempoHitFreeze = PARRY_HIT_FREEZE;
+    if (j->invulneravel < 0.45f) j->invulneravel = 0.45f;
+
+    b->pausaImpacto = PARRY_HIT_FREEZE;
+    b->tremor = 0.3f;
+    b->tremorForte = 0.3f;
+    b->zoomImpacto = PARRY_ZOOM;
+    b->focoZoom = ponto;
+    RogueAnel(b, ponto, 150.0f, WHITE);
+    RogueAnel(b, ponto, 90.0f, GOLD);
+    RogueParticulas(b, ponto, GOLD, 36, 400);
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (b->proj[i].ativo && !b->proj[i].doJogador && Vector2Distance(b->proj[i].pos, ponto) < 170.0f)
+            b->proj[i].ativo = false;
+
+    TocarSom(sfxParryPerfeito);
+    RogueTextoFlutuante(b, (Vector2){ ponto.x, ponto.y - 44 }, "PARRY PERFEITO!", GOLD);
+    Telemetria("mestre_parry", "", (float)m->etapa, m->parries);
+}
+
+// Rajadas: 0 = anéis, 1 = leques mirados, 2 = espiral. Devolve true quando terminou.
+static bool MestreRajada(Biblioteca *b, float dt)
+{
+    MestreTreino *m = &b->mestre;
+    bool treino = m->etapa != MT_LUTA;
+    float dano = treino ? MESTRE_DANO_BALA_TREINO : MESTRE_DANO_BALA;
+    float ritmo = (m->fase == 2) ? 1.2f : 1.0f;
+
+    m->cronoTiro -= dt * ritmo;
+    if (m->cronoTiro > 0.0f)
+        return false;
+
+    Vector2 mira = Vector2Subtract(b->j.pos, m->pos);
+    mira = (Vector2Length(mira) > 0.1f) ? Vector2Normalize(mira) : (Vector2){ 0, 1 };
+
+    switch (m->padrao) {
+        case 0: {           // anéis lentos (o treino da esquiva usa só este)
+            int n = treino ? 14 : 18;
+            float giro = (float)m->disparos * 0.21f;
+            for (int k = 0; k < n; k++) {
+                float a = giro + (2.0f * PI / n) * k;
+                RogueDisparar(b, m->pos, (Vector2){ cosf(a), sinf(a) }, treino ? 140.0f : 165.0f, dano, 7.0f, false);
+            }
+            m->cronoTiro = treino ? 0.9f : 0.6f;
+            m->disparos++;
+            TocarSomTom(sfxTiro, 0.7f);
+            return m->disparos >= 3;
+        }
+        case 1:             // leques mirados
+            for (int k = -2; k <= 2; k++)
+                RogueDisparar(b, m->pos, Vector2Rotate(mira, (float)k * 13.0f * DEG2RAD), 235.0f, dano, 6.0f, false);
+            m->cronoTiro = 0.42f;
+            m->disparos++;
+            TocarSomTom(sfxTiro, 0.9f);
+            return m->disparos >= 3;
+        default: {          // espiral (dois braços)
+            float a = (float)m->disparos * 0.33f;
+            for (int k = 0; k < 2; k++)
+                RogueDisparar(b, m->pos, (Vector2){ cosf(a + PI * k), sinf(a + PI * k) }, 185.0f, dano, 6.0f, false);
+            m->cronoTiro = 0.07f;
+            m->disparos++;
+            if (m->disparos % 4 == 0) TocarSomTom(sfxTiro, 1.1f);
+            return m->disparos >= 22;
+        }
+    }
+}
+
+static void MestreComecarRajada(MestreTreino *m)
+{
+    m->acao = MA_RAJADA;
+    m->disparos = 0;
+    m->cronoTiro = 0.25f;
+    m->padrao = (m->etapa == MT_LUTA) ? GetRandomValue(0, 2) : 0;
+}
+
+// Os ataques da Mestre (ESQUIVA, ABERTURA, PARRY e LUTA usam a mesma máquina)
+static void MestreAtacar(Biblioteca *b, float dt)
+{
+    MestreTreino *m = &b->mestre;
+    JogadorRogue *j = &b->j;
+    Vector2 d = Vector2Subtract(j->pos, m->pos);
+    float dist = Vector2Length(d);
+    Vector2 dir = (dist > 0.01f) ? Vector2Scale(d, 1.0f / dist) : (Vector2){ 0, 1 };
+
+    m->tempoAcao -= dt;
+
+    switch (m->acao) {
+
+        case MA_PAUSA: {        // flutua de um lado para o outro, perto do alto da sala
+            float alvoX = 400.0f + sinf(m->anim * 0.8f) * 160.0f;
+            m->pos.x += (alvoX - m->pos.x) * Clamp(dt * 1.5f, 0.0f, 1.0f);
+            m->pos.y += (POS_MESTRE_INICIO.y - m->pos.y) * Clamp(dt * 1.5f, 0.0f, 1.0f);
+            if (m->tempoAcao > 0.0f) break;
+
+            bool golpe = (m->etapa == MT_PARRY) || (m->etapa == MT_LUTA && m->proximoGolpe);
+            if (golpe) { m->acao = MA_APROXIMA; m->tempoAcao = 1.6f; }
+            else       MestreComecarRajada(m);
+            if (m->etapa == MT_LUTA) m->proximoGolpe = !m->proximoGolpe;
+        } break;
+
+        case MA_RAJADA:
+            if (MestreRajada(b, dt)) {
+                if (m->etapa == MT_ESQUIVA) { m->acao = MA_PAUSA; m->tempoAcao = 1.0f; }
+                else { m->acao = MA_ABERTA; m->tempoAcao = MESTRE_ABERTURA; TocarSomTom(sfxPegar, 0.7f); }
+            }
+            break;
+
+        case MA_ABERTA:         // cansada: parada, escudo dourado
+            if (m->tempoAcao <= 0.0f) { m->acao = MA_PAUSA; m->tempoAcao = (m->etapa == MT_LUTA) ? 0.9f : 1.3f; }
+            break;
+
+        case MA_APROXIMA:       // chega até a distância do golpe (o ritmo do parry fica sempre igual)
+            if (dist > MESTRE_DIST_GOLPE + 8.0f) {
+                m->pos = Vector2Add(m->pos, Vector2Scale(dir, 230.0f * dt));
+                RogueEmpurrarParaFora(&m->pos, MESTRE_RAIO, NULL, 0);
+            } else if (dist < MESTRE_DIST_GOLPE - 30.0f) {
+                m->pos = Vector2Subtract(m->pos, Vector2Scale(dir, 160.0f * dt));
+                RogueEmpurrarParaFora(&m->pos, MESTRE_RAIO, NULL, 0);
+            }
+            if (m->tempoAcao <= 0.0f || fabsf(dist - MESTRE_DIST_GOLPE) < 14.0f) {
+                m->acao = MA_TELEGRAFA;
+                m->tempoAcao = MestreTelegrafia(m);
+                m->dirGolpe = dir;
+                TocarSom(sfxAvisoParry);
+            }
+            break;
+
+        case MA_TELEGRAFA:      // brilho vermelho; a mira trava no último terço
+            if (m->tempoAcao > MestreTelegrafia(m) * 0.3f) m->dirGolpe = dir;
+            if (m->tempoAcao <= 0.0f) {
+                m->acao = MA_INVESTE;
+                m->tempoAcao = MESTRE_INVESTIDA_TEMPO;
+                m->acertouGolpe = false;
+                TocarSomTom(sfxTiro, 0.4f);
+            }
+            break;
+
+        case MA_INVESTE: {
+            m->pos = Vector2Add(m->pos, Vector2Scale(m->dirGolpe, MESTRE_INVESTIDA_VEL * dt));
+            RogueEmpurrarParaFora(&m->pos, MESTRE_RAIO, NULL, 0);
+            if (GetRandomValue(0, 1) == 0) RogueParticulas(b, m->pos, RED, 1, 60);
+
+            if (!m->acertouGolpe && CheckCollisionCircles(m->pos, MESTRE_RAIO, j->pos, RAIO_CORPO_JOGADOR)) {
+                m->acertouGolpe = true;
+                Vector2 ponto = Vector2Lerp(m->pos, j->pos, 0.6f);
+                if (j->parry.emParry) { MestreParry(b, ponto); break; }
+                if (j->invulneravel <= 0.0f && j->tempoEsquiva <= 0.0f) {
+                    RogueFerirJogador(b, (m->etapa == MT_LUTA) ? MESTRE_DANO_GOLPE : MESTRE_DANO_BALA_TREINO);
+                    j->pos = Vector2Add(j->pos, Vector2Scale(m->dirGolpe, 30.0f));
+                    RogueEmpurrarParaFora(&j->pos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
+                    m->golpesLevados++;
+                    if (m->etapa == MT_PARRY)
+                        RogueRecadoLuci(b, (m->golpesLevados >= 3) ? "Aperte V um instante ANTES de ela encostar!"
+                                                                    : "Quase! Aperte V quando o anel fechar em você.");
+                }
+            }
+            if (m->tempoAcao <= 0.0f) { m->acao = MA_RECUPERA; m->tempoAcao = MESTRE_RECUPERA; }
+        } break;
+
+        case MA_RECUPERA:
+        case MA_ATORDOADA:
+            if (m->tempoAcao <= 0.0f) { m->acao = MA_PAUSA; m->tempoAcao = (m->etapa == MT_LUTA) ? 0.8f : 1.2f; }
+            break;
+    }
+}
+
+// Distância de um ponto ao trajeto do tiro neste quadro (alvo pequeno não é atravessado com FPS baixo)
+static float MestreDistTrajeto(const Projetil *p, Vector2 c, float dt)
+{
+    Vector2 a = Vector2Subtract(p->pos, Vector2Scale(p->vel, dt)), ab = Vector2Subtract(p->pos, a);
+    float len2 = Vector2DotProduct(ab, ab);
+    float t = (len2 > 0.0001f) ? Clamp(Vector2DotProduct(Vector2Subtract(c, a), ab) / len2, 0.0f, 1.0f) : 1.0f;
+    return Vector2Distance(c, Vector2Add(a, Vector2Scale(ab, t)));
+}
+
+// Tiros do Thomas: alvos de treino e a Mestre (escudo fechado = o tiro bate e some)
+static void MestreReceberTiros(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    MestreTreino *m = &b->mestre;
+    (void)prog;
+
+    for (int i = 0; i < MAX_PROJETEIS; i++) {
+        Projetil *p = &b->proj[i];
+        if (!p->ativo || !p->doJogador)
+            continue;
+
+        if (m->etapa == MT_TIRO) {
+            for (int a = 0; a < MESTRE_ALVOS; a++) {
+                if (!m->alvoVivo[a] || MestreDistTrajeto(p, m->alvo[a], dt) > 18.0f + p->raio) continue;
+                m->alvoVivo[a] = false;
+                p->ativo = false;
+                RogueParticulas(b, m->alvo[a], GOLD, 22, 220);
+                RogueAnel(b, m->alvo[a], 40.0f, GOLD);
+                RogueTextoFlutuante(b, (Vector2){ m->alvo[a].x, m->alvo[a].y - 26 }, "FATO!", GOLD);
+                TocarSomTom(sfxAcerto, 1.1f + 0.1f * (float)a);
+                break;
+            }
+            continue;
+        }
+
+        if (!m->visivel || m->morrendo > 0.0f || MestreDistTrajeto(p, m->pos, dt) > MESTRE_RAIO + p->raio)
+            continue;
+
+        p->ativo = false;
+        if (MestreVulneravel(m)) {
+            float piso = (m->etapa == MT_LUTA) ? 0.0f : MESTRE_HP * MESTRE_TREINO_HP_CHEFE;
+            m->hp = fmaxf(piso, m->hp - p->dano);
+            m->flash = 0.12f;
+            if (m->etapa == MT_ABERTURA || (m->etapa == MT_PARRY && m->acao == MA_ATORDOADA)) m->acertosAbertura++;
+            RogueParticulas(b, p->pos, GOLD, 5, 160);
+            TocarSomTom(sfxAcerto, 1.4f);
+        } else {
+            RogueParticulas(b, p->pos, (Color){ 200, 122, 255, 255 }, 4, 120);
+            if (m->avisoEscudo <= 0.0f) {
+                RogueTextoFlutuante(b, (Vector2){ m->pos.x, m->pos.y - 70 }, "ESCUDO!", (Color){ 200, 122, 255, 255 });
+                m->avisoEscudo = 1.2f;
+            }
+        }
+    }
+}
+
+static void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float dt)
+{
+    MestreTreino *m = &b->mestre;
+    JogadorRogue *j = &b->j;
+
+    if (!m->ativo)
+        return;
+
+    m->tempoEtapa += dt;
+    m->anim += dt;
+    if (m->flash > 0.0f)       m->flash -= dt;
+    if (m->surgindo > 0.0f)    m->surgindo -= dt;
+    if (m->avisoEscudo > 0.0f) m->avisoEscudo -= dt;
+
+    // Derrota da Mestre: ela se desfaz e vem a conversa final
+    if (m->morrendo > 0.0f) {
+        m->morrendo -= dt;
+        if (GetRandomValue(0, 2) == 0) RogueParticulas(b, m->pos, (GetRandomValue(0, 1) == 0) ? MAGENTA : GOLD, 3, 260);
+        if (m->morrendo <= 0.0f) {
+            m->visivel = false;
+            m->etapa = MT_FIM;
+            b->conversaPendente = &dialogoMestreVitoria;
+            b->objConversa = OBJ_MESTRE_VITORIA;
+        }
+        return;
+    }
+    if (m->etapa == MT_ARMA || m->etapa == MT_FIM)
+        return;
+
+    // Esquivas feitas (o treino conta as que começam)
+    bool esquivando = j->tempoEsquiva > 0.0f;
+    if (esquivando && !m->estavaEsquivando) m->esquivas++;
+    m->estavaEsquivando = esquivando;
+
+    MestreReceberTiros(b, prog, dt);
+
+    if (m->visivel && m->surgindo <= 0.0f)
+        MestreAtacar(b, dt);
+
+    // Fase 2 da luta: as três alucinações dos monitores atiram de onde estiverem na órbita
+    if (m->etapa == MT_LUTA && m->fase == 2 && m->acao != MA_ATORDOADA) {
+        m->cronoOrbita -= dt;
+        if (m->cronoOrbita <= 0.0f) {
+            for (int i = 0; i < TOTAL_MONITORES; i++) {
+                float ang = m->anim * 1.4f + i * (2.0f * PI / TOTAL_MONITORES);
+                Vector2 o = { m->pos.x + cosf(ang) * 96, m->pos.y + 6 + sinf(ang) * 22 };
+                Vector2 d = Vector2Subtract(j->pos, o);
+                if (Vector2Length(d) > 0.1f)
+                    RogueDisparar(b, o, Vector2Normalize(d), 200.0f, MESTRE_DANO_BALA * 0.7f, 5.0f, false);
+            }
+            m->cronoOrbita = 1.7f;
+        }
+    }
+
+    // No tutorial a Luci segura a vida do Thomas
+    if (m->etapa != MT_LUTA && j->hp < RogueHpMax(b) * MESTRE_TREINO_HP_MIN)
+        j->hp = RogueHpMax(b) * MESTRE_TREINO_HP_MIN;
+
+    // Progresso do tutorial: uma mecânica de cada vez
+    switch (m->etapa) {
+        case MT_TIRO: {
+            bool restam = false;
+            for (int a = 0; a < MESTRE_ALVOS; a++) if (m->alvoVivo[a]) restam = true;
+            if (!restam) MestreMudarEtapa(b, MT_ESQUIVA);
+        } break;
+        case MT_ESQUIVA:
+            if (m->esquivas >= MESTRE_ESQUIVAS && m->tempoEtapa > 5.0f && m->acao == MA_PAUSA) MestreMudarEtapa(b, MT_ABERTURA);
+            break;
+        case MT_ABERTURA:
+            if (m->acertosAbertura >= MESTRE_ACERTOS_ABERTURA && m->acao != MA_ABERTA) MestreMudarEtapa(b, MT_PARRY);
+            break;
+        case MT_PARRY:
+            if (m->parries >= 1 && m->acao == MA_PAUSA) MestreMudarEtapa(b, MT_LUTA);
+            break;
+        case MT_LUTA:
+            if (m->fase == 1 && m->hp <= MESTRE_HP * MESTRE_FASE2) {
+                m->fase = 2;
+                m->cronoOrbita = 1.0f;
+                b->falaPendente = "Luci: Ela chamou as alucinações dos monitores! Não pare de se mexer!";
+            }
+            if (m->hp <= 0.0f) {
+                m->hp = 0.0f;
+                m->morrendo = 1.8f;
+                for (int i = 0; i < MAX_PROJETEIS; i++)
+                    if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+                RogueAnel(b, m->pos, 180.0f, MAGENTA);
+                RogueParticulas(b, m->pos, MAGENTA, 50, 320);
+                TocarSom(sfxEstatica);
+                Telemetria("mestre_vitoria", "", m->tempoEtapa, m->quedas);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+// Caiu na luta: a Luci reergue o Thomas (sem perder pontos nem o que a Mestre já perdeu)
+static void RogueMestreReerguer(Biblioteca *b)
+{
+    MestreTreino *m = &b->mestre;
+
+    m->quedas++;
+    b->j.hp = RogueHpMax(b);
+    b->j.invulneravel = 2.0f;
+    m->acao = MA_PAUSA;
+    m->tempoAcao = 2.0f;
+    for (int i = 0; i < MAX_PROJETEIS; i++)
+        if (!b->proj[i].doJogador) b->proj[i].ativo = false;
+    RogueParticulas(b, b->j.pos, (Color){ 0, 228, 255, 255 }, 30, 220);
+    b->falaPendente = "Luci: Levanta, Thomas! Eu seguro ela um instante. Respira e tenta de novo.";
+    Telemetria("mestre_queda", "", 0.0f, m->quedas);
+}
+
+// Venceu: a sala fecha e o Thomas chega ao átrio da Biblioteca (o Bloco 2) com a arma
+static void RogueSairSalaMestre(Biblioteca *b)
+{
+    memset(&b->mestre, 0, sizeof(b->mestre));
+    RogueEntrarAtrio(b, true);
+    RogueAviso(b, "BLOCO 2: A BIBLIOTECA DOS ECOS");
+    b->falaPendente = "Luci: Chegamos à Biblioteca dos Ecos! O disparador continua com você.";
+}
+
+// ---------- Portas com interação (tecla E) ----------
+// As portas não levam mais o jogador só de encostar: perto de uma porta aberta aparece
+// "APERTE E PARA ENTRAR/SAIR" e só o E atravessa. A mesma função serve à lógica e ao desenho.
+typedef enum { PORTA_NENHUMA, PORTA_ATRIO_MISSAO, PORTA_ATRIO_CORREDOR, PORTA_ATRIO_NUCLEO,
+               PORTA_TRANSICAO_LUCI, PORTA_DA_MISSAO, PORTA_SECRETA } PortaInteracao;
+
+#define DISTANCIA_PORTA_E   14.0f   // folga além do corpo do Thomas (AJUSTE AQUI)
+
+static bool RoguePertoDaPorta(const Biblioteca *b, Rectangle r)
+{
+    return CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + DISTANCIA_PORTA_E, r);
+}
+
+// Porta aberta ao alcance do E (*indice: qual porta da missão)
+static PortaInteracao RoguePortaProxima(const Biblioteca *b, int *indice)
+{
+    *indice = -1;
+
+    if (b->morreu)
+        return PORTA_NENHUMA;
+
+    if (b->tipoSala == SALA_ATRIO) {
+        if (RoguePertoDaPorta(b, PORTA_SAIDA_ROGUE))                             return PORTA_ATRIO_CORREDOR;
+        if (b->perm->bloco3Liberado && RoguePertoDaPorta(b, PORTA_BLOCO3_ROGUE)) return PORTA_ATRIO_NUCLEO;
+        if (RoguePertoDaPorta(b, PORTA_PROXIMA_ROGUE))                           return PORTA_ATRIO_MISSAO;
+    }
+    else if (b->tipoSala == SALA_TRANSICAO) {
+        if (b->limpa && RoguePertoDaPorta(b, PORTA_PROXIMA_ROGUE)) return PORTA_TRANSICAO_LUCI;
+    }
+    else if (b->noAtual >= 0 && b->limpa) {
+        for (int k = 0; k < b->numPortas; k++)
+            if (RoguePertoDaPorta(b, b->portas[k].r)) { *indice = k; return PORTA_DA_MISSAO; }
+        if (b->temParedeSecreta && b->passagemAberta && RoguePertoDaPorta(b, PAREDE_SECRETA_ROGUE[b->paredeSecreta]))
+            return PORTA_SECRETA;
+    }
+
+    return PORTA_NENHUMA;
+}
 
 static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 {
@@ -17811,6 +18551,9 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
     }
     else if (b->tipoSala == SALA_LUCI) {
         if (RogueAlvoContexto(b, pedestal)) return ALVO_CONTEXTO;     // *pedestal: pedaço (k) ou o núcleo (-1)
+    }
+    else if (b->tipoSala == SALA_MESTRE) {
+        if (b->mestre.etapa == MT_ARMA && Vector2Distance(p, POS_ARMA_MESTRE) < 56.0f) return ALVO_ARMA_MESTRE;
     }
     else if (b->tipoSala == SALA_SILOGISTA) {
         // Montagem do silogismo (o índice do fragmento ou do mecanismo vai em *pedestal).
@@ -17976,6 +18719,14 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
 {
     switch (alvo) {
 
+        case ALVO_ARMA_MESTRE:
+            b->mestre.etapa = MT_TIRO;              // o pedestal some já (a etapa começa no fim da conversa)
+            RogueParticulas(b, POS_ARMA_MESTRE, GOLD, 30, 220);
+            RogueAnel(b, POS_ARMA_MESTRE, 70.0f, GOLD);
+            TocarSomTom(sfxAcerto, 1.2f);
+            DialogoIniciar(dlg, &dialogoMestreArma, OBJ_MESTRE_ARMA);
+            break;
+
         case ALVO_BYTE:
             DialogoIniciar(dlg, b->perm->byteVisto ? &dialogoByteDepois : &dialogoByte, OBJ_BYTE);
             break;
@@ -18073,6 +18824,17 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
 // Terminou uma conversa da Biblioteca: o que ela muda
 static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
 {
+    if (obj == OBJ_MESTRE_ARMA) {
+        MestreMudarEtapa(b, MT_TIRO);
+        RogueAviso(b, "DISPARADOR DE DADOS!");
+        return;
+    }
+    if (obj == OBJ_MESTRE_VITORIA) {
+        AlterarPontos(prog, MESTRE_PONTOS);
+        b->mestreVencidoPendente = true;
+        return;
+    }
+
     if (obj == OBJ_BYTE) {
         b->perm->byteVisto = true;
         if (!(b->perm->conceitos & (1u << CONCEITO_FUNDAMENTOS)))
@@ -18195,7 +18957,7 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
     }
 }
 
-typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO } EventoRogue;
+typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO, ROGUE_MESTRE_VENCIDO } EventoRogue;
 
 static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg, float dt)
 {
@@ -18236,6 +18998,13 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->vitoriaPendente) {
         b->vitoriaPendente = false;
         return ROGUE_VITORIA;
+    }
+
+    // Venceu a ALUCINAÇÃO MESTRE: fim do Bloco 1 (o main abre o ranking) e o átrio do Bloco 2
+    if (b->mestreVencidoPendente) {
+        b->mestreVencidoPendente = false;
+        RogueSairSalaMestre(b);
+        return ROGUE_MESTRE_VENCIDO;
     }
 
     // Tela de resultado do fim do jogo: ENTER leva ao ranking e ao menu
@@ -18373,6 +19142,9 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->tipoSala == SALA_LUCI)
         RogueAtualizarLuciChefe(b, prog, dt);
 
+    if (b->tipoSala == SALA_MESTRE)
+        RogueAtualizarMestre(b, prog, dt);
+
     // Reformulação: armadilhas, áreas da build e provas
     RogueAtualizarArmadilhas(b, prog, dt);
     RogueAtualizarAreas(b, prog, dt);
@@ -18385,6 +19157,12 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         Inimigo *e = &b->ini[i];
         if (e->ativo && e->selado && e->surgindo <= 0.0f && Vector2Distance(e->pos, b->j.pos) < RAIO_DESAFIO)
             RogueAbrirDesafio(b, i);
+    }
+
+    // Sala da Mestre (fim do Bloco 1): cair não é derrota, a Luci reergue o Thomas
+    if (b->tipoSala == SALA_MESTRE && b->j.hp <= 0.0f) {
+        RogueMestreReerguer(b);
+        return ROGUE_NADA;
     }
 
     if (b->j.hp <= 0.0f) {
@@ -18403,6 +19181,46 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     // Concluído, abre as portas e deixa a recompensa (ver RogueConcluirCombate).
     RogueAtualizarObjetivo(b, prog, dt);
 
+    // Portas: só com E, perto da porta (a porta tem prioridade sobre o que estiver ao lado)
+    int portaK = -1;
+    PortaInteracao porta = RoguePortaProxima(b, &portaK);
+
+    if (IsKeyPressed(KEY_E) && porta != PORTA_NENHUMA) {
+        switch (porta) {
+            case PORTA_ATRIO_CORREDOR:
+                return ROGUE_SAIR;
+
+            case PORTA_ATRIO_NUCLEO:
+                // Continuidade linear: a porta do núcleo abre a cutscene de transição
+                b->transicaoNucleo = TRANSICAO_NUCLEO;
+                b->entrouNucleo = false;
+                PararSons();
+                TocarSom(sfxEstatica);
+                Telemetria("bloco3_porta", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
+                return ROGUE_NADA;
+
+            case PORTA_ATRIO_MISSAO:
+                if (b->perm->byteVisto) RogueComecarMissao(b);
+                else DialogoFalaAvulsa(dlg, "Luci: Antes de entrar, vamos falar com o Professor Byte. Ele está ali, perto da porta!");
+                return ROGUE_NADA;
+
+            case PORTA_TRANSICAO_LUCI:
+                RogueEntrarSala(b, SALA_LUCI);
+                return ROGUE_NADA;
+
+            case PORTA_DA_MISSAO:
+                RogueAtravessarPorta(b, portaK);
+                return ROGUE_NADA;
+
+            case PORTA_SECRETA:
+                RogueEntrarSecreta(b);      // passagem secreta aberta: um desvio opcional
+                return ROGUE_NADA;
+
+            default:
+                break;
+        }
+    }
+
     // E: falar, ler, pegar
     int pedestal = -1;
     AlvoRogue alvo = RogueAlvoProximo(b, &pedestal);
@@ -18410,50 +19228,6 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (IsKeyPressed(KEY_E) && alvo != ALVO_NADA) {
         RogueInteragir(b, dlg, alvo, pedestal);
         return ROGUE_NADA;
-    }
-
-    // Portas: é só andar até elas
-    bool naPortaDeCima  = CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, PORTA_PROXIMA_ROGUE);
-    bool naPortaDaSaida = CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, PORTA_SAIDA_ROGUE);
-
-    if (b->tipoSala == SALA_ATRIO) {
-        if (naPortaDaSaida)
-            return ROGUE_SAIR;
-        if (b->perm->bloco3Liberado && CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, PORTA_BLOCO3_ROGUE)) {
-            // Continuidade linear: a porta do núcleo abre a cutscene de transição
-            b->transicaoNucleo = TRANSICAO_NUCLEO;
-            b->entrouNucleo = false;
-            b->j.pos.x -= 6.0f;
-            PararSons();
-            TocarSom(sfxEstatica);
-            Telemetria("bloco3_porta", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
-            return ROGUE_NADA;
-        }
-        if (naPortaDeCima) {
-            if (b->perm->byteVisto) RogueComecarMissao(b);
-            else {
-                b->j.pos.y += 24.0f;
-                DialogoFalaAvulsa(dlg, "Luci: Antes de entrar, vamos falar com o Professor Byte. Ele está ali, perto da porta!");
-            }
-        }
-    }
-    else if (b->tipoSala == SALA_TRANSICAO) {
-        if (b->limpa && naPortaDeCima) RogueEntrarSala(b, SALA_LUCI);
-    }
-    else if (b->noAtual >= 0 && b->limpa) {
-        // Reformulação: as portas da missão (é só andar até a escolhida)
-        for (int k = 0; k < b->numPortas; k++)
-            if (CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 2.0f, b->portas[k].r)) {
-                RogueAtravessarPorta(b, k);
-                return ROGUE_NADA;
-            }
-
-        // Passagem secreta aberta: um desvio opcional
-        if (b->temParedeSecreta && b->passagemAberta &&
-            CheckCollisionCircleRec(b->j.pos, RAIO_CORPO_JOGADOR + 4.0f, PAREDE_SECRETA_ROGUE[b->paredeSecreta])) {
-            RogueEntrarSecreta(b);
-            return ROGUE_NADA;
-        }
     }
 
     return ROGUE_NADA;
@@ -18480,6 +19254,152 @@ static void DesenharEstante(Rectangle r, float tempo)
     }
 
     DrawRectangleLinesEx(r, 2, Fade(SKYBLUE, 0.35f + 0.1f * sinf(tempo * 2.0f + r.x)));
+}
+
+// ---------- Fim do Bloco 1: desenho da sala da ALUCINAÇÃO MESTRE ----------
+
+static void DesenharIconeArma(TipoArma arma, Vector2 c, float e, float tempo);
+
+// O pedestal com o Disparador de Dados (um facho dourado chama a atenção)
+static void DesenharPedestalArmaMestre(Vector2 c, float tempo)
+{
+    float pulso = 0.5f + 0.5f * sinf(tempo * 3.0f);
+    DrawTriangle((Vector2){ c.x, c.y - 150 }, (Vector2){ c.x - 34, c.y + 6 }, (Vector2){ c.x + 34, c.y + 6 }, Fade(GOLD, 0.06f + 0.05f * pulso));
+    DrawEllipse((int)c.x, (int)c.y + 18, 34, 10, Fade(BLACK, 0.4f));
+    DrawRectangle((int)c.x - 22, (int)c.y + 2, 44, 16, (Color){ 70, 45, 110, 255 });
+    DrawRectangle((int)c.x - 28, (int)c.y + 14, 56, 8, (Color){ 50, 32, 84, 255 });
+    DrawRectangleLines((int)c.x - 22, (int)c.y + 2, 44, 16, GOLD);
+    float y = c.y - 14 + sinf(tempo * 2.2f) * 4.0f;
+    DrawCircleV((Vector2){ c.x, y }, 18 + 3 * pulso, Fade(GOLD, 0.12f));
+    DesenharIconeArma(ARMA_DISPARADOR, (Vector2){ c.x, y }, 1.6f, tempo);
+}
+
+// Alvo de treino: um monitorzinho com "?" que balança
+static void DesenharAlvoTreino(Vector2 c, float tempo, int i)
+{
+    float y = c.y + sinf(tempo * 2.5f + i) * 4.0f;
+    DrawRectangle((int)c.x - 16, (int)y - 12, 32, 24, (Color){ 255, 161, 0, 255 });
+    DrawRectangle((int)c.x - 13, (int)y - 9, 26, 18, (Color){ 20, 12, 36, 255 });
+    DrawText("?", (int)c.x - 3, (int)y - 8, 16, (Color){ 255, 161, 0, 255 });
+    DrawCircleLines((int)c.x, (int)y, 24 + 2 * sinf(tempo * 4.0f), Fade(GOLD, 0.5f));
+    DrawRectangle((int)c.x - 2, (int)y + 12, 4, 8, GRAY);
+}
+
+static void DesenharMestreTreino(const Biblioteca *b, float tempo)
+{
+    const MestreTreino *m = &b->mestre;
+
+    if (!m->ativo)
+        return;
+
+    if (m->etapa == MT_ARMA)
+        DesenharPedestalArmaMestre(POS_ARMA_MESTRE, tempo);
+
+    if (m->etapa == MT_TIRO)
+        for (int a = 0; a < MESTRE_ALVOS; a++)
+            if (m->alvoVivo[a]) DesenharAlvoTreino(m->alvo[a], tempo, a);
+
+    if (!m->visivel && m->morrendo <= 0.0f)
+        return;
+
+    Vector2 c = m->pos;
+    if (m->morrendo > 0.0f) { c.x += (float)GetRandomValue(-4, 4); c.y += (float)GetRandomValue(-4, 4); }
+    if (m->acao == MA_TELEGRAFA) c.x += (float)GetRandomValue(-2, 2);
+
+    // Golpe vindo: aura vermelha, a linha do caminho e o "!"
+    bool golpe = (m->acao == MA_TELEGRAFA || m->acao == MA_INVESTE) && m->morrendo <= 0.0f;
+    if (golpe) {
+        float p = 0.5f + 0.5f * sinf(tempo * 18.0f);
+        DrawCircleV(c, MESTRE_RAIO + 26 + 6 * p, Fade(RED, 0.18f + 0.12f * p));
+        if (m->acao == MA_TELEGRAFA) {
+            Vector2 fim = Vector2Add(c, Vector2Scale(m->dirGolpe, 260.0f));
+            for (int k = 0; k < 10; k++) {
+                Vector2 a = Vector2Lerp(c, fim, k / 10.0f), z = Vector2Lerp(c, fim, (k + 0.5f) / 10.0f);
+                DrawLineEx(a, z, 3.0f, Fade(RED, 0.6f));
+            }
+            DrawText("!", (int)c.x - 4, (int)c.y - 110, 30, RED);
+        }
+    }
+
+    // A Mestre (o mesmo desenho do Bloco 1)
+    DesenharAlucinacaoMestre(c, tempo);
+    if (golpe) {        // os "olhos" em vermelho neon
+        DrawCircleV((Vector2){ c.x - 12, c.y - 8 }, 5, RED);
+        DrawCircleV((Vector2){ c.x + 12, c.y - 8 }, 5, RED);
+    }
+    if (m->flash > 0.0f)
+        DrawCircleV(c, MESTRE_RAIO + 6, Fade(WHITE, Clamp(m->flash * 5.0f, 0.0f, 0.7f)));
+    if (m->surgindo > 0.0f)
+        DrawCircleV(c, 110, Fade((Color){ 16, 12, 30, 255 }, Clamp(m->surgindo, 0.0f, 1.0f)));
+    if (m->morrendo > 0.0f)
+        DrawCircleV(c, 120, Fade((Color){ 16, 12, 30, 255 }, Clamp(1.0f - m->morrendo / 1.8f, 0.0f, 1.0f)));
+
+    // Escudo: fechado (roxo) ou aberto (dourado, a hora de atirar)
+    if (m->morrendo <= 0.0f && m->surgindo <= 0.0f) {
+        if (MestreVulneravel(m)) {
+            float p = 0.5f + 0.5f * sinf(tempo * 8.0f);
+            DrawCircleLines((int)c.x, (int)c.y, MESTRE_RAIO + 10 + 4 * p, GOLD);
+            DrawCircleLines((int)c.x, (int)c.y, MESTRE_RAIO + 14 + 4 * p, Fade(GOLD, 0.5f));
+            const char *t = (m->acao == MA_ATORDOADA) ? "ATORDOADA! ATIRE!" : "ABERTA! ATIRE!";
+            DrawText(t, (int)c.x - MeasureText(t, 12) / 2, (int)c.y + 72, 12, GOLD);
+            if (m->acao == MA_ATORDOADA)
+                for (int k = 0; k < 3; k++) {
+                    float a = tempo * 4.0f + k * 2.1f;
+                    DrawPoly((Vector2){ c.x + cosf(a) * 30, c.y - 66 + sinf(a) * 8 }, 4, 5, tempo * 200.0f, GOLD);
+                }
+        } else {
+            Color roxo = { 200, 122, 255, 255 };
+            for (int k = 0; k < 6; k++) {
+                float a0 = tempo * 0.8f + k * (PI / 3.0f);
+                DrawRing(c, MESTRE_RAIO + 9, MESTRE_RAIO + 12, a0 * RAD2DEG, a0 * RAD2DEG + 40.0f, 6, Fade(roxo, 0.75f));
+            }
+        }
+    }
+
+    // O anel do parry: fecha em volta do Thomas no instante do impacto
+    float falta = MestreTempoAteGolpe(m, b->j.pos, MestreTelegrafia(m));
+    if (falta >= 0.0f && falta < 1.4f && (m->etapa == MT_PARRY || m->etapa == MT_LUTA)) {
+        float raio = RAIO_CORPO_JOGADOR + 4.0f + 70.0f * (falta / 1.4f);
+        bool agora = falta < PARRY_JANELA;
+        DrawCircleLines((int)b->j.pos.x, (int)b->j.pos.y, raio, agora ? GOLD : Fade(RED, 0.8f));
+        DrawCircleLines((int)b->j.pos.x, (int)b->j.pos.y, raio + 1, agora ? GOLD : Fade(RED, 0.5f));
+        if (agora) DrawText("V!", (int)b->j.pos.x - 6, (int)b->j.pos.y - 48, 14, GOLD);
+    }
+}
+
+// Barra de vida e as etapas do treino (no alto da tela)
+static void DesenharHudMestre(const Biblioteca *b, float tempo)
+{
+    const MestreTreino *m = &b->mestre;
+
+    if (!m->ativo)
+        return;
+
+    // As etapas: o que já foi aprendido fica dourado (embaixo, à esquerda, acima do painel da Luci)
+    static const char *nomes[6] = { "ARMA", "TIRO", "ESQUIVA", "BRECHA", "PARRY", "LUTA" };
+    int x = 46, y = 464;
+    for (int i = 0; i < 6; i++) {
+        bool feito = (int)m->etapa > i, atual = (int)m->etapa == i;
+        int w = MeasureText(nomes[i], 10) + 12;
+        DrawRectangle(x, y, w, 15, feito ? Fade(GOLD, 0.25f) : (atual ? Fade((Color){ 0, 228, 255, 255 }, 0.2f + 0.1f * sinf(tempo * 4.0f)) : Fade(BLACK, 0.5f)));
+        DrawRectangleLines(x, y, w, 15, feito ? GOLD : (atual ? (Color){ 0, 228, 255, 255 } : Fade(GRAY, 0.6f)));
+        DrawText(nomes[i], x + 6, y + 3, 10, feito ? GOLD : (atual ? WHITE : GRAY));
+        x += w + 4;
+    }
+
+    if (!m->visivel || m->etapa < MT_ABERTURA)
+        return;
+
+    int bx = 200, by = 76, w = 400;
+    DrawRectangle(bx - 4, by - 2, w + 8, 16, Fade(BLACK, 0.8f));
+    DrawRectangle(bx, by + 2, w, 8, (Color){ 40, 20, 50, 255 });
+    DrawRectangle(bx, by + 2, (int)(w * m->hp / MESTRE_HP), 8, MestreVulneravel(m) ? GOLD : MAGENTA);
+    if (m->etapa == MT_LUTA)
+        DrawRectangle(bx + (int)(w * MESTRE_FASE2) - 1, by, 2, 12, WHITE);
+    DrawRectangleLines(bx, by + 2, w, 8, GRAY);
+    const char *nome = "ALUCINAÇÃO MESTRE";
+    int wn = MeasureText(nome, 10);
+    DrawText(nome, bx + w / 2 - wn / 2, by + 14, 10, MAGENTA);
 }
 
 static void DesenharPortaRogue(Rectangle r, bool aberta, const char *nome, float tempo)
@@ -19471,6 +20391,25 @@ static void DesenharTeclaE(Vector2 c, float tempo)
     DrawText("E", (int)c.x - 3, y - 6, 12, GOLD);
 }
 
+// "APERTE [E] PARA ENTRAR" (ou SAIR) sobre a cabeça do Thomas, perto de uma porta
+static void DesenharAvisoPorta(Vector2 pos, const char *acao, float tempo)
+{
+    const char *antes = "APERTE";
+    const char *depois = TextFormat("PARA %s", acao);
+    int wa = MeasureText(antes, 10), wd = MeasureText(depois, 10);
+    int w = wa + wd + 40;
+    int x = (int)Clamp(pos.x - w / 2.0f, 8.0f, (float)(LARGURA_TELA - w - 8));
+    int y = (int)(pos.y - 52.0f + sinf(tempo * 4.0f) * 1.5f);
+
+    DrawRectangle(x, y, w, 20, Fade((Color){ 16, 12, 30, 255 }, 0.85f));
+    DrawRectangleLines(x, y, w, 20, Fade(GOLD, 0.7f));
+    DrawText(antes, x + 8, y + 5, 10, LIGHTGRAY);
+    DrawRectangle(x + 14 + wa, y + 3, 14, 14, Fade(GOLD, 0.2f));
+    DrawRectangleLines(x + 14 + wa, y + 3, 14, 14, GOLD);
+    DrawText("E", x + 18 + wa, y + 5, 10, GOLD);
+    DrawText(depois, x + 32 + wa, y + 5, 10, WHITE);
+}
+
 // Púlpito da enciclopédia no átrio
 static void DesenharPulpitoEnciclopedia(Vector2 c, float t)
 {
@@ -19505,6 +20444,23 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
     const char *tipo = TextFormat("%s   //   %s", NOMES_TIPOS_DESAFIO[d->tipo], NOMES_CONCEITOS[d->conceito]);
     DrawText(tipo, x, y + 18, 10, Fade(SKYBLUE, 0.9f));
 
+    // Cronômetro: barra que esvazia e passa do verde ao amarelo e ao vermelho (sem degraus)
+    {
+        float frac = Clamp(b->tempoRespostaSelo / TEMPO_RESPOSTA_SELO, 0.0f, 1.0f);
+        Color verde = { 0, 228, 48, 255 }, amarelo = { 253, 249, 0, 255 }, vermelho = { 230, 41, 55, 255 };
+        Color corT = (frac > 0.5f) ? ColorLerp(amarelo, verde, (frac - 0.5f) * 2.0f) : ColorLerp(vermelho, amarelo, frac * 2.0f);
+        bool critico = frac < 0.25f && !b->respondido;
+        if (critico && ((int)(tempo * 6.0f)) % 2 == 0) corT = ColorBrightness(corT, 0.35f);
+
+        Rectangle barra = { painel.x + 404, painel.y + 18, 240, 12 };
+        DrawRectangleRec(barra, (Color){ 30, 24, 48, 255 });
+        DrawRectangleRec((Rectangle){ barra.x, barra.y, barra.width * frac, barra.height }, corT);
+        DrawRectangleLinesEx(barra, 1, Fade(GOLD, 0.6f));
+        const char *seg = TextFormat("%d s", (int)ceilf(b->tempoRespostaSelo));
+        DrawText(seg, (int)(barra.x + barra.width) + 8, (int)barra.y + 1, 10, critico ? corT : LIGHTGRAY);
+        DrawText("TEMPO", (int)barra.x - MeasureText("TEMPO", 10) - 8, (int)barra.y + 1, 10, Fade(GOLD, 0.8f));
+    }
+
     char linhas[512];
     QuebrarTexto(d->enunciado, (int)painel.width - 48, 18, linhas, (int)sizeof(linhas));
     int nl = DesenharTextoLinhas(linhas, x, y + 42, 18, 24, WHITE);
@@ -19518,7 +20474,7 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
         Color cor = riscada ? Fade(GRAY, 0.5f) : (marcada ? YELLOW : LIGHTGRAY);
 
         if (b->respondido && i == d->correta)                       cor = LIME;
-        else if (b->respondido && i == b->selecaoDesafio && !b->acertouDesafio) cor = RED;
+        else if (b->respondido && i == b->selecaoDesafio && !b->acertouDesafio && !b->tempoEsgotadoSelo) cor = RED;
 
         char op[256];
         QuebrarTexto(TextFormat("%d) %s", i + 1, d->opcoes[i]), (int)painel.width - 90, 16, op, (int)sizeof(op));
@@ -19555,7 +20511,9 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
         int yr = (int)(painel.y + painel.height) - 110;
         DrawLine(x, yr - 8, (int)(painel.x + painel.width) - 24, yr - 8, Fade(GOLD, 0.4f));
 
-        DrawText(b->acertouDesafio ? "CERTO! O selo se quebra." : "ERRADO! O guardião prepara um ataque especial.",
+        DrawText(b->acertouDesafio ? "CERTO! O selo se quebra."
+                 : (b->tempoEsgotadoSelo ? "TEMPO ESGOTADO! O guardião prepara um ataque especial."
+                                         : "ERRADO! O guardião prepara um ataque especial."),
                  x, yr, 18, b->acertouDesafio ? LIME : RED);
 
         char exp[384];
@@ -21034,7 +21992,7 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
 
 static const char *ARQUIVOS_ICONES_SALAS[NUM_TIPOS_SALA] = {
     "atrio", "combate", "educativa", "tesouro", "alucinador", "silogista", "nucleo", "luci",
-    "elite", "evento", "descanso", "desafio", "secreta", "laboratorio", "especial"
+    "elite", "evento", "descanso", "desafio", "secreta", "laboratorio", "especial", "mestre"
 };
 static Texture2D iconesSalas[NUM_TIPOS_SALA];
 static bool iconesSalasCarregados = false;
@@ -21960,12 +22918,205 @@ static void DesenharPipsLab(float x, float y, int n, Color cor)
         DrawCircleV((Vector2){ x + i * 8.0f, y }, 2.5f, cor);
 }
 
+// Ícone de cada peça do pedido: PAPEL (uma pessoa), CONTEXTO (o público), OBJETIVO (um alvo), FORMATO (uma lista)
+static void DesenharIconeParte(int k, Vector2 c, float e, Color cor)
+{
+    switch (k) {
+        case PP_PAPEL:
+            DrawCircleV((Vector2){ c.x, c.y - 4 * e }, 4 * e, cor);
+            DrawRectangleRounded((Rectangle){ c.x - 6 * e, c.y + 1 * e, 12 * e, 7 * e }, 0.6f, 4, cor);
+            break;
+        case PP_CONTEXTO:
+            DrawCircleV((Vector2){ c.x - 4.5f * e, c.y - 3 * e }, 3 * e, cor);
+            DrawCircleV((Vector2){ c.x + 4.5f * e, c.y - 3 * e }, 3 * e, cor);
+            DrawRectangleRounded((Rectangle){ c.x - 8.5f * e, c.y + 1 * e, 8 * e, 6 * e }, 0.6f, 4, cor);
+            DrawRectangleRounded((Rectangle){ c.x + 0.5f * e, c.y + 1 * e, 8 * e, 6 * e }, 0.6f, 4, cor);
+            break;
+        case PP_OBJETIVO:
+            DrawCircleLines((int)c.x, (int)c.y, 7.5f * e, cor);
+            DrawCircleLines((int)c.x, (int)c.y, 4.5f * e, cor);
+            DrawCircleV(c, 1.8f * e, cor);
+            break;
+        default:
+            for (int i = 0; i < 3; i++) {
+                float y = c.y + (float)(i - 1) * 4.5f * e;
+                DrawRectangle((int)(c.x - 7 * e), (int)(y - e), (int)fmaxf(2.0f, 2 * e), (int)fmaxf(2.0f, 2 * e), cor);
+                DrawRectangle((int)(c.x - 3 * e), (int)(y - e), (int)(10 * e), (int)fmaxf(2.0f, 2 * e), cor);
+            }
+            break;
+    }
+}
+
+// Borda tracejada (encaixe vazio)
+static void DesenharBordaTracejada(Rectangle r, Color cor)
+{
+    for (float x = r.x; x < r.x + r.width; x += 10.0f) {
+        float w = fminf(5.0f, r.x + r.width - x);
+        DrawRectangle((int)x, (int)r.y, (int)w, 1, cor);
+        DrawRectangle((int)x, (int)(r.y + r.height) - 1, (int)w, 1, cor);
+    }
+    for (float y = r.y; y < r.y + r.height; y += 10.0f) {
+        float h = fminf(5.0f, r.y + r.height - y);
+        DrawRectangle((int)r.x, (int)y, 1, (int)h, cor);
+        DrawRectangle((int)(r.x + r.width) - 1, (int)y, 1, (int)h, cor);
+    }
+}
+
+// ECO-1, a IA simulada do laboratório. humor: 0 neutro, 1 satisfeito, 2 confuso, 3 em erro
+static void DesenharEco1(Vector2 c, int humor, float tempo)
+{
+    Color ciano = { 0, 228, 255, 255 };
+    Color olho = (humor == 3) ? MAGENTA : ciano;
+
+    DrawLineEx((Vector2){ c.x, c.y - 16 }, (Vector2){ c.x, c.y - 25 }, 2.0f, ciano);
+    DrawCircleV((Vector2){ c.x, c.y - 27 }, 3, (((int)(tempo * 3.0f)) % 2 == 0) ? GOLD : Fade(GOLD, 0.4f));
+    DrawRectangleRounded((Rectangle){ c.x - 26, c.y - 17, 52, 34 }, 0.35f, 6, Fade(olho, 0.8f));
+    DrawRectangleRounded((Rectangle){ c.x - 24, c.y - 15, 48, 30 }, 0.35f, 6, (Color){ 26, 34, 70, 255 });
+    DrawRectangle((int)c.x - 14, (int)c.y + 17, 28, 5, (Color){ 46, 40, 90, 255 });
+
+    switch (humor) {
+        case 1:         // ^ ^
+            for (int s = -1; s <= 1; s += 2) {
+                float ex = c.x + s * 10.0f;
+                DrawLineEx((Vector2){ ex - 5, c.y - 1 }, (Vector2){ ex, c.y - 6 }, 2.0f, olho);
+                DrawLineEx((Vector2){ ex, c.y - 6 }, (Vector2){ ex + 5, c.y - 1 }, 2.0f, olho);
+            }
+            break;
+        case 2:         // um olho e uma dúvida
+            DrawCircleV((Vector2){ c.x - 10, c.y - 3 }, 3, olho);
+            DrawText("?", (int)c.x + 6, (int)c.y - 11, 14, GOLD);
+            break;
+        case 3:         // X X (com tremida)
+            for (int s = -1; s <= 1; s += 2) {
+                float ex = c.x + s * 10.0f + (float)GetRandomValue(-1, 1);
+                DrawLineEx((Vector2){ ex - 4, c.y - 7 }, (Vector2){ ex + 4, c.y + 1 }, 2.0f, olho);
+                DrawLineEx((Vector2){ ex + 4, c.y - 7 }, (Vector2){ ex - 4, c.y + 1 }, 2.0f, olho);
+            }
+            break;
+        default:
+            for (int s = -1; s <= 1; s += 2) {
+                if (fmodf(tempo, 3.2f) < 0.12f) DrawRectangle((int)c.x + s * 10 - 3, (int)c.y - 3, 6, 2, olho);   // piscando
+                else                            DrawCircleV((Vector2){ c.x + s * 10.0f, c.y - 3 }, 3, olho);
+            }
+            break;
+    }
+    DrawRectangle((int)c.x - 8, (int)c.y + 7, 16, 2, Fade(olho, 0.7f));
+}
+
+// O que a resposta virou (carimbo do holograma), por diagnóstico
+static const char *CARIMBOS_DIAG[NUM_DIAG_PROMPT] = {
+    "NA MEDIDA!", "QUASE LÁ", "GENÉRICA\nDEMAIS", "PÚBLICO\nERRADO", "PAPEL\nERRADO", "FORMATO\nRUIM", "PEDIDO\nCONTRADITÓRIO"
+};
+static const Color CORES_DIAG[NUM_DIAG_PROMPT] = {
+    { 255, 203, 0, 255 }, { 0, 228, 48, 255 }, { 150, 150, 170, 255 }, { 255, 161, 0, 255 },
+    { 255, 161, 0, 255 }, { 255, 161, 0, 255 }, { 255, 0, 255, 255 }
+};
+
+static void DesenharPictogramaDiag(DiagPrompt d, Vector2 c, float tempo)
+{
+    Color cd = CORES_DIAG[d];
+
+    if (d == DIAG_IDEAL || d == DIAG_BOA) {
+        DrawCircleLines((int)c.x, (int)c.y, 20, cd);
+        if (d == DIAG_IDEAL) DrawCircleLines((int)c.x, (int)c.y, 23, Fade(cd, 0.5f + 0.5f * sinf(tempo * 5.0f)));
+        DrawLineEx((Vector2){ c.x - 10, c.y + 1 }, (Vector2){ c.x - 3, c.y + 9 }, 4.0f, cd);
+        DrawLineEx((Vector2){ c.x - 3, c.y + 9 }, (Vector2){ c.x + 11, c.y - 8 }, 4.0f, cd);
+        return;
+    }
+    if (d == DIAG_CONTRADICAO) {         // duas setas puxando para lados opostos
+        float t = (float)GetRandomValue(-1, 1);
+        DrawLineEx((Vector2){ c.x - 4, c.y - 6 + t }, (Vector2){ c.x - 20, c.y - 6 + t }, 3.0f, cd);
+        DrawTriangle((Vector2){ c.x - 26, c.y - 6 + t }, (Vector2){ c.x - 18, c.y - 1 + t }, (Vector2){ c.x - 18, c.y - 11 + t }, cd);
+        DrawLineEx((Vector2){ c.x + 4, c.y + 6 - t }, (Vector2){ c.x + 20, c.y + 6 - t }, 3.0f, cd);
+        DrawTriangle((Vector2){ c.x + 26, c.y + 6 - t }, (Vector2){ c.x + 18, c.y + 1 - t }, (Vector2){ c.x + 18, c.y + 11 - t }, cd);
+        return;
+    }
+
+    // A peça que falhou, riscada (VAGA = o objetivo, embaçado)
+    int parte = (d == DIAG_VAGA) ? PP_OBJETIVO : (d == DIAG_PUBLICO) ? PP_CONTEXTO : (d == DIAG_PAPEL) ? PP_PAPEL : PP_FORMATO;
+    DesenharIconeParte(parte, c, 2.3f, Fade(CORES_PARTES_PROMPT[parte], (d == DIAG_VAGA) ? 0.45f : 0.9f));
+    if (d == DIAG_VAGA) {
+        DrawText("?", (int)c.x + 10, (int)c.y - 22, 20, cd);
+    } else {
+        DrawLineEx((Vector2){ c.x + 8, c.y + 6 }, (Vector2){ c.x + 20, c.y + 18 }, 3.0f, RED);
+        DrawLineEx((Vector2){ c.x + 20, c.y + 6 }, (Vector2){ c.x + 8, c.y + 18 }, 3.0f, RED);
+    }
+}
+
 static void DesenharBotaoLab(const BotaoLab *o, bool foco, float tempo)
 {
     Rectangle r = o->r;
     Color c = o->ativo ? o->cor : Fade(GRAY, 0.6f);
 
     switch (o->estilo) {
+
+        case EST_ENCAIXE: {         // laboratório de prompts: um encaixe da "frase" do pedido
+            int k = o->param;
+            Color ck = o->cor;
+            bool sel = o->marcado;
+
+            DrawRectangleRec(r, Fade(BLACK, 0.5f));
+            if (sel) DrawRectangleRec(r, Fade(ck, 0.10f + 0.06f * sinf(tempo * 5.0f)));
+            if (o->texto == NULL && !sel && o->luz < 0) DesenharBordaTracejada(r, Fade(ck, 0.6f));
+            else DrawRectangleLinesEx(r, (sel || foco) ? 2.0f : 1.0f, (sel || foco) ? ck : Fade(ck, 0.6f));
+
+            DrawRectangle((int)r.x, (int)r.y, (int)r.width, 18, Fade(ck, 0.22f));
+            DesenharIconeParte(k, (Vector2){ r.x + 11, r.y + 9 }, 0.75f, ck);
+            DrawText(o->rotulo, (int)r.x + 22, (int)r.y + 4, 10, sel ? WHITE : ck);
+
+            if (o->luz >= 0) {
+                const char *nl = NOMES_LUZ[o->luz];
+                Color cl = CORES_LUZ[o->luz];
+                int w = MeasureText(nl, 10) + 10;
+                DrawRectangle((int)(r.x + r.width) - w - 3, (int)r.y + 3, w, 13, cl);
+                DrawText(nl, (int)(r.x + r.width) - w + 2, (int)r.y + 4, 10, BLACK);
+                DrawRectangleLinesEx(r, 2.0f, Fade(cl, 0.45f + 0.3f * sinf(tempo * 4.0f)));
+            } else if (o->chip) {
+                Color ciano = { 0, 228, 255, 255 };
+                DrawRectangle((int)(r.x + r.width) - 42, (int)r.y + 3, 39, 13, ciano);
+                DrawText("LUCI", (int)(r.x + r.width) - 35, (int)r.y + 4, 10, BLACK);
+            } else {
+                const char *d = DICAS_PARTES_PROMPT[k];
+                DrawText(d, (int)(r.x + r.width) - MeasureText(d, 10) - 6, (int)r.y + 4, 10, Fade(LIGHTGRAY, 0.6f));
+            }
+
+            const char *t = (o->texto != NULL) ? o->texto : (sel ? "escolha a peça abaixo" : "(vazio)");
+            char linhas[256];
+            QuebrarTexto(t, (int)r.width - 12, 10, linhas, (int)sizeof(linhas));
+            int quebras = 0;                                    // no máximo 3 linhas
+            for (char *q = linhas; *q; q++) if (*q == '\n' && ++quebras == 3) { *q = '\0'; break; }
+            Color ct = (o->texto == NULL) ? Fade(GRAY, 0.9f) : (o->chip ? (Color){ 160, 240, 255, 255 } : WHITE);
+            DesenharTextoLinhas(linhas, (int)r.x + 6, (int)r.y + 23, 10, 11, ct);
+
+            if (sel) {      // seta apontando para as peças
+                float cx = r.x + r.width / 2, y = r.y + r.height + 2;
+                DrawTriangle((Vector2){ cx - 7, y }, (Vector2){ cx, y + 8 }, (Vector2){ cx + 7, y }, ck);
+            }
+        } break;
+
+        case EST_PECA: {            // laboratório de prompts: uma peça para o encaixe ativo
+            bool m = o->marcado;
+            Color ck = o->cor;
+            DrawRectangleRec(r, foco ? Fade(ck, 0.20f) : Fade(BLACK, 0.42f));
+            DrawRectangle((int)r.x, (int)r.y, 6, (int)r.height, (o->param == 0) ? Fade(ck, 0.4f) : ck);     // a lingueta que encaixa
+            DrawRectangle((int)r.x + 6, (int)(r.y + r.height / 2) - 6, 5, 12, (o->param == 0) ? Fade(ck, 0.4f) : ck);
+            DrawRectangleLinesEx(r, (foco || m) ? 2.0f : 1.0f, (foco || m) ? ck : Fade(ck, 0.35f));
+
+            int yb = (int)(r.y + r.height / 2) - 8;
+            DrawRectangle((int)r.x + 18, yb, 18, 16, m ? ck : Fade(ck, 0.3f));
+            DrawText(o->rotulo, (int)r.x + 27 - MeasureText(o->rotulo, 10) / 2, yb + 3, 10, m ? BLACK : WHITE);
+
+            char linhas[256];
+            QuebrarTexto(o->texto != NULL ? o->texto : "", (int)r.width - 110, 10, linhas, (int)sizeof(linhas));
+            int nl = ContarLinhas(linhas);
+            DesenharTextoLinhas(linhas, (int)r.x + 44, (int)(r.y + r.height / 2) - (nl * 12) / 2 + 1, 10, 12,
+                                (o->param == 0) ? LIGHTGRAY : WHITE);
+            if (m) {
+                const char *u = "NO ENCAIXE";
+                DrawText(u, (int)(r.x + r.width) - MeasureText(u, 10) - 8, (int)(r.y + r.height / 2) - 5, 10, ck);
+            }
+            if (foco) DrawRectangle((int)r.x + 3, (int)r.y + 4, 2, (int)r.height - 8, Fade(WHITE, 0.5f + 0.5f * sinf(tempo * 8.0f)));
+        } break;
 
         case EST_SELETOR: {
             DrawRectangleRec(r, foco ? Fade(c, 0.18f) : Fade(BLACK, 0.45f));
@@ -22141,79 +23292,198 @@ static void DesenharBarrasCriterios(const int crit[NUM_CRITERIOS], int nota, int
     DrawText(TextFormat("%d/10", nota), x + 172, y + 22, 20, (nota >= 9) ? LIME : ((nota >= 6) ? GOLD : RED));
 }
 
-// Modo Prompt: seletores, pedido montado, janela de chat e indicadores de avaliação
+// Holograma do ECO-1: o que a IA "entendeu" vira uma imagem. Quanto pior o pedido, mais chiado.
+static void DesenharHologramaEco(const Biblioteca *b, Rectangle r, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    Color cor = CORES_LAB[LAB_PROMPTS];
+
+    DrawRectangleRec(r, (Color){ 10, 12, 24, 255 });
+    DrawRectangleLinesEx(r, 2, Fade(cor, 0.6f));
+    DrawRectangle((int)r.x, (int)r.y, (int)r.width, 20, Fade(cor, 0.18f));
+    DrawText("ECO-1  //  IA SIMULADA (OFFLINE)", (int)r.x + 8, (int)r.y + 5, 10, cor);
+    const char *env = TextFormat("envios %d/%d", L->envios, LAB_MAX_ENVIOS);
+    DrawText(env, (int)(r.x + r.width) - MeasureText(env, 10) - 8, (int)r.y + 5, 10, GRAY);
+
+    Rectangle tela = { r.x + 18, r.y + 30, r.width - 36, 116 };
+    Vector2 robo = { r.x + r.width / 2, r.y + r.height - 30 };
+    int humor = 0;
+
+    // Feixe do projetor
+    DrawTriangle((Vector2){ robo.x, robo.y - 26 }, (Vector2){ tela.x + tela.width, tela.y + tela.height },
+                 (Vector2){ tela.x, tela.y + tela.height }, Fade(cor, 0.07f));
+
+    if (L->etapa == LAB_DESAFIO) {
+        DrawRectangleRec(tela, Fade(cor, 0.05f));
+        float varre = fmodf(tempo * 40.0f, tela.height);
+        DrawRectangle((int)tela.x, (int)(tela.y + varre), (int)tela.width, 2, Fade(cor, 0.25f));
+        const char *t = "AGUARDANDO O PEDIDO";
+        DrawText(t, (int)(tela.x + tela.width / 2) - MeasureText(t, 10) / 2, (int)tela.y + 36, 10, Fade(cor, 0.6f + 0.3f * sinf(tempo * 3.0f)));
+        for (int k = 0; k < NUM_PARTES_PROMPT; k++) {           // as peças que já estão nos encaixes
+            Vector2 c = { tela.x + tela.width / 2 - 45 + k * 30.0f, tela.y + 72 };
+            if (L->escolha[k] > 0) DesenharIconeParte(k, c, 1.1f, CORES_PARTES_PROMPT[k]);
+            else                   DrawCircleLines((int)c.x, (int)c.y, 7, Fade(CORES_PARTES_PROMPT[k], 0.4f));
+        }
+    } else {
+        DiagPrompt d = L->diag;
+        Color cd = CORES_DIAG[d];
+        bool pego = L->pegouAlucinacao && L->respostaAlucinada;
+
+        DrawRectangleRec(tela, Fade(cd, 0.08f));
+        DrawRectangleLinesEx(tela, 1, Fade(cd, 0.5f));
+        DesenharPictogramaDiag(d, (Vector2){ tela.x + 42, tela.y + 48 }, tempo);
+        if (!pego) DrawText(CARIMBOS_DIAG[d], (int)tela.x + 82, (int)tela.y + 26, 16, cd);
+
+        // Nitidez: a nota do pedido em 10 barrinhas
+        DrawText("NITIDEZ", (int)tela.x + 8, (int)(tela.y + tela.height) - 18, 10, LIGHTGRAY);
+        for (int i = 0; i < 10; i++)
+            DrawRectangle((int)tela.x + 62 + i * 15, (int)(tela.y + tela.height) - 17, 12, 8, (i < L->notaPrompt) ? cd : Fade(GRAY, 0.25f));
+
+        // Chiado: o que faltou no pedido vira ruído na imagem
+        int ruido = (10 - L->notaPrompt) * 9;
+        for (int i = 0; i < ruido; i++) {
+            int w = GetRandomValue(2, 5);
+            DrawRectangle(GetRandomValue((int)tela.x, (int)(tela.x + tela.width) - w), GetRandomValue((int)tela.y, (int)(tela.y + tela.height) - 3),
+                          w, 2, Fade((i % 3 == 0) ? WHITE : cd, 0.35f));
+        }
+
+        // O holograma "liga" de cima para baixo logo depois do envio
+        float monta = Clamp(L->tempoResposta / 0.5f, 0.0f, 1.0f);
+        if (monta < 1.0f)
+            DrawRectangle((int)tela.x, (int)(tela.y + tela.height * monta), (int)tela.width, (int)(tela.height * (1.0f - monta)) + 1, (Color){ 10, 12, 24, 255 });
+
+        if (pego) {         // pegou a invenção: carimbo por cima
+            const char *inv = "INVENTADO!";
+            int w = MeasureText(inv, 20);
+            int x = (int)(tela.x + tela.width / 2) - w / 2, y = (int)(tela.y + tela.height / 2) - 14;
+            DrawRectangle(x - 8, y - 4, w + 16, 28, Fade(BLACK, 0.75f));
+            DrawRectangleLinesEx((Rectangle){ (float)x - 8, (float)y - 4, (float)w + 16, 28 }, 2, MAGENTA);
+            DrawText(inv, x, y, 20, MAGENTA);
+        }
+
+        humor = pego ? 3 : ((d == DIAG_IDEAL || d == DIAG_BOA) ? 1 : ((d == DIAG_CONTRADICAO) ? 3 : 2));
+    }
+
+    DesenharEco1(robo, humor, tempo);
+}
+
+// Laboratório de prompts: os encaixes ficam no alto (desenhados como botões), as peças à
+// esquerda e o holograma do ECO-1 à direita. Depois do envio, a resposta ocupa a esquerda.
 static void DesenharLabPrompt(const Biblioteca *b, float tempo)
 {
     const LabEdu *L = &b->lab;
     const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
     Color cor = CORES_LAB[LAB_PROMPTS];
-    char texto[400];
+    Color ciano = { 0, 228, 255, 255 };
 
     DrawText("MISSÃO:", 44, 84, 10, GOLD);
     DesenharTextoLab(m->missao, 94, 84, 662, 10, 13, WHITE);
 
-    // Caixa de baixo à esquerda: pedido montado (ou a sugestão da Luci) / indicadores de avaliação
-    Rectangle caixa = { 44, 308, 384, 96 };
-    DrawRectangleRec(caixa, Fade(BLACK, 0.45f));
-    DrawRectangleLinesEx(caixa, 1, Fade(cor, 0.4f));
-
     if (L->etapa == LAB_DESAFIO) {
-        bool sug = L->temSugestao;
-        LabMontarTextoPrompt(m, sug ? L->sugestao : L->escolha, texto, (int)sizeof(texto));
-        DrawText(sug ? "SUGESTÃO DA LUCI (aceite ou ajuste):" : "PROMPT MONTADO:", 52, 314, 10, sug ? (Color){ 0, 228, 255, 255 } : cor);
-        DesenharTextoLab(texto, 52, 330, 368, 10, 12, sug ? (Color){ 160, 240, 255, 255 } : WHITE);
+        if (L->temSugestao) {
+            DrawText("A LUCI REMONTOU O PEDIDO", 60, 200, 12, ciano);
+            DesenharTextoLab("As peças que ela trocou estão marcadas. Ela pode ter alucinado: confira (V) antes de usar.",
+                             60, 220, 360, 10, 13, LIGHTGRAY);
+        } else {
+            int k = L->slotAtivo;
+            DrawText(TextFormat("PEÇAS PARA %s", NOMES_PARTES_PROMPT[k]), 44, 184, 10, CORES_PARTES_PROMPT[k]);
+            const char *atalho = "1-3 peça   0 vazio   A/D encaixe";
+            DrawText(atalho, 436 - MeasureText(atalho, 10), 184, 10, Fade(GRAY, 0.9f));
+        }
     } else {
-        DrawText("AVALIAÇÃO DO PEDIDO", 52, 314, 10, cor);
-        DesenharBarrasCriterios(L->criterios, L->notaPrompt, 52, 330);
+        // A resposta do ECO-1 (máquina de escrever) e o resultado do "desconfiar"
+        Rectangle caixa = { 44, 180, 392, 222 };
+        DrawRectangleRec(caixa, Fade(cor, 0.06f));
+        DrawRectangleLinesEx(caixa, 1, Fade(cor, 0.35f));
+        DrawText(L->original ? "ECO-1 RESPONDEU AO PEDIDO ORIGINAL:" : "ECO-1 RESPONDEU:", 52, 187, 10, cor);
+
+        const char *resp = LabTextoRespostaAtual(b);
+        char parcial[600];
+        TextoParcial(resp, L->digitado, parcial, (int)sizeof(parcial));
+        int h = DesenharTextoLab(parcial, 52, 204, 376, 10, 13, (Color){ 210, 245, 255, 255 });
+        if (L->digitado < (float)strlen(resp) && ((int)(tempo * 6.0f)) % 2 == 0)
+            DrawRectangle(52, 204 + h, 6, 2, cor);
+
+        if (L->avaliacao[0] != '\0') {
+            bool pegou = L->pegouAlucinacao && L->respostaAlucinada;
+            DesenharTextoLab(L->avaliacao, 52, 204 + h + 10, 376, 10, 13, pegou ? MAGENTA : LIME);
+        }
     }
 
-    // Janela de chat da IA simulada
-    Rectangle chat = { 440, 106, 316, 298 };
-    DrawRectangleRec(chat, (Color){ 10, 12, 24, 255 });
-    DrawRectangleLinesEx(chat, 2, Fade(cor, 0.6f));
-    DrawRectangle((int)chat.x, (int)chat.y, (int)chat.width, 22, Fade(cor, 0.18f));
-    // "Rosto" da IA simulada
-    DrawRectangleRounded((Rectangle){ chat.x + 6, chat.y + 3, 18, 16 }, 0.3f, 4, (Color){ 40, 50, 80, 255 });
-    DrawCircleV((Vector2){ chat.x + 11, chat.y + 10 }, 2, cor);
-    DrawCircleV((Vector2){ chat.x + 19, chat.y + 10 }, 2, cor);
-    DrawText("ECO-1  //  IA SIMULADA (OFFLINE)", (int)chat.x + 30, (int)chat.y + 6, 10, cor);
-    DrawText(TextFormat("envios %d/%d", L->envios, LAB_MAX_ENVIOS), (int)(chat.x + chat.width) - 62, (int)chat.y + 6, 10, GRAY);
+    DesenharHologramaEco(b, (Rectangle){ 448, 180, 308, 222 }, tempo);
+}
 
-    if (L->etapa == LAB_DESAFIO) {
-        DesenharTextoLab("Monte o pedido com os seletores (clique, ou W/S e A/D) e envie. Nem toda tarefa precisa das quatro partes.",
-                         (int)chat.x + 12, (int)chat.y + 36, 290, 10, 13, GRAY);
+// A peça voando do cartão até o encaixe (desenhada por cima dos botões)
+static void DesenharAnimPecaLab(const LabEdu *L)
+{
+    if (L->tipo != LAB_PROMPTS || L->animPeca <= 0.0f)
         return;
+
+    float t = Clamp(1.0f - L->animPeca / LAB_ANIM_PECA, 0.0f, 1.0f);
+    t = t * t * (3.0f - 2.0f * t);
+    Rectangle de = LabRetPeca(L->animDe), para = LabRetEncaixe(L->animSlot);
+    Vector2 a = { de.x + 60, de.y + de.height / 2 }, z = { para.x + para.width / 2, para.y + para.height / 2 };
+    Vector2 p = Vector2Lerp(a, z, t);
+    p.y -= sinf(t * PI) * 26.0f;
+    Color ck = CORES_PARTES_PROMPT[L->animSlot];
+
+    for (int i = 1; i <= 4; i++) {          // rastro
+        float tt = fmaxf(0.0f, t - 0.06f * i);
+        Vector2 q = Vector2Lerp(a, z, tt);
+        q.y -= sinf(tt * PI) * 26.0f;
+        DrawRectangle((int)q.x - 14, (int)q.y - 5, 28, 10, Fade(ck, 0.25f / i));
+    }
+    DrawRectangle((int)p.x - 22, (int)p.y - 8, 44, 16, ck);
+    DrawRectangle((int)p.x - 26, (int)p.y - 4, 4, 8, ck);
+    if (t > 0.8f)                           // o clique do encaixe
+        DrawRectangleLinesEx((Rectangle){ para.x - 3, para.y - 3, para.width + 6, para.height + 6 }, 2, Fade(ck, (1.0f - t) * 5.0f));
+}
+
+// Introdução do laboratório de prompts: o conceito como 4 peças (em vez de um parágrafo)
+static void DesenharIntroPrompt(const Biblioteca *b, float tempo)
+{
+    const LabEdu *L = &b->lab;
+    const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
+    Color cor = CORES_LAB[LAB_PROMPTS];
+
+    const char *t = "UM BOM PEDIDO TEM ATÉ 4 PEÇAS";
+    DrawText(t, 400 - MeasureText(t, 16) / 2, 88, 16, GOLD);
+
+    for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+        Rectangle r = { 44.0f + k * 180.0f, 114, 172, 92 };
+        Color ck = CORES_PARTES_PROMPT[k];
+        DrawRectangleRec(r, Fade(ck, 0.08f));
+        DrawRectangleLinesEx(r, 2, Fade(ck, 0.7f));
+        DesenharIconeParte(k, (Vector2){ r.x + r.width / 2, r.y + 30 + sinf(tempo * 2.0f + k) * 2.0f }, 2.0f, ck);
+        DrawText(NOMES_PARTES_PROMPT[k], (int)(r.x + r.width / 2) - MeasureText(NOMES_PARTES_PROMPT[k], 12) / 2, (int)r.y + 54, 12, ck);
+        DrawText(DICAS_PARTES_PROMPT[k], (int)(r.x + r.width / 2) - MeasureText(DICAS_PARTES_PROMPT[k], 10) / 2, (int)r.y + 72, 10, LIGHTGRAY);
+        if (k < NUM_PARTES_PROMPT - 1)
+            DrawText("+", (int)(r.x + r.width) + 1, (int)r.y + 40, 10, GOLD);
     }
 
-    // Balão do jogador (o pedido) à direita
-    LabMontarTextoPrompt(m, L->escolha, texto, (int)sizeof(texto));
-    char linhas[600];
-    QuebrarTexto(texto, 232, 10, linhas, (int)sizeof(linhas));
-    int nl = ContarLinhas(linhas);
-    Rectangle balao = { chat.x + chat.width - 252, chat.y + 30, 244, (float)(nl * 12 + 18) };
-    DrawRectangleRounded(balao, 0.15f, 6, Fade(GOLD, 0.18f));
-    DrawText(L->original ? "VOCÊ (pedido original)" : "VOCÊ", (int)balao.x + 6, (int)balao.y + 3, 8, GOLD);
-    DesenharTextoLinhas(linhas, (int)balao.x + 6, (int)balao.y + 13, 10, 12, WHITE);
+    t = "O ECO-1 faz EXATAMENTE o que você pedir.";
+    DrawText(t, 400 - MeasureText(t, 12) / 2, 218, 12, WHITE);
 
-    // Balão da IA (máquina de escrever)
-    const char *resp = LabTextoRespostaAtual(b);
-    char parcial[600];
-    TextoParcial(resp, L->digitado, parcial, (int)sizeof(parcial));
-    QuebrarTexto(parcial, 270, 10, linhas, (int)sizeof(linhas));
-    int yb = (int)(balao.y + balao.height) + 8;
-    int nr = ContarLinhas(linhas);
-    DrawRectangleRounded((Rectangle){ chat.x + 8, (float)yb, 290, (float)(nr * 12 + 18) }, 0.12f, 6, Fade(cor, 0.12f));
-    DrawText("ECO-1", (int)chat.x + 14, yb + 3, 8, cor);
-    DesenharTextoLinhas(linhas, (int)chat.x + 14, yb + 13, 10, 12, (Color){ 210, 245, 255, 255 });
-    if (L->digitado < (float)strlen(resp) && ((int)(tempo * 6.0f)) % 2 == 0)
-        DrawRectangle((int)chat.x + 14, yb + 13 + nr * 12, 6, 2, cor);
+    Rectangle mc = { 44, 242, 712, 72 };
+    DrawRectangleRec(mc, Fade(BLACK, 0.4f));
+    DrawRectangleLinesEx(mc, 1, Fade(cor, 0.6f));
+    DrawText(TextFormat("MISSÃO: %s", m->titulo), 56, 250, 12, cor);
+    DesenharTextoLab(m->missao, 56, 270, 688, 12, 16, WHITE);
 
-    // Resultado do "desconfiar"
-    if (L->avaliacao[0] != '\0') {
-        int ya = yb + nr * 12 + 26;
-        bool pegou = L->pegouAlucinacao && L->respostaAlucinada;
-        DesenharTextoLab(L->avaliacao, (int)chat.x + 10, ya, 294, 10, 12, pegou ? MAGENTA : LIME);
+    // As regras em três selos curtos
+    static const char *selos[3] = { "PEÇA ERRADA ATRAPALHA", "NEM SEMPRE PRECISA DAS 4", "3 ENVIOS" };
+    int x = 44;
+    for (int i = 0; i < 3; i++) {
+        int w = MeasureText(selos[i], 10) + 20;
+        DrawRectangle(x, 328, w, 20, Fade(GOLD, 0.12f));
+        DrawRectangleLines(x, 328, w, 20, Fade(GOLD, 0.6f));
+        DrawText(selos[i], x + 10, 333, 10, GOLD);
+        x += w + 10;
     }
+
+    DesenharLuciTamanho((Vector2){ 58, 378 }, 24.0f);
+    DrawText("Luci: H pede dica (gasta estabilidade). V confere o que eu disser.", 78, 372, 10, (Color){ 0, 228, 255, 255 });
+    DrawText("Sala comum: a porta abre quando você terminar.", 44, 404, 10, LIGHTGRAY);
 }
 
 static void DesenharLabArquivo(const Biblioteca *b, float tempo)
@@ -22421,13 +23691,23 @@ static void DesenharLabResultado(const Biblioteca *b, float tempo)
     switch (L->tipo) {
         case LAB_PROMPTS: {
             const MissaoPrompt *m = &MISSOES_PROMPT[L->missao];
-            char texto[400];
+            for (int k = 0; k < NUM_PARTES_PROMPT; k++) {
+                BotaoLab o;
+                memset(&o, 0, sizeof(o));
+                o.r = LabRetEncaixe(k);
+                o.r.y = (float)y;
+                o.estilo = EST_ENCAIXE;
+                o.param = k;
+                o.cor = CORES_PARTES_PROMPT[k];
+                snprintf(o.rotulo, sizeof(o.rotulo), "%s", NOMES_PARTES_PROMPT[k]);
+                o.texto = (L->escolha[k] > 0) ? m->alt[k][L->escolha[k] - 1] : NULL;
+                o.luz = (int)LabLuzParte(m, L->escolha, k);
+                DesenharBotaoLab(&o, false, tempo);
+            }
+            y += 76;
             DesenharBarrasCriterios(L->criterios, L->notaPrompt, 44, y);
-            LabMontarTextoPrompt(m, L->escolha, texto, (int)sizeof(texto));
-            DrawText("SEU PEDIDO FINAL:", 290, y, 10, cor);
-            DesenharTextoLab(texto, 290, y + 14, 466, 10, 12, LIGHTGRAY);
             if (L->respostaAlucinada || L->pegouAlucinacao)
-                DesenharTextoLab(TextFormat("A IA inventou: %s", m->trechoFalso), 290, y + 52, 466, 10, 12, MAGENTA);
+                DesenharTextoLab(TextFormat("A IA inventou: %s", m->trechoFalso), 290, y, 466, 10, 12, MAGENTA);
         } break;
 
         case LAB_ARQUIVO: {
@@ -22529,7 +23809,9 @@ static void DesenharLab(const Biblioteca *b, float tempo)
     DrawLine(40, 76, 760, 76, Fade(cor, 0.4f));
 
     // Conteúdo
-    if (L->etapa == LAB_INTRO) {
+    if (L->etapa == LAB_INTRO && L->tipo == LAB_PROMPTS) {
+        DesenharIntroPrompt(b, tempo);
+    } else if (L->etapa == LAB_INTRO) {
         static const char *passos[4] = { "1 CONCEITO", "2 EXPERIMENTE", "3 APLIQUE", "4 ENTENDA" };
         for (int i = 0; i < 4; i++) {
             int x = 44 + i * 180;
@@ -22593,9 +23875,10 @@ static void DesenharLab(const Biblioteca *b, float tempo)
     for (int i = 0; i < n; i++)
         DesenharBotaoLab(&bt[i], i == L->foco, tempo);
     DesenharMarcaLuciLab(b, bt, n, tempo);
+    DesenharAnimPecaLab(L);
 
     const char *ajuda = (L->tipo == LAB_PROMPTS && L->etapa == LAB_DESAFIO)
-                      ? "MOUSE ou W/S escolher   A/D trocar a alternativa   E confirmar   H dica   V conferir a Luci   BACKSPACE sair"
+                      ? "MOUSE ou 1-3 peça   0 vazio   A/D encaixe   ENTER enviar   H dica   V conferir a Luci   BACKSPACE sair"
                       : "MOUSE ou W/S escolher   E/ENTER confirmar   H dica da Luci   V conferir a Luci   BACKSPACE sair (dá para voltar)";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 516, 10, GRAY);
 }
@@ -23210,6 +24493,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (b->luci.ativo)
         DesenharLuciChefe(b, tempo);
 
+    if (b->tipoSala == SALA_MESTRE)
+        DesenharMestreTreino(b, tempo);
+
     // Disparo Dedutivo: P → Q e P sobre quem foi marcado
     for (int i = 0; i < MAX_INIMIGOS; i++)
         if (b->ini[i].ativo)
@@ -23290,8 +24576,12 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     int pedestal = -1;
     AlvoRogue alvo = RogueAlvoProximo(b, &pedestal);
 
+    int portaK = -1;
+    PortaInteracao porta = RoguePortaProxima(b, &portaK);
+
     if (!b->lojaAberta && !b->enciclopediaAberta && !b->desafioAberto && !b->lab.aberto && !b->morreu) {
-        if (alvo == ALVO_ENCICLOPEDIA)  DesenharTeclaE((Vector2){ POS_ENCICLOPEDIA.x, POS_ENCICLOPEDIA.y - 40 }, tempo);
+        if (porta != PORTA_NENHUMA)     DesenharAvisoPorta(j->pos, (porta == PORTA_ATRIO_CORREDOR) ? "SAIR" : "ENTRAR", tempo);
+        else if (alvo == ALVO_ENCICLOPEDIA)  DesenharTeclaE((Vector2){ POS_ENCICLOPEDIA.x, POS_ENCICLOPEDIA.y - 40 }, tempo);
         else if (alvo == ALVO_BYTE)          DesenharTeclaE((Vector2){ POS_BYTE.x, POS_BYTE.y - 48 }, tempo);
         else if (alvo == ALVO_BYTECO)   DesenharTeclaE((Vector2){ POS_BYTECO.x, POS_BYTECO.y - 42 }, tempo);
         else if (alvo == ALVO_TERMINAL) DesenharTeclaE((Vector2){ POS_TERMINAL.x, POS_TERMINAL.y - 36 }, tempo);
@@ -23305,6 +24595,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         else if (alvo == ALVO_RECOMPENSA)    DesenharTeclaE((Vector2){ b->recompensaPos.x, b->recompensaPos.y - 40 }, tempo);
         else if (alvo == ALVO_OBJETO_SALA)   DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 52 }, tempo);
         else if (alvo == ALVO_LAB)           DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 62 }, tempo);
+        else if (alvo == ALVO_ARMA_MESTRE)   DesenharTeclaE((Vector2){ POS_ARMA_MESTRE.x, POS_ARMA_MESTRE.y - 52 }, tempo);
         else if (alvo == ALVO_REGISTRO_SALA) DesenharTeclaE((Vector2){ b->posRegistroSala.x, b->posRegistroSala.y - 36 }, tempo);
         else if (alvo == ALVO_PEDESTAL) {
             Vector2 c = POS_PEDESTAIS[pedestal];
@@ -23429,7 +24720,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             else if (l->fase == LUCI_SUB_CONTRADICAO)
                 snprintf(o.texto, sizeof(o.texto), "%s", (l->janela > 0.0f) ? "ARMADURA ABERTA! Acerte a Luci verdadeira (a que tem sombra)"
                                                                            : "Conteste (C) o que contradiz a sala para abrir a armadura");
-            else if (l->faseOculta == 2)       snprintf(o.texto, sizeof(o.texto), "Olhos em VERMELHO = golpe: PARRY (X ou botão direito) no impacto");
+            else if (l->faseOculta == 2)       snprintf(o.texto, sizeof(o.texto), "Olhos em VERMELHO = golpe: PARRY (V ou botão direito) no impacto");
             else if (l->exigeContexto && !l->contextoPronto)
                 snprintf(o.texto, sizeof(o.texto), "Leve ASSUNTO, OBJETIVO e FORMATO ao núcleo (E) ou dê um PARRY");
             else if (l->padrao3 == 1)          snprintf(o.texto, sizeof(o.texto), "ONDA DE CHOQUE: passe pela BRECHA de luz ou esquive");
@@ -23447,6 +24738,27 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             else if (s->etapa == SIL_CIRCUITO)     snprintf(o.texto, sizeof(o.texto), "%s", (s->rodada == 1) ? "Ative as portas lógicas com tiros, na ordem certa"
                                                                                                           : TextFormat("Escolha p e q (tiros) para o núcleo receber %s", s->exigido ? "V" : "F"));
             else                                   snprintf(o.texto, sizeof(o.texto), "Armadura lógica desativada! Derrote o Silogista");
+        } break;
+        case SALA_MESTRE: {
+            const MestreTreino *m = &b->mestre;
+            bool vul = MestreVulneravel(m);
+            bool golpe = (m->acao == MA_TELEGRAFA || m->acao == MA_INVESTE);
+            switch (m->etapa) {
+                case MT_ARMA:     snprintf(o.texto, sizeof(o.texto), "Pegue o que brilha no pedestal (E)"); break;
+                case MT_TIRO: {
+                    int n = 0;
+                    for (int a = 0; a < MESTRE_ALVOS; a++) if (!m->alvoVivo[a]) n++;
+                    snprintf(o.texto, sizeof(o.texto), "MOUSE: mire e clique para atirar nos alvos (%d/%d)", n, MESTRE_ALVOS);
+                } break;
+                case MT_ESQUIVA:  snprintf(o.texto, sizeof(o.texto), "ESPAÇO: esquive através das balas (%d/%d)", (m->esquivas < MESTRE_ESQUIVAS) ? m->esquivas : MESTRE_ESQUIVAS, MESTRE_ESQUIVAS); break;
+                case MT_ABERTURA: snprintf(o.texto, sizeof(o.texto), "%s", vul ? TextFormat("ESCUDO DOURADO! Atire agora (%d/%d)", m->acertosAbertura < MESTRE_ACERTOS_ABERTURA ? m->acertosAbertura : MESTRE_ACERTOS_ABERTURA, MESTRE_ACERTOS_ABERTURA)
+                                                                   : "Escudo fechado: esquive e espere a brecha dourada"); break;
+                case MT_PARRY:    snprintf(o.texto, sizeof(o.texto), "%s", golpe ? "Brilho VERMELHO: aperte V quando o anel fechar!"
+                                                                   : (m->acao == MA_ATORDOADA ? "ATORDOADA! Atire à vontade" : "Espere o golpe e rebata com o PARRY (V)")); break;
+                case MT_LUTA:     snprintf(o.texto, sizeof(o.texto), "%s", vul ? "BRECHA! Atire na ALUCINAÇÃO MESTRE"
+                                                                   : (golpe ? "Golpe vindo: PARRY (V) ou esquive (ESPAÇO)" : "Esquive (ESPAÇO) e espere a brecha")); break;
+                default:          snprintf(o.texto, sizeof(o.texto), "A ALUCINAÇÃO MESTRE"); break;
+            }
         } break;
         default:
             if (!b->chefe.ativo || !b->chefe.apresentado) snprintf(o.texto, sizeof(o.texto), "O ALUCINADOR");
@@ -23507,6 +24819,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DesenharBarraLuci(&b->luci, tempo);
         DesenharFaixaLuci(b, tempo);
     }
+
+    if (b->tipoSala == SALA_MESTRE)
+        DesenharHudMestre(b, tempo);
 
     // Mapa de progressão (canto de cima): o grafo da tentativa; M abre o mapa grande
     if (!atrio && b->noAtual >= 0)
@@ -23584,9 +24899,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         if (i == ITEM_PACOTE_DADOS) DrawText("2", x - 15, yHud + 2, 10, GOLD);
     }
 
-    const char *controles = atrio ? "WASD andar    E falar, comprar e ler a enciclopédia    porta de cima: missão    porta da esquerda: corredor"
-                          : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  X / botão direito PARRY  Q pulso  H scanner  E usar"
-                          : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  X / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
+    const char *controles = atrio ? "WASD andar    E falar, comprar, ler e abrir portas    porta de cima: missão    porta da esquerda: corredor"
+                          : (b->tipoSala == SALA_MESTRE) ? ((b->mestre.etapa >= MT_PARRY) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY"
+                                                                                            : "WASD andar  MOUSE atirar  ESPAÇO esquiva  E usar")
+                          : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  V / botão direito PARRY  Q pulso  H scanner  E usar"
+                          : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
                                   : "WASD andar  MOUSE atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar  M mapa  E usar";
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, 10) / 2, ALTURA_TELA - 14, 10, GRAY);
 
@@ -24739,6 +26056,15 @@ static void DesenharCenaIntro(int etapa, Rectangle painel, float tempo)
 // MAIN
 // =============================================================
 
+// A tela que vai para o save: a batalha volta para a sala de origem e a sala da
+// ALUCINAÇÃO MESTRE volta para o corredor (a luta recomeça pela porta da direita)
+static TelaAtual TelaParaSalvar(TelaAtual tela, TelaAtual salaDaBatalha, const Biblioteca *b)
+{
+    if (tela == BATALHA_B2) return salaDaBatalha;
+    if (tela == BIBLIOTECA && b->tipoSala == SALA_MESTRE) return CORREDOR;
+    return tela;
+}
+
 int main(void) {
 
     // 1. INICIALIZAÇÃO
@@ -24852,6 +26178,7 @@ int main(void) {
     int estabilidadeLuci = ESTABILIDADE_MAX_LUCI;   // gasta ao pedir ajuda (H) nas batalhas
     int ajudasPedidas = 0;
     bool chefeVencido = false;               // venceu a ALUCINAÇÃO MESTRE (vai para o save)
+    bool entrarSalaMestre = false;           // a transição para a Biblioteca abre a sala da Mestre (fim do Bloco 1)
     bool chefeAnunciado = false;             // a Luci já chamou o chefe nesta sessão (depois, só pela porta)
     static Biblioteca biblioteca;            // Bloco 2: Biblioteca dos Ecos (static: é grande para a pilha)
     ProgressoBiblioteca progBiblioteca = {0};   // o que não se perde na Biblioteca (vai para o save)
@@ -25016,12 +26343,16 @@ int main(void) {
 
                     } else if (tela == BIBLIOTECA && origem == CORREDOR) {
 
-                        // Biblioteca dos Ecos: começa no átrio
+                        // Biblioteca dos Ecos: começa no átrio (ou na sala da ALUCINAÇÃO MESTRE, fim do Bloco 1)
                         RogueIniciar(&biblioteca, &progBiblioteca);
                         biblioteca.estabilidade = &estabilidadeLuci;
+                        if (entrarSalaMestre) {
+                            entrarSalaMestre = false;
+                            RogueEntrarSalaMestre(&biblioteca);
+                        }
                         playerPos = SPAWN_CORREDOR_VOLTA;
                         direcaoAtual = DIR_ESQUERDA;
-                        pedirAutoSave = true;     // AUTO SAVE: entrou na Biblioteca dos Ecos
+                        pedirAutoSave = true;     // AUTO SAVE: entrou na Biblioteca dos Ecos (na sala da Mestre, salva no corredor)
 
                     } else if (tela == CORREDOR && origem == BIBLIOTECA) {
 
@@ -25087,7 +26418,7 @@ int main(void) {
             } else if (escolha == PAUSA_MENU) {
 
                 // Salva antes de sair, para o CONTINUAR do menu voltar daqui
-                saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
+                saveFalhou = !SalvarJogo(nickname, TelaParaSalvar(tela, salaDaBatalhaB2, &biblioteca), playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
                 existeSave = LerSave(&saveLido);
 
                 pausado = false;
@@ -25493,7 +26824,13 @@ int main(void) {
                     }
 
                     // Fim da fala da Luci sobre o chefe: começa a ALUCINAÇÃO MESTRE
-                    if (m == OBJ_CHEFE) {
+                    // (versão de treino: a sala dela, com a arma e o tutorial de combate)
+                    if (m == OBJ_CHEFE && MESTRE_TREINO_COMBATE) {
+
+                        entrarSalaMestre = true;
+                        IniciarTransicao(&transicao, BIBLIOTECA, DURACAO_FADE_BATALHA);
+                    }
+                    else if (m == OBJ_CHEFE) {
 
                         BatalhaB2IniciarChefe(&batalhaB2, progresso.alucinacao);
                         BatalhaB2LigarLuci(&batalhaB2, &estabilidadeLuci, &ajudasPedidas);
@@ -25522,7 +26859,7 @@ int main(void) {
             else if (ContarConcluidos(&progresso) == TOTAL_MONITORES && !chefeVencido && !chefeAnunciado) {
 
                 chefeAnunciado = true;
-                DialogoIniciar(&dlg, &dialogoChefe, OBJ_CHEFE);
+                DialogoIniciar(&dlg, MESTRE_TREINO_COMBATE ? &dialogoChefeTreino : &dialogoChefe, OBJ_CHEFE);
             }
 
             else if (chefeVencido && !progresso.fimAnunciado) {
@@ -25675,6 +27012,14 @@ int main(void) {
             if (evento == ROGUE_SAIR)
                 IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE);
 
+            // Venceu a ALUCINAÇÃO MESTRE: fim do Bloco 1 (ranking) e o Thomas já está no átrio do Bloco 2
+            if (evento == ROGUE_MESTRE_VENCIDO) {
+                chefeVencido = true;
+                progresso.fimAnunciado = true;
+                pedirAutoSave = true;
+                AbrirTelaRanking(&telaRanking, &ranking, "FIM DO BLOCO 1", nickname, progresso.pontos, idPartida);
+            }
+
             // Venceu o Alucinador: fim da Biblioteca, com o ranking
             if (evento == ROGUE_VITORIA) {
                 pedirAutoSave = true;
@@ -25718,7 +27063,7 @@ int main(void) {
         if (pedirAutoSave && (tela == JOGANDO || tela == CORREDOR || tela == BIBLIOTECA)) {
 
             pedirAutoSave = false;
-            saveFalhou = !SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
+            saveFalhou = !SalvarJogo(nickname, TelaParaSalvar(tela, salaDaBatalhaB2, &biblioteca), playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
 
             if (!saveFalhou)
                 existeSave = true;
@@ -26377,7 +27722,7 @@ int main(void) {
     // AUTO SAVE: fechou a janela no meio do jogo
     // (no menu ou na intro não salva, para não apagar o progresso)
     if (tela == JOGANDO || tela == CORREDOR || tela == BATALHA || tela == BATALHA_B2 || tela == BIBLIOTECA)
-        SalvarJogo(nickname, (tela == BATALHA_B2) ? salaDaBatalhaB2 : tela, playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
+        SalvarJogo(nickname, TelaParaSalvar(tela, salaDaBatalhaB2, &biblioteca), playerPos, direcaoAtual, luciAcompanhando, &progresso, estabilidadeLuci, ajudasPedidas, chefeVencido, idPartida, &progBiblioteca);
 
     // (as texturas precisam ser liberadas ANTES de fechar a janela)
 

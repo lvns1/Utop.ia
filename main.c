@@ -204,6 +204,9 @@ static const Rectangle ZONA_PORTA_SALA = RETANGULO_MAPA(447, 154, 150, 145);
 // Corredor: porta de baixo volta para a sala / porta da direita é a saída
 static const Rectangle PORTA_VOLTAR_CORREDOR = {100, 406, 90, 18};
 static const Rectangle PORTA_FIM_CORREDOR    = {722, 265, 28, 140};
+// Terminal de atalho do Bloco 1 (para o Bloco 2): embutido na parede de baixo, perto da saída da direita
+static const Vector2   TERMINAL_ATALHO_CORREDOR = {630, 404};
+static const Rectangle ZONA_TERMINAL_CORREDOR   = {592, 360, 76, 60};    // o Thomas encosta e aperta E
 
 static const Vector2 SPAWN_SALA       = { MAPA_X(512), MAPA_Y(512) };
 static const Vector2 SPAWN_SALA_VOLTA = { MAPA_X(522), MAPA_Y(300) };   // logo abaixo da porta de cima
@@ -1395,6 +1398,31 @@ static void DialogoFalaAvulsa(SessaoDialogo *d, const char *texto)
     DialogoIniciar(d, &fala, OBJ_NENHUM);
 }
 
+// Confirmação SIM / NÃO (terminais de atalho). Começa em NÃO: um ENTER distraído não pula conteúdo.
+// O resultado volta como RES_SIM ou RES_NAO para quem abriu (o objeto diz qual atalho era).
+static void DialogoConfirmar(SessaoDialogo *d, const char *texto, int objeto)
+{
+    Dialogo fala = {0};
+    fala.paginas[0] = texto;
+    fala.numPaginas = 1;
+
+    DialogoIniciar(d, &fala, objeto);
+    d->estado = DLG_CONFIRMA;
+    d->selecao = 1;
+}
+
+// Onde ficam as opções SIM / NÃO na tela (a mesma conta de DialogoDesenhar), para o mouse
+static Rectangle DialogoRetOpcaoConfirma(const SessaoDialogo *d, int i)
+{
+    static const char *opcoes[2] = { "SIM", "NÃO" };
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + 30;
+    if (alturaCaixa < 150) alturaCaixa = 150;
+    float caixaY = (float)(ALTURA_TELA - 14 - alturaCaixa);
+    float x = 50.0f + 160.0f + (float)i * 240.0f;
+    float y = caixaY + (float)alturaCaixa - 40.0f;
+    return (Rectangle){ x - 26.0f, y - 6.0f, (float)MeasureText(opcoes[i], 20) + 40.0f, 32.0f };
+}
+
 static void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, int pontos)
 {
     d->estado = DLG_FEEDBACK;
@@ -1607,12 +1635,28 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         case DLG_CONFIRMA: {
 
+            // ESC (ou BACKSPACE) cancela: vale NÃO
+            if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+                d->estado = DLG_NENHUM;
+                return RES_NAO;
+            }
+
             if (!terminou) {
 
-                if (avancar)
+                if (avancar || IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
                     d->visiveis = (float)total;
 
                 break;
+            }
+
+            // Mouse: passar por cima marca a opção, clicar confirma
+            {
+                Vector2 mouse = GetMousePosition();
+                for (int i = 0; i < 2; i++) {
+                    if (!CheckCollisionPointRec(mouse, DialogoRetOpcaoConfirma(d, i))) continue;
+                    if (Vector2Length(GetMouseDelta()) > 0.5f) d->selecao = i;
+                    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { d->selecao = i; avancar = true; }
+                }
             }
 
             if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_D) ||
@@ -5234,6 +5278,8 @@ static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 
 #define OBJ_REGISTRO_SALA        -22      // reformulação: arquivo de ameaça ou memória numa sala da missão
 #define OBJ_MESTRE_ARMA          -23      // fim do Bloco 1: pegou o Disparador de Dados no pedestal
 #define OBJ_MESTRE_VITORIA       -24      // fim do Bloco 1: venceu a ALUCINAÇÃO MESTRE
+#define OBJ_ATALHO_BLOCO2        -25      // terminal do corredor: confirmação do atalho para o Bloco 2
+#define OBJ_ATALHO_BLOCO3        -26      // terminal do átrio: confirmação do atalho para o Bloco 3
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
 static const Rectangle ARENA_ROGUE         = { 40, 60, 720, 470 };
@@ -5248,6 +5294,47 @@ static const Vector2 POS_BYTE      = { 300, 150 };
 static const Vector2 POS_BYTECO    = { 610, 298 };
 static const Vector2 POS_TERMINAL  = { 400, 270 };
 static const Vector2 POS_ENCICLOPEDIA = { 180, 432 };
+
+// =============================================================
+// TERMINAIS DE ATALHO E SELETOR DE CHEFES
+// =============================================================
+// Três terminais dourados ("ATALHO", com setas >> correndo até a porta a que se referem):
+//   Corredor do Histórico (parede de baixo, perto da saída) -> lobby do Bloco 2, sem os quizzes,
+//       a Alucinação Mestre e o tutorial de shooter (nada é marcado como concluído)
+//   Átrio, ao lado da porta de cima -> SELETOR DE CHEFES (liberado depois de falar com o Professor Byte)
+//   Átrio, ao lado da porta da direita -> Bloco 3 (rota alternativa: não marca o Alucinador como vencido)
+// Os atalhos entre blocos pedem confirmação SIM / NÃO. O seletor leva direto à arena escolhida,
+// com o personagem padrão (só o Disparador de Dados); vencendo ou perdendo, volta ao átrio.
+// Nada disso vai para o save: o seletor e o confronto direto ficam só na Biblioteca (transitória).
+static const Vector2 POS_TERMINAL_SELETOR = { 532, 104 };      // à direita da porta de cima
+static const Vector2 POS_TERMINAL_BLOCO3  = { 722, 282 };      // abaixo da porta da direita (Bloco 3)
+#define RAIO_TERMINAL_ATALHO     50.0f
+#define SELETOR_TEMPO_RETORNO    2.4f     // vitória no seletor: segundos até voltar ao átrio
+
+static const char *TEXTO_ATALHO_BLOCO2 =
+    "TERMINAL DE ATALHO // BLOCO 2\nEste atalho vai pular o conteúdo educativo do Bloco 1, incluindo os três quizzes, "
+    "a Alucinação Mestre e o tutorial de shooter. Você será levado diretamente ao lobby do Bloco 2. Deseja continuar?";
+
+static const char *TEXTO_ATALHO_BLOCO3 =
+    "TERMINAL DE ATALHO // BLOCO 3\nEste terminal permite pular o restante da Biblioteca dos Ecos e acessar o Bloco 3. "
+    "O Alucinador NÃO conta como derrotado. Você deseja continuar?";
+
+typedef enum { CHEFE_SEL_SENTINELA, CHEFE_SEL_RETRO, CHEFE_SEL_JANELA, CHEFE_SEL_SILOGISTA, CHEFE_SEL_ALUCINADOR, NUM_CHEFES_SELETOR } ChefeSeletor;
+
+static const char *NOMES_CHEFES_SELETOR[NUM_CHEFES_SELETOR] = {
+    "SENTINELA DE ATENÇÃO", "RETROPROPAGADOR", "JANELA DE CONTEXTO", "O SILOGISTA", "ALUCINADOR"
+};
+static const char *TIPOS_CHEFES_SELETOR[NUM_CHEFES_SELETOR] = { "ELITE", "ELITE", "MINI-CHEFE", "GUARDIÃO", "CHEFE FINAL" };
+static const char *DESCRICOES_CHEFES_SELETOR[NUM_CHEFES_SELETOR] = {
+    "Só ataca o que vê. Fuja da visão atrás das estantes e ataque quando ela piscar.",
+    "Guarda de onde veio cada golpe e devolve tudo. Atire e mude de lugar.",
+    "Encha a janela de contexto com ruído até a instrução PROTEGER ser esquecida.",
+    NULL,   // depende do modo do Silogista (ver RogueDescricaoChefeSeletor)
+    "O chefe do Bloco 2. Desvie das alucinações e julgue as afirmações para abrir o escudo."
+};
+static const Color CORES_CHEFES_SELETOR[NUM_CHEFES_SELETOR] = {
+    { 140, 230, 255, 255 }, { 255, 110, 50, 255 }, { 150, 140, 255, 255 }, { 120, 110, 255, 255 }, { 230, 41, 255, 255 }
+};
 static const Vector2 POS_PEDESTAIS[NUM_PEDESTAIS] = { { 270, 290 }, { 400, 260 }, { 530, 290 } };
 
 // Os tipos novos (reformulação do Bloco 2) ficam no FINAL: os valores antigos não mudam
@@ -6777,6 +6864,20 @@ typedef struct {
     // Expansão da progressão: o mini-chefe Janela de Contexto (só existe na sala dele)
     JanelaContexto janela;
 
+    // Terminais: seletor de chefes e confronto direto (transitório, fora do save)
+    bool seletorAberto;
+    int seletorFoco;
+    float seletorAnim;
+    bool modoSeletor;               // o confronto atual veio do seletor (sem mapa; volta ao átrio)
+    int chefeSeletor;               // ChefeSeletor (-1 = nenhum)
+    int especialDireto;             // encontro especial fora do mapa (ESP_*, -1 = nenhum)
+    bool recompensaSeletor;         // esta vitória ainda dá a recompensa do chefe
+    bool seletorVencido;            // venceu: o átrio volta depois dos diálogos de vitória
+    float seletorRetorno;
+    int itensGuardados[NUM_ITENS];  // a mochila do átrio, devolvida ao voltar
+    TipoArma armaGuardada;
+    bool usandoExtraGuardado, seloGuardado, seloAmplificadoGuardado, temMochilaGuardada;
+
     bool morreu;
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
     char aviso[96];             // mensagem curta no meio da tela ("+3 FRAGMENTOS")
@@ -8069,7 +8170,7 @@ static void RogueMudarEstabilidade(Biblioteca *b, int delta, const char *motivo)
 static int RogueChanceLuciErrar(const Biblioteca *b);
 static void RogueRecadoLuci(Biblioteca *b, const char *texto);
 static void LabPreparar(Biblioteca *b, TipoLab tipo);
-static void RogueMontarSalaEspecial(Biblioteca *b);
+static void RogueMontarSalaEspecial(Biblioteca *b, int esp);
 static void RogueJanelaRuido(Biblioteca *b, float dano);
 static void RogueJanelaDerrotada(Biblioteca *b, ProgressoCorredor *prog);
 static void RogueRetroRegistrar(Biblioteca *b, Inimigo *e);
@@ -8078,7 +8179,14 @@ static bool RogueSentinelaVulneravel(const Inimigo *e);
 // Uma sala da missão (reformulação) usa portas nos lados: nada pode ficar na frente delas
 static bool RogueSalaDaMissao(const Biblioteca *b)
 {
-    return b->noAtual >= 0 && b->tipoSala != SALA_ATRIO && b->tipoSala != SALA_TRANSICAO && b->tipoSala != SALA_LUCI;
+    return (b->noAtual >= 0 || b->modoSeletor) && b->tipoSala != SALA_ATRIO && b->tipoSala != SALA_TRANSICAO && b->tipoSala != SALA_LUCI;
+}
+
+// Tipo do encontro especial da sala: do nó do mapa ou, no seletor (sem mapa), o escolhido
+static int RogueEspecialAtual(const Biblioteca *b)
+{
+    int esp = (b->noAtual >= 0 && b->noAtual < b->mapa.numNos) ? b->mapa.no[b->noAtual].especial : b->especialDireto;
+    return (esp >= 0 && esp < NUM_ESPECIAIS) ? esp : ESP_SENTINELA;
 }
 
 // O ponto está numa faixa livre (portas e entrada)?
@@ -8754,7 +8862,7 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
     }
     else if (tipo == SALA_ESPECIAL) {
         // Expansão da progressão: elite ou mini-chefe obrigatório
-        RogueMontarSalaEspecial(b);
+        RogueMontarSalaEspecial(b, RogueEspecialAtual(b));
     }
     else if (tipo == SALA_LABORATORIO) {
         // Expansão educativa: o console do laboratório no meio da sala
@@ -8819,6 +8927,13 @@ static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
 
     RogueLimparSala(b, SALA_ATRIO, vindoDoCorredor ? SPAWN_ATRIO : (Vector2){ 400, 420 });
     RogueUsarLayout(b, &LAYOUT_ATRIO);
+
+    // Terminais de atalho: sólidos (o Thomas encosta na frente deles)
+    const Vector2 terminais[2] = { POS_TERMINAL_SELETOR, POS_TERMINAL_BLOCO3 };
+    for (int k = 0; k < 2 && b->numObst < MAX_OBSTACULOS; k++)
+        b->obst[b->numObst++] = (Rectangle){ terminais[k].x - 19, terminais[k].y - 24, 38, 40 };
+    b->numObstFixos = b->numObst;
+    b->seletorAberto = false;
 
     b->indiceRota = -1;
     b->limpa = true;
@@ -14189,10 +14304,14 @@ static void RogueJanelaDerrotada(Biblioteca *b, ProgressoCorredor *prog)
         return;
     jc->recompensaDada = true;
 
-    b->perm->fragmentos += 10;
-    AlterarPontos(prog, 20);
-    RogueMudarEstabilidade(b, 1, "contexto organizado");
-    RogueAviso(b, "JANELA DE CONTEXTO DERROTADA! +10 FRAGMENTOS");
+    if (!b->modoSeletor || b->recompensaSeletor) {
+        b->perm->fragmentos += 10;
+        AlterarPontos(prog, 20);
+        RogueMudarEstabilidade(b, 1, "contexto organizado");
+        RogueAviso(b, "JANELA DE CONTEXTO DERROTADA! +10 FRAGMENTOS");
+    } else {
+        RogueAviso(b, "JANELA DE CONTEXTO DERROTADA!");
+    }
     b->conversaPendente = &dialogoJanelaVitoria;
     b->objConversa = OBJ_NENHUM;
     MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
@@ -14200,9 +14319,8 @@ static void RogueJanelaDerrotada(Biblioteca *b, ProgressoCorredor *prog)
 }
 
 // Monta a sala de um encontro especial (objetivo: derrotar o especial e quem vier com ele)
-static void RogueMontarSalaEspecial(Biblioteca *b)
+static void RogueMontarSalaEspecial(Biblioteca *b, int esp)
 {
-    int esp = (b->noAtual >= 0) ? b->mapa.no[b->noAtual].especial : ESP_SENTINELA;
     if (esp < 0 || esp >= NUM_ESPECIAIS) esp = ESP_SENTINELA;
 
     const LayoutSala *l = &LAYOUTS_ESPECIAIS[esp];
@@ -14931,8 +15049,211 @@ static void RogueReforcar(Biblioteca *b, int quantidade, Vector2 perto, bool usa
 }
 
 // Sala de combate vencida: abre as portas, deixa a recompensa anunciada na porta e conta pontos
+// =============================================================
+// SELETOR DE CHEFES: CONFRONTO DIRETO E RETORNO AO LOBBY
+// =============================================================
+
+// Chefes já vencidos pelo seletor nesta sessão do jogo (a recompensa sai só na 1ª vitória).
+// Fica fora da Biblioteca porque RogueIniciar a zera a cada volta do corredor, e fora do save
+// para não mudar o formato dele.
+static unsigned int chefesVencidosSeletor = 0;
+
+static const char *RogueDescricaoChefeSeletor(int chefe)
+{
+    if (chefe == CHEFE_SEL_SILOGISTA)
+        return SILOGISTA_BH ? "Guardião da Câmara da Inferência. Acerte só as conclusões válidas (SHIFT = foco)."
+                            : "Guardião da Câmara da Inferência. Monte o silogismo, ache o sofisma e ative o circuito.";
+    return DESCRICOES_CHEFES_SELETOR[chefe];
+}
+
+static bool RogueChefeSeletorVencido(const Biblioteca *b, int chefe)
+{
+    if (chefesVencidosSeletor & (1u << chefe))                     return true;
+    if (chefe == CHEFE_SEL_SILOGISTA && b->perm->silogistaVencido)  return true;
+    if (chefe == CHEFE_SEL_ALUCINADOR && b->perm->alucinadorVencido) return true;
+    return false;
+}
+
+// A recompensa do chefe só sai se ele nunca foi vencido (flags permanentes do Silogista e do
+// Alucinador; para os outros três, a marca desta sessão)
+static bool RogueSeletorTemRecompensa(const Biblioteca *b, int chefe)
+{
+    return !RogueChefeSeletorVencido(b, chefe);
+}
+
+static void RogueAbrirSeletor(Biblioteca *b)
+{
+    b->seletorAberto = true;
+    b->seletorAnim = 0.0f;
+    if (b->seletorFoco < 0 || b->seletorFoco >= NUM_CHEFES_SELETOR) b->seletorFoco = 0;
+    TocarSom(sfxSelecao);
+    Telemetria("seletor_aberto", "", 0.0f, b->perm->tentativas);
+}
+
+static void RogueFecharSeletor(Biblioteca *b)
+{
+    b->seletorAberto = false;
+    TocarSomTom(sfxSelecao, 0.8f);
+    Telemetria("seletor_fechado", "", b->seletorAnim, b->seletorFoco);
+}
+
+// Volta ao átrio depois de um confronto do seletor: some com o que veio do desafio e devolve
+// o que o jogador tinha na mochila antes (o que comprou no Byteco não se perde)
+static void RogueVoltarAoLobby(Biblioteca *b)
+{
+    RogueEsvaziarMochila(&b->j);
+    if (b->temMochilaGuardada) {
+        memcpy(b->j.itens, b->itensGuardados, sizeof(b->j.itens));
+        b->j.armaExtra = b->armaGuardada;
+        b->j.usandoExtra = b->usandoExtraGuardado;
+        b->j.seloInferencia = b->seloGuardado;
+        b->j.seloAmplificado = b->seloAmplificadoGuardado;
+        b->temMochilaGuardada = false;
+    }
+    b->modoSeletor = false;
+    b->seletorVencido = false;
+    b->seletorRetorno = 0.0f;
+    b->chefeSeletor = -1;
+    RogueEntrarAtrio(b, false);
+}
+
+// O confronto do seletor terminou com vitória (o retorno espera os diálogos de vitória)
+static void RogueSeletorVenceu(Biblioteca *b, ProgressoCorredor *prog, int pontos)
+{
+    if (!b->modoSeletor || b->seletorVencido)
+        return;
+
+    b->seletorVencido = true;
+    b->seletorRetorno = 0.0f;
+    RogueLimparBalasInimigas(b);
+    if (b->recompensaSeletor && pontos > 0)
+        AlterarPontos(prog, pontos);
+    if (b->chefeSeletor >= 0 && b->chefeSeletor < NUM_CHEFES_SELETOR)
+        chefesVencidosSeletor |= 1u << b->chefeSeletor;
+    RogueAviso(b, b->recompensaSeletor ? "CONFRONTO VENCIDO! Voltando ao lobby..." : "VENCIDO! (treino: a recompensa já foi recebida)");
+    TocarSom(sfxAcerto);
+    Telemetria("seletor_vitoria", (b->chefeSeletor >= 0) ? NOMES_CHEFES_SELETOR[b->chefeSeletor] : "",
+               (float)(GetTime() - b->inicio), b->recompensaSeletor ? 1 : 0);
+}
+
+// Começa um confronto escolhido no seletor: sem mapa procedural, com o personagem padrão
+static void RogueIniciarConfronto(Biblioteca *b, int chefe)
+{
+    static const int camada[NUM_CHEFES_SELETOR] = { PROF_ESPECIAL_A, PROF_ESPECIAL_B, PROF_MINICHEFE, PROF_SILOGISTA, PROF_CHEFE };
+    static const int especial[NUM_CHEFES_SELETOR] = { ESP_SENTINELA, ESP_RETRO, ESP_JANELA, -1, -1 };
+
+    if (chefe < 0 || chefe >= NUM_CHEFES_SELETOR)
+        return;
+
+    // 1. Fecha o seletor
+    b->seletorAberto = false;
+
+    // 2. Marca o modo seletor (e se esta vitória ainda vale recompensa)
+    b->modoSeletor = true;
+    b->chefeSeletor = chefe;
+    b->seletorVencido = false;
+    b->seletorRetorno = 0.0f;
+    b->recompensaSeletor = RogueSeletorTemRecompensa(b, chefe);
+    b->especialDireto = especial[chefe];
+
+    // 4. Personagem padrão: guarda a mochila do átrio e começa só com o Disparador
+    memcpy(b->itensGuardados, b->j.itens, sizeof(b->itensGuardados));
+    b->armaGuardada = b->j.armaExtra;
+    b->usandoExtraGuardado = b->j.usandoExtra;
+    b->seloGuardado = b->j.seloInferencia;
+    b->seloAmplificadoGuardado = b->j.seloAmplificado;
+    b->temMochilaGuardada = true;
+    RogueEsvaziarMochila(&b->j);                // itens, armas extras, efeitos, build e selos
+    b->j.ultimoUp = -1;
+
+    // Fora do mapa: nenhum nó, nenhuma porta. A dificuldade é a da camada em que o chefe fica.
+    b->noAtual = -1;
+    b->indiceRota = -1;
+    b->numPortas = 0;
+    b->ladoEntrada = LADO_BAIXO;
+    b->mapaAberto = false;
+    b->combates = 0;
+    b->falaPendente = NULL;
+    b->conversaPendente = NULL;
+    b->inicio = GetTime();
+    float eq = PROF_DIFICULDADE[camada[chefe]];
+    bool equilibrioProprio = (chefe >= CHEFE_SEL_JANELA);       // mini-chefe e chefes não escalam (igual à missão)
+    b->profundidade = (int)(eq + 0.5f);
+    b->fatorVidaInimigos  = equilibrioProprio ? 1.0f : 1.0f + DIFICULDADE_VIDA_PROF * eq;
+    b->fatorRitmoInimigos = equilibrioProprio ? 1.0f : 1.0f + DIFICULDADE_RITMO_PROF * eq;
+    b->fatorDanoSala      = equilibrioProprio ? 1.0f : 1.0f + DIFICULDADE_DANO_PROF * eq;
+
+    // 3, 5, 6 e 7. RogueEntrarSala limpa a sala anterior, põe o jogador na entrada de baixo e
+    // monta o confronto com o inicializador de sempre (intro, padrões, barras e vitória originais)
+    TipoSalaRogue tipo = (chefe == CHEFE_SEL_SILOGISTA) ? SALA_SILOGISTA : ((chefe == CHEFE_SEL_ALUCINADOR) ? SALA_CHEFE : SALA_ESPECIAL);
+    RogueEntrarSala(b, tipo);
+    b->numPortas = 0;
+    b->j.hp = RogueHpMax(b);
+    b->j.ep = RogueEpMax(b);
+    b->j.direcao = DIR_COSTAS;
+
+    Telemetria("seletor_confronto", NOMES_CHEFES_SELETOR[chefe], 0.0f, b->recompensaSeletor ? 1 : 0);
+}
+
+// Cards do seletor: 5 lado a lado (o do foco sobe um pouco)
+static Rectangle RogueRetCardSeletor(int i, int foco)
+{
+    float w = 140.0f, gap = 10.0f;
+    float total = (float)NUM_CHEFES_SELETOR * w + (float)(NUM_CHEFES_SELETOR - 1) * gap;
+    float x = 400.0f - total / 2.0f + (float)i * (w + gap);
+    return (i == foco) ? (Rectangle){ x, 124, w, 312 } : (Rectangle){ x, 134, w, 300 };
+}
+
+static Rectangle RogueRetFecharSeletor(void)
+{
+    return (Rectangle){ 290, 450, 220, 30 };
+}
+
+// O seletor aberto: o resto do átrio espera (A/D ou setas, ENTER ou clique, ESC ou o botão)
+static void RogueAtualizarSeletor(Biblioteca *b)
+{
+    b->seletorAnim += GetFrameTime();
+
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+        RogueFecharSeletor(b);
+        return;
+    }
+
+    if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { b->seletorFoco = (b->seletorFoco + NUM_CHEFES_SELETOR - 1) % NUM_CHEFES_SELETOR; TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->seletorFoco = (b->seletorFoco + 1) % NUM_CHEFES_SELETOR;                      TocarSom(sfxSelecao); }
+
+    Vector2 m = GetMousePosition();
+    bool moveu = Vector2Length(GetMouseDelta()) > 0.5f;
+    bool clique = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+    if (b->seletorAnim < 0.25f)                 // o E que abriu o terminal não confirma nada
+        return;
+
+    if (clique && CheckCollisionPointRec(m, RogueRetFecharSeletor())) {
+        RogueFecharSeletor(b);
+        return;
+    }
+
+    for (int i = 0; i < NUM_CHEFES_SELETOR; i++) {
+        if (!CheckCollisionPointRec(m, RogueRetCardSeletor(i, b->seletorFoco))) continue;
+        if (moveu && b->seletorFoco != i) { b->seletorFoco = i; TocarSom(sfxSelecao); }
+        if (clique) { RogueIniciarConfronto(b, i); return; }
+    }
+
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_E))
+        RogueIniciarConfronto(b, b->seletorFoco);
+}
+
 static void RogueConcluirCombate(Biblioteca *b, ProgressoCorredor *prog)
 {
+    // Seletor de chefes: sem recompensa no chão (a build é descartada) e de volta ao átrio
+    if (b->modoSeletor) {
+        b->limpa = true;
+        RogueDissolverInimigos(b);
+        RogueSeletorVenceu(b, prog, PONTOS_SALA_ROGUE + 12);
+        return;
+    }
+
     b->limpa = true;
     RogueSalaConcluida(b);
     RogueDissolverInimigos(b);
@@ -18034,7 +18355,7 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
 // O que está ao alcance do E agora (-1 = nada)
 typedef enum { ALVO_NADA, ALVO_BYTE, ALVO_BYTECO, ALVO_TERMINAL, ALVO_PEDESTAL, ALVO_ENCICLOPEDIA, ALVO_PECA, ALVO_ENCAIXE,
                ALVO_REGISTRO, ALVO_CONTEXTO, ALVO_RECOMPENSA, ALVO_OBJETO_SALA, ALVO_REGISTRO_SALA, ALVO_LAB,
-               ALVO_ARMA_MESTRE } AlvoRogue;
+               ALVO_ARMA_MESTRE, ALVO_TERMINAL_SELETOR, ALVO_TERMINAL_BLOCO3 } AlvoRogue;
 
 // ---------- Fim do Bloco 1: a sala da ALUCINAÇÃO MESTRE ----------
 
@@ -18534,6 +18855,8 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
         return ALVO_REGISTRO_SALA;
 
     if (b->tipoSala == SALA_ATRIO) {
+        if (Vector2Distance(p, POS_TERMINAL_SELETOR) < RAIO_TERMINAL_ATALHO)    return ALVO_TERMINAL_SELETOR;
+        if (Vector2Distance(p, POS_TERMINAL_BLOCO3) < RAIO_TERMINAL_ATALHO)     return ALVO_TERMINAL_BLOCO3;
         if (Vector2Distance(p, POS_BYTE) < 70)                                  return ALVO_BYTE;
         if (Vector2Distance(p, (Vector2){ POS_BYTECO.x, POS_BYTECO.y + 50 }) < 60) return ALVO_BYTECO;
         if (Vector2Distance(p, POS_ENCICLOPEDIA) < 60)                          return ALVO_ENCICLOPEDIA;
@@ -18793,6 +19116,20 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
             RogueUsarRecompensa(b);
             break;
 
+        case ALVO_TERMINAL_SELETOR:
+            if (!b->perm->byteVisto) {
+                DialogoFalaAvulsa(dlg, "SELETOR DE CHEFES: BLOQUEADO. Converse primeiro com o Professor Byte (perto da porta de cima) para liberar este terminal.");
+                Telemetria("seletor_bloqueado", "", 0.0f, 0);
+            } else {
+                RogueAbrirSeletor(b);
+            }
+            break;
+
+        case ALVO_TERMINAL_BLOCO3:
+            DialogoConfirmar(dlg, TEXTO_ATALHO_BLOCO3, OBJ_ATALHO_BLOCO3);
+            Telemetria("atalho_bloco3_terminal", "", 0.0f, b->perm->bloco3Liberado ? 1 : 0);
+            break;
+
         case ALVO_LAB:
             b->lab.aberto = true;
             b->lab.tempo = 0.0f;
@@ -18931,13 +19268,34 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
                 RogueAviso(b, "SELO DA INFERÊNCIA!");
             b->perm->conceitos |= 1u << CONCEITO_LOGICA;
             b->perm->silogistaVencido = true;
-            b->perm->fragmentos += FC_SILOGISTA;
-            AlterarPontos(prog, PONTOS_SILOGISTA);
+            if (!b->modoSeletor || b->recompensaSeletor) {          // seletor: só na 1ª vitória
+                b->perm->fragmentos += FC_SILOGISTA;
+                AlterarPontos(prog, PONTOS_SILOGISTA);
+            }
             RogueSalaConcluida(b);
             MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
             Telemetria("rogue_silogista_vitoria", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
         }
         b->limpa = true;
+        if (b->modoSeletor)
+            RogueSeletorVenceu(b, prog, 0);      // o átrio volta depois desta explicação
+    }
+    else if (obj == OBJ_ALUCINADOR_VITORIA && b->modoSeletor) {
+        // Seletor de chefes: a vitória libera o Bloco 3 como sempre, mas volta ao átrio
+        // (sem ranking de fim da Biblioteca) e a recompensa só sai na 1ª vitória
+        bool recompensa = b->recompensaSeletor;
+        b->perm->alucinadorVencido = true;
+        b->perm->bloco3Liberado = true;
+        if (recompensa) {
+            b->perm->fragmentos += FC_ALUCINADOR;
+            AlterarPontos(prog, PONTOS_ALUCINADOR);
+        }
+        Telemetria("rogue_chefe_vitoria", "seletor", (float)(GetTime() - b->inicio), b->perm->tentativas);
+        RogueSeletorVenceu(b, prog, 0);
+        RogueVoltarAoLobby(b);
+        b->portaNucleoAbrindo = 3.0f;
+        b->estaticaTela = 0.5f;
+        b->falaPendente = "Luci: Aquela porta à direita... leva ao núcleo de UtopIA. Quando quiser, eu vou com você.";
     }
     else if (obj == OBJ_ALUCINADOR_VITORIA) {
         // Fim da Biblioteca: os fragmentos voltam, a mochila esvazia e o main mostra o ranking
@@ -18955,6 +19313,24 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         b->estaticaTela = 0.5f;
         b->falaPendente = "Luci: Aquela porta à direita... leva ao núcleo de UtopIA. Eu preciso que você venha. Agora.";
     }
+}
+
+// Confirmação de um terminal da Biblioteca (SIM / NÃO)
+static void RogueRespostaConfirmacao(Biblioteca *b, int obj, bool sim)
+{
+    if (obj != OBJ_ATALHO_BLOCO3)
+        return;
+
+    Telemetria("atalho_bloco2_bloco3", sim ? "sim" : "nao", (float)(GetTime() - b->inicio), b->perm->bloco3Liberado ? 1 : 0);
+    if (!sim)
+        return;
+
+    // A mesma entrada da porta do núcleo: a cutscene e depois RogueEntrarBloco3 (sem exigir bloco3Liberado
+    // e sem marcar o Alucinador como vencido)
+    b->transicaoNucleo = TRANSICAO_NUCLEO;
+    b->entrouNucleo = false;
+    PararSons();
+    TocarSom(sfxEstatica);
 }
 
 typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO, ROGUE_MESTRE_VENCIDO } EventoRogue;
@@ -19024,8 +19400,11 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
 
         int obj = dlg->objeto;
 
-        if (DialogoAtualizar(dlg) == RES_FIM)
+        ResultadoDialogo r = DialogoAtualizar(dlg);
+        if (r == RES_FIM)
             RogueFimConversa(b, prog, obj);
+        else if (r == RES_SIM || r == RES_NAO)
+            RogueRespostaConfirmacao(b, obj, r == RES_SIM);
 
         return ROGUE_NADA;
     }
@@ -19063,6 +19442,12 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
+    // Seletor de chefes aberto: o átrio espera
+    if (b->seletorAberto) {
+        RogueAtualizarSeletor(b);
+        return ROGUE_NADA;
+    }
+
     if (b->escolhaPendente >= 0) {
         RogueAbrirEscolha(b, (ModoEscolha)b->escolhaPendente, true);
         b->escolhaPendente = -1;
@@ -19095,6 +19480,16 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
+    // Seletor de chefes: venceu e os diálogos de vitória já passaram -> de volta ao átrio
+    if (b->modoSeletor && b->seletorVencido && b->tipoSala != SALA_ATRIO) {
+        b->seletorRetorno += dt;
+        b->j.invulneravel = fmaxf(b->j.invulneravel, 0.2f);       // nada mais machuca depois da vitória
+        if (b->seletorRetorno >= SELETOR_TEMPO_RETORNO) {
+            RogueVoltarAoLobby(b);
+            return ROGUE_NADA;
+        }
+    }
+
     if (b->pausaImpacto > 0.0f) {
         b->pausaImpacto -= dt;
         return ROGUE_NADA;
@@ -19113,6 +19508,10 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
                 RogueEntrarSala(b, SALA_TRANSICAO);
                 b->j.hp = RogueHpMax(b);
                 b->j.ep = RogueEpMax(b);
+            } else if (b->modoSeletor) {
+                // Seletor de chefes: a derrota volta ao átrio e limpa o desafio
+                Telemetria("seletor_derrota", (b->chefeSeletor >= 0) ? NOMES_CHEFES_SELETOR[b->chefeSeletor] : "", (float)(GetTime() - b->inicio), 0);
+                RogueVoltarAoLobby(b);
             } else {
                 RogueEsvaziarMochila(&b->j);
                 RogueEntrarAtrio(b, false);
@@ -24329,6 +24728,203 @@ static void DesenharFocoSilogistaBH(const Biblioteca *b, float t)
     }
 }
 
+
+// =============================================================
+// DESENHO DOS TERMINAIS DE ATALHO E DO SELETOR DE CHEFES
+// =============================================================
+// Linguagem visual de ATALHO (igual nos três terminais, diferente dos terminais educativos azuis):
+// console DOURADO com base listrada de aviso, tela com setas ">>" correndo, placa "ATALHO >>"
+// flutuando com o destino e uma trilha de setas que corre do terminal até a porta a que ele se refere.
+
+#define COR_ATALHO ((Color){ 255, 176, 0, 255 })
+
+// Uma seta ">" apontando para "dir" (s = tamanho)
+static void DesenharSetaAtalho(Vector2 p, Vector2 dir, float s, float espessura, Color c)
+{
+    Vector2 perp = { -dir.y, dir.x };
+    Vector2 ponta = Vector2Add(p, Vector2Scale(dir, s));
+    Vector2 a = Vector2Add(Vector2Subtract(p, Vector2Scale(dir, s)), Vector2Scale(perp, s));
+    Vector2 b = Vector2Subtract(Vector2Subtract(p, Vector2Scale(dir, s)), Vector2Scale(perp, s));
+    DrawLineEx(a, ponta, espessura, c);
+    DrawLineEx(b, ponta, espessura, c);
+}
+
+// c = centro do console; destino = o que a placa anuncia; alvoSeta = a porta (x < 0: sem trilha)
+static void DesenharTerminalAtalho(Vector2 c, const char *destino, Vector2 alvoSeta, bool liberado, float t)
+{
+    Color cor = liberado ? COR_ATALHO : (Color){ 130, 130, 140, 255 };
+    float pulso = 0.5f + 0.5f * sinf(t * 4.0f);
+
+    // Trilha de setas até a porta (o caminho que o atalho "pula")
+    if (liberado && alvoSeta.x >= 0.0f) {
+        Vector2 d = Vector2Subtract(alvoSeta, c);
+        float l = Vector2Length(d);
+        if (l > 40.0f) {
+            Vector2 dir = Vector2Scale(d, 1.0f / l);
+            for (int k = 0; k < 6; k++) {
+                float s = fmodf(t * 55.0f + (float)k * (l / 6.0f), l);
+                if (s < 26.0f || s > l - 14.0f) continue;
+                float a = 0.25f + 0.55f * sinf(s / l * PI);
+                DesenharSetaAtalho(Vector2Add(c, Vector2Scale(dir, s)), dir, 5.0f, 2.0f, Fade(cor, a));
+            }
+        }
+    }
+
+    // Brilho no chão
+    DrawEllipse((int)c.x, (int)c.y + 20, 36, 10, Fade(cor, liberado ? 0.10f + 0.10f * pulso : 0.06f));
+
+    // Base com faixas de aviso (amarelo e preto)
+    for (int i = 0; i < 8; i++)
+        DrawRectangle((int)c.x - 20 + i * 5, (int)c.y + 8, 5, 8, (i % 2 == 0) ? Fade(cor, 0.9f) : (Color){ 20, 16, 10, 255 });
+
+    // Corpo e tela
+    DrawRectangle((int)c.x - 19, (int)c.y - 24, 38, 32, (Color){ 40, 30, 14, 255 });
+    DrawRectangleLinesEx((Rectangle){ c.x - 19, c.y - 24, 38, 32 }, 2, cor);
+    Rectangle tela = { c.x - 14, c.y - 19, 28, 20 };
+    DrawRectangleRec(tela, liberado ? Fade(cor, 0.18f + 0.10f * pulso) : (Color){ 30, 30, 36, 255 });
+    if (liberado) {
+        float desloc = fmodf(t * 18.0f, 10.0f);
+        for (int k = 0; k < 2; k++)
+            DesenharSetaAtalho((Vector2){ tela.x + 7 + desloc + k * 8, tela.y + 10 }, (Vector2){ 1, 0 }, 3.5f, 2.0f, cor);
+    } else {
+        // Cadeado
+        DrawRectangle((int)c.x - 5, (int)c.y - 10, 10, 8, cor);
+        DrawRing((Vector2){ c.x, c.y - 10 }, 3, 5, 180, 360, 10, cor);
+    }
+
+    // Placa "ATALHO >>" com o destino (o jogador reconhece de longe)
+    float bob = sinf(t * 2.5f) * 2.0f;
+    const char *tag = liberado ? "ATALHO" : "BLOQUEADO";
+    int wt = MeasureText(tag, 10) + 26;
+    int wd = MeasureText(destino, 10) + 10;
+    int yt = (int)(c.y - 50 + bob);
+    int metade = ((wt > wd) ? wt : wd) / 2;
+    float cx = Clamp(c.x, 44.0f + (float)metade, 756.0f - (float)metade);     // a placa não sai da sala
+    DrawRectangle((int)cx - wt / 2, yt, wt, 14, cor);
+    DrawText(tag, (int)cx - wt / 2 + 5, yt + 2, 10, (Color){ 30, 20, 0, 255 });
+    if (liberado) {
+        DesenharSetaAtalho((Vector2){ cx + wt / 2.0f - 13, (float)yt + 7 }, (Vector2){ 1, 0 }, 3.0f, 2.0f, (Color){ 30, 20, 0, 255 });
+        DesenharSetaAtalho((Vector2){ cx + wt / 2.0f - 7, (float)yt + 7 }, (Vector2){ 1, 0 }, 3.0f, 2.0f, (Color){ 30, 20, 0, 255 });
+    }
+    DrawRectangle((int)cx - wd / 2, yt + 14, wd, 13, Fade(BLACK, 0.75f));
+    DrawText(destino, (int)cx - wd / 2 + 5, yt + 16, 10, cor);
+}
+
+// Miniatura do chefe no card: as rotinas de desenho do próprio jogo, numa câmera reduzida
+static void DesenharMiniaturaChefe(int chefe, Vector2 centro, float tempo)
+{
+    static const float zoom[NUM_CHEFES_SELETOR] = { 1.5f, 1.5f, 1.05f, 0.85f, 0.72f };
+    Camera2D cam = { 0 };
+    cam.offset = centro;
+    cam.target = (Vector2){ 0, 0 };
+    cam.zoom = zoom[chefe];
+
+    BeginMode2D(cam);
+    if (chefe <= CHEFE_SEL_JANELA) {
+        Inimigo e;
+        memset(&e, 0, sizeof(e));
+        e.ativo = true;
+        e.tipo = (chefe == CHEFE_SEL_SENTINELA) ? INIMIGO_SENTINELA : ((chefe == CHEFE_SEL_RETRO) ? INIMIGO_RETRO : INIMIGO_JANELA);
+        e.raio = DEF_INIMIGOS[e.tipo].raio;
+        e.hp = e.hpMax = 1.0f;
+        e.alvo = (Vector2){ 0, 1 };
+        e.foco = 0.6f;
+        e.anim = tempo;
+        if (chefe == CHEFE_SEL_SENTINELA)   DesenharSentinela(&e, 1.0f, tempo);
+        else if (chefe == CHEFE_SEL_RETRO)  DesenharRetro(&e, 1.0f, tempo);
+        else                                DesenharJanelaChefe(&e, 1.0f, tempo);
+    } else if (chefe == CHEFE_SEL_SILOGISTA) {
+        static Silogista s;
+        memset(&s, 0, sizeof(s));
+        s.ativo = true;
+        s.modoBH = SILOGISTA_BH;
+        s.etapa = SIL_MONTAGEM;
+        s.hp = SIL_HP;
+        s.carregando = -1;
+        DesenharSilogista(&s, (Vector2){ 0, 200 }, tempo);
+    } else {
+        static ChefeRogue c;
+        memset(&c, 0, sizeof(c));
+        c.ativo = true;
+        c.hp = CHEFE_HP;
+        c.fase = 1;
+        DesenharAlucinador(&c, (Vector2){ 0, 200 }, tempo);
+    }
+    EndMode2D();
+}
+
+static void DesenharSeletorChefes(const Biblioteca *b, float tempo)
+{
+    Vector2 m = GetMousePosition();
+
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.78f));
+    Rectangle painel = { 16, 56, 768, 448 };
+    DrawRectangleRec(painel, (Color){ 18, 14, 10, 255 });
+    DrawRectangleLinesEx(painel, 3, COR_ATALHO);
+    for (int i = 0; i < 16; i++)       // faixa de aviso no topo do painel
+        DrawRectangle((int)painel.x + 3 + i * 48, (int)painel.y + 3, 24, 4, Fade(COR_ATALHO, 0.6f));
+
+    DrawText("SELETOR DE CHEFES", 36, 70, 22, COR_ATALHO);
+    int xt = 36 + MeasureText("SELETOR DE CHEFES", 22) + 14;
+    DesenharSetaAtalho((Vector2){ (float)xt, 81 }, (Vector2){ 1, 0 }, 5.0f, 3.0f, COR_ATALHO);
+    DesenharSetaAtalho((Vector2){ (float)xt + 12, 81 }, (Vector2){ 1, 0 }, 5.0f, 3.0f, COR_ATALHO);
+    DrawText("CONFRONTO DIRETO, SEM O MAPA DA MISSÃO", xt + 26, 76, 12, Fade(COR_ATALHO, 0.8f));
+    DrawText("Você começa só com o Disparador de Dados (sem itens nem melhorias). Vencendo ou perdendo, volta ao átrio.",
+             36, 98, 10, LIGHTGRAY);
+
+    for (int i = 0; i < NUM_CHEFES_SELETOR; i++) {
+        Rectangle r = RogueRetCardSeletor(i, b->seletorFoco);
+        bool foco = (i == b->seletorFoco);
+        bool hover = CheckCollisionPointRec(m, r);
+        Color cor = CORES_CHEFES_SELETOR[i];
+        bool vencido = RogueChefeSeletorVencido(b, i);
+
+        if (foco) DrawRectangle((int)r.x - 4, (int)r.y - 4, (int)r.width + 8, (int)r.height + 8, Fade(COR_ATALHO, 0.18f + 0.10f * sinf(tempo * 5.0f)));
+        DrawRectangleRec(r, foco ? (Color){ 34, 26, 18, 255 } : (Color){ 24, 20, 16, 255 });
+        DrawRectangleLinesEx(r, foco ? 3.0f : (hover ? 2.0f : 1.0f), foco ? COR_ATALHO : (hover ? Fade(COR_ATALHO, 0.8f) : Fade(cor, 0.5f)));
+
+        // Miniatura
+        Rectangle mini = { r.x + 8, r.y + 8, r.width - 16, 108 };
+        DrawRectangleRec(mini, (Color){ 12, 10, 22, 255 });
+        DrawRectangleLinesEx(mini, 1, Fade(cor, 0.5f));
+        DesenharMiniaturaChefe(i, (Vector2){ mini.x + mini.width / 2, mini.y + mini.height / 2 + 4 }, tempo);
+        if (!foco) DrawRectangleRec(mini, Fade(BLACK, 0.35f));
+
+        // Tipo, nome e descrição
+        int y = (int)(mini.y + mini.height) + 8;
+        const char *tipo = TIPOS_CHEFES_SELETOR[i];
+        DrawRectangle((int)r.x + 8, y, MeasureText(tipo, 10) + 8, 14, Fade(cor, 0.85f));
+        DrawText(tipo, (int)r.x + 12, y + 2, 10, BLACK);
+        y += 20;
+        char linhas[256];
+        int fn = 14;                                // nomes longos numa palavra só (RETROPROPAGADOR) diminuem
+        while (fn > 10 && MeasureText(NOMES_CHEFES_SELETOR[i], fn) > (int)r.width - 16 && strchr(NOMES_CHEFES_SELETOR[i], ' ') == NULL) fn--;
+        QuebrarTexto(NOMES_CHEFES_SELETOR[i], (int)r.width - 16, fn, linhas, (int)sizeof(linhas));
+        y += DesenharTextoLinhas(linhas, (int)r.x + 8, y, fn, fn + 2, foco ? WHITE : LIGHTGRAY) * (fn + 2) + 4;
+        QuebrarTexto(RogueDescricaoChefeSeletor(i), (int)r.width - 16, 10, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)r.x + 8, y, 10, 13, foco ? (Color){ 220, 215, 200, 255 } : GRAY);
+
+        // Rodapé: vencido e recompensa
+        int yb = (int)(r.y + r.height) - 34;
+        if (vencido) {
+            DrawRectangle((int)r.x + 8, yb, 62, 14, Fade(LIME, 0.85f));
+            DrawText("VENCIDO", (int)r.x + 12, yb + 2, 10, BLACK);
+        }
+        DrawText(vencido ? "treino: sem recompensa" : "1ª vitória: recompensa", (int)r.x + 8, yb + 18, 10, vencido ? GRAY : GOLD);
+    }
+
+    // Botão de voltar
+    Rectangle fechar = RogueRetFecharSeletor();
+    bool sobre = CheckCollisionPointRec(m, fechar);
+    DrawRectangleRec(fechar, sobre ? Fade(COR_ATALHO, 0.35f) : Fade(BLACK, 0.6f));
+    DrawRectangleLinesEx(fechar, sobre ? 2.0f : 1.0f, COR_ATALHO);
+    const char *txt = "VOLTAR AO LOBBY (ESC)";
+    DrawText(txt, (int)(fechar.x + fechar.width / 2) - MeasureText(txt, 12) / 2, (int)fechar.y + 9, 12, sobre ? WHITE : COR_ATALHO);
+
+    const char *ajuda = "A/D ou SETAS: escolher     ENTER ou CLIQUE: lutar     ESC: voltar ao lobby";
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 486, 10, GRAY);
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
@@ -24414,6 +25010,11 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DesenharProfessorByte(POS_BYTE, tempo);
         DesenharByteco(POS_BYTECO, tempo);
         DesenharPulpitoEnciclopedia(POS_ENCICLOPEDIA, tempo);
+        // Terminais de atalho: o seletor de chefes (trilha até a porta de cima) e o Bloco 3 (até a porta da direita)
+        DesenharTerminalAtalho(POS_TERMINAL_SELETOR, b->perm->byteVisto ? "SELETOR DE CHEFES" : "FALE COM O PROF. BYTE",
+                               CentroRetangulo(PORTA_PROXIMA_ROGUE), b->perm->byteVisto, tempo);
+        DesenharTerminalAtalho(POS_TERMINAL_BLOCO3, "IR AO BLOCO 3",
+                               b->perm->bloco3Liberado ? CentroRetangulo(PORTA_BLOCO3_ROGUE) : (Vector2){ -1, -1 }, true, tempo);
     } else if (b->tipoSala == SALA_EDUCATIVA) {
         DesenharTerminal(POS_TERMINAL, b->terminalLido, tempo);
     } else if (b->tipoSala == SALA_RECOMPENSA) {
@@ -24579,7 +25180,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     int portaK = -1;
     PortaInteracao porta = RoguePortaProxima(b, &portaK);
 
-    if (!b->lojaAberta && !b->enciclopediaAberta && !b->desafioAberto && !b->lab.aberto && !b->morreu) {
+    if (!b->lojaAberta && !b->enciclopediaAberta && !b->desafioAberto && !b->lab.aberto && !b->seletorAberto && !b->morreu) {
         if (porta != PORTA_NENHUMA)     DesenharAvisoPorta(j->pos, (porta == PORTA_ATRIO_CORREDOR) ? "SAIR" : "ENTRAR", tempo);
         else if (alvo == ALVO_ENCICLOPEDIA)  DesenharTeclaE((Vector2){ POS_ENCICLOPEDIA.x, POS_ENCICLOPEDIA.y - 40 }, tempo);
         else if (alvo == ALVO_BYTE)          DesenharTeclaE((Vector2){ POS_BYTE.x, POS_BYTE.y - 48 }, tempo);
@@ -24595,6 +25196,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         else if (alvo == ALVO_RECOMPENSA)    DesenharTeclaE((Vector2){ b->recompensaPos.x, b->recompensaPos.y - 40 }, tempo);
         else if (alvo == ALVO_OBJETO_SALA)   DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 52 }, tempo);
         else if (alvo == ALVO_LAB)           DesenharTeclaE((Vector2){ b->posObjetoSala.x, b->posObjetoSala.y - 62 }, tempo);
+        else if (alvo == ALVO_TERMINAL_SELETOR) DesenharTeclaE((Vector2){ POS_TERMINAL_SELETOR.x + 34, POS_TERMINAL_SELETOR.y - 10 }, tempo);
+        else if (alvo == ALVO_TERMINAL_BLOCO3)  DesenharTeclaE((Vector2){ POS_TERMINAL_BLOCO3.x - 34, POS_TERMINAL_BLOCO3.y - 10 }, tempo);
         else if (alvo == ALVO_ARMA_MESTRE)   DesenharTeclaE((Vector2){ POS_ARMA_MESTRE.x, POS_ARMA_MESTRE.y - 52 }, tempo);
         else if (alvo == ALVO_REGISTRO_SALA) DesenharTeclaE((Vector2){ b->posRegistroSala.x, b->posRegistroSala.y - 36 }, tempo);
         else if (alvo == ALVO_PEDESTAL) {
@@ -24637,7 +25240,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         case SALA_ATRIO:
             snprintf(o.texto, sizeof(o.texto), "%s", !b->perm->byteVisto     ? "Fale com o Professor Byte"
                                                    : b->perm->bloco3Liberado ? "Uma porta nova se abriu à direita: BLOCO 3"
-                                                                             : "Entre na Biblioteca pela porta de cima (Byteco: loja)");
+                                                                             : "Porta de cima: missão. Terminal dourado: seletor de chefes");
             break;
         case SALA_COMBATE:
         case SALA_ELITE: {
@@ -24692,7 +25295,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "ARQUIVO OCULTO! Pegue a recompensa rara (E)" : "Escolha uma porta");
             break;
         case SALA_ESPECIAL: {
-            int esp = (b->noAtual >= 0) ? b->mapa.no[b->noAtual].especial : 0;
+            int esp = RogueEspecialAtual(b);
             if (b->limpa)              snprintf(o.texto, sizeof(o.texto), "%s", b->recompensaAtiva ? "Encontro vencido! Pegue a recompensa (E)" : "Encontro vencido! Escolha uma porta");
             else if (esp == ESP_SENTINELA) snprintf(o.texto, sizeof(o.texto), "SENTINELA: fuja da visão nas estantes e ataque quando ela piscar");
             else if (esp == ESP_RETRO)     snprintf(o.texto, sizeof(o.texto), "RETROPROPAGADOR: atire e MUDE de lugar (o golpe volta às marcas)");
@@ -24826,6 +25429,13 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     // Mapa de progressão (canto de cima): o grafo da tentativa; M abre o mapa grande
     if (!atrio && b->noAtual >= 0)
         DesenharMiniMapa(b, tempo);
+    else if (b->modoSeletor && !atrio) {
+        // Confronto direto: no lugar do mapa, o aviso de que a vitória volta ao átrio
+        DrawRectangle(4, 2, 150, 30, Fade(BLACK, 0.6f));
+        DrawRectangleLines(4, 2, 150, 30, COR_ATALHO);
+        DrawText("SELETOR DE CHEFES", 10, 6, 10, COR_ATALHO);
+        DrawText(b->seletorVencido ? "VITÓRIA! Voltando ao átrio..." : "confronto direto", 10, 18, 10, b->seletorVencido ? LIME : LIGHTGRAY);
+    }
 
     // HUD de baixo: vida, energia, recargas, pontos, fragmentos e mochila
     int yHud = 542;
@@ -24932,6 +25542,10 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     // Expansão educativa: a janela do laboratório
     if (b->lab.aberto)
         DesenharLab(b, tempo);
+
+    // Seletor de chefes (por cima de tudo, com o cursor visível)
+    if (b->seletorAberto)
+        DesenharSeletorChefes(b, tempo);
 
     if (b->escolhaAberta)
         DesenharEscolha(b, tempo);
@@ -26247,7 +26861,8 @@ int main(void) {
 
         // Na Biblioteca a mira desenhada substitui o cursor do sistema
         bool esconderCursor = (tela == BIBLIOTECA && !pausado && biblioteca.tipoSala != SALA_ATRIO && !biblioteca.lojaAberta && !biblioteca.desafioAberto &&
-                               !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto && !biblioteca.lab.aberto);
+                               !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto && !biblioteca.lab.aberto &&
+                               !biblioteca.seletorAberto);
         if (esconderCursor != IsCursorHidden()) {
             if (esconderCursor) HideCursor();
             else                ShowCursor();
@@ -26267,7 +26882,8 @@ int main(void) {
                 fundoPausa = (Texture2D){0};
 
             } else if ((tela == JOGANDO || tela == CORREDOR || tela == BATALHA || tela == BATALHA_B2 ||
-                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta && !biblioteca.mapaAberto && !biblioteca.lab.aberto)) && !transicao.ativa) {
+                        (tela == BIBLIOTECA && !biblioteca.lojaAberta && !biblioteca.enciclopediaAberta && !biblioteca.mapaAberto && !biblioteca.lab.aberto &&
+                         !biblioteca.seletorAberto)) && !transicao.ativa && dlg.estado != DLG_CONFIRMA) {
 
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 capturarPausa = true;
@@ -26788,6 +27404,14 @@ int main(void) {
                     cartao.inicio = GetTime();
                 }
 
+                // Terminal de atalho (Bloco 1 -> Bloco 2): SIM vai ao átrio da Biblioteca sem marcar nada do
+                // Bloco 1 como concluído (a porta normal continua exigindo a vitória sobre a Mestre)
+                if (m == OBJ_ATALHO_BLOCO2 && (r == RES_SIM || r == RES_NAO)) {
+                    Telemetria("atalho_bloco1_bloco2", (r == RES_SIM) ? "sim" : "nao", (float)ContarConcluidos(&progresso), chefeVencido ? 1 : 0);
+                    if (r == RES_SIM)
+                        IniciarTransicao(&transicao, BIBLIOTECA, DURACAO_FADE);
+                }
+
                 // Errou ou o tempo acabou: a alucinação ataca
                 if ((r == RES_ERROU || r == RES_TEMPO) && m >= 0) {
 
@@ -26909,6 +27533,13 @@ int main(void) {
 
                             DialogoIniciar(&dlg, &dialogoPortaTrancada, OBJ_NENHUM);
                         }
+                    }
+
+                    // Terminal de atalho para o Bloco 2 (pede confirmação)
+                    else if (CheckCollisionRecs(jogador, ZONA_TERMINAL_CORREDOR)) {
+
+                        DialogoConfirmar(&dlg, TEXTO_ATALHO_BLOCO2, OBJ_ATALHO_BLOCO2);
+                        Telemetria("atalho_bloco2_terminal", "", (float)ContarConcluidos(&progresso), chefeVencido ? 1 : 0);
                     }
 
                     // Monitores
@@ -27532,6 +28163,9 @@ int main(void) {
                 saidaLiberada ? GREEN : (chefeNaPorta ? MAGENTA : RED)
             );
 
+            // Terminal de atalho para o Bloco 2 (parede de baixo, com a trilha de setas até a saída)
+            DesenharTerminalAtalho(TERMINAL_ATALHO_CORREDOR, "PULAR PARA O BLOCO 2", CentroRetangulo(PORTA_FIM_CORREDOR), true, tempo);
+
             // -------------------------------------------------
             // MONITORES
             // -------------------------------------------------
@@ -27606,6 +28240,14 @@ int main(void) {
                         12,
                         GOLD
                     );
+                }
+
+                // Terminal de atalho
+                if (CheckCollisionRecs(jogador, ZONA_TERMINAL_CORREDOR)) {
+
+                    const char *txt = "PRESSIONE E: ATALHO";
+                    DrawRectangle((int)TERMINAL_ATALHO_CORREDOR.x - MeasureText(txt, 12) / 2 - 6, (int)TERMINAL_ATALHO_CORREDOR.y - 80, MeasureText(txt, 12) + 12, 18, Fade(BLACK, 0.75f));
+                    DrawText(txt, (int)TERMINAL_ATALHO_CORREDOR.x - MeasureText(txt, 12) / 2, (int)TERMINAL_ATALHO_CORREDOR.y - 77, 12, COR_ATALHO);
                 }
             }
 

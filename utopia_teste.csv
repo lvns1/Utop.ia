@@ -1137,3 +1137,61 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 686.8;rogue_melhoria;MEMÓRIA EXPANDIDA;8.0;1
 686.9;rogue_melhoria;MEMÓRIA EXPANDIDA;12.0;2
 688.4;rogue_melhoria;BATERIA DE DADOS;8.0;1
+2.9;sessao_inicio;;0.0;0
+28.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.2;3
+32.6;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.8;3
+35.1;atalho_bloco2_terminal;;0.0;0
+54.4;atalho_bloco1_bloco2;nao;0.0;0
+58.2;atalho_bloco2_terminal;;0.0;0
+60.8;atalho_bloco1_bloco2;sim;0.0;0
+88.4;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.9;5
+90.7;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;2.1;2
+94.9;seletor_aberto;;0.0;0
+105.4;seletor_confronto;O SILOGISTA;0.0;1
+119.6;dialogo;* A Câmara da Inferência gira. Símbolos lógicos orbitam ;13.8;4
+139.6;rogue_silogista_bh;MODUS PONENS;34.2;0
+141.4;dialogo;Luci: Isso! P -> Q e P: logo, Q. É o MODUS PONENS, a regra ;1.7;2
+156.3;rogue_silogista_bh;AFIRMAÇÃO DO CONSEQUENTE;50.9;0
+157.7;dialogo;Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR;1.4;2
+160.5;rogue_silogista_bh_erro;LOGO Q;3.0;0
+179.8;rogue_silogista_bh_erro;LOGO Q;3.0;0
+182.4;rogue_silogista_bh;MODUS TOLLENS;76.9;0
+183.6;dialogo;Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se ;1.2;2
+203.0;dialogo;* O Silogista se desmonta numa chuva de conectivos que se ap;3.0;5
+203.0;rogue_silogista_vitoria;;97.6;0
+203.0;seletor_vitoria;O SILOGISTA;97.6;1
+211.5;seletor_aberto;;0.0;0
+215.3;seletor_confronto;ALUCINADOR;0.0;1
+217.6;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.0;4
+223.9;rogue_chefe_fase2;;8.7;0
+225.2;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.3;2
+229.8;rogue_chefe_afirmacao;certo;6.0;3
+241.7;rogue_chefe_afirmacao;certo;6.0;5
+244.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+250.3;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;4.1;7
+250.3;rogue_chefe_vitoria;seletor;35.0;0
+250.3;seletor_vitoria;ALUCINADOR;35.0;1
+251.6;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;1.0;1
+256.5;bloco3_porta;;41.2;0
+257.4;bloco3_entrada;boa;82.0;98
+259.3;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.2;3
+263.2;dialogo;* REGISTRO 1 // CONFIANÇA. Você seguiu minhas dicas sem co;0.8;2
+266.7;dialogo;* REGISTRO 2 // CONTRADIÇÕES. Eu contradisse o que você v;1.1;2
+270.1;dialogo;* REGISTRO 3 // ORIGEM. Arquivo LUCI.exe, criado antes de Ut;1.1;2
+270.5;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.4;1
+274.4;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.0;2
+279.7;bloco3_fase;;64.5;2
+281.5;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;1.7;3
+285.1;bloco3_contestar;errado;0.0;1
+297.3;bloco3_contestar;certo;0.0;-1
+303.3;bloco3_contestar;certo;0.0;-1
+306.0;bloco3_queda;1;90.7;1
+309.6;bloco3_fase_oculta;;94.3;2
+312.4;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;2.8;4
+324.2;bloco3_queda;2;109.0;2
+327.1;bloco3_fase_oculta;;111.9;3
+329.1;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;1.9;3
+337.1;bloco3_vitoria;bom;0.0;0
+341.4;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;2.1;4
+341.4;fim_do_jogo;bom;82.0;208
+343.7;ranking;LIC;208.0;9

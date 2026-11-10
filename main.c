@@ -822,6 +822,60 @@ static int ContarLinhas(const char *texto)
     return n;
 }
 
+// ---------- Mouse nos menus ----------
+// Todo menu do jogo aceita teclado E mouse: passar o mouse por cima marca a opção,
+// o clique escolhe, e nas telas de texto o clique vale como ENTER.
+static bool MouseMexeu(void)     { return Vector2Length(GetMouseDelta()) > 0.5f; }
+static bool CliqueMouse(void)    { return IsMouseButtonPressed(MOUSE_BUTTON_LEFT); }
+static bool MouseEm(Rectangle r) { return CheckCollisionPointRec(GetMousePosition(), r); }
+
+// "ENTER / CLIQUE >" piscando, terminando onde terminava o antigo "ENTER >"
+static void DesenharDicaAvancar(int x, int y, int tam)
+{
+    const char *dica = "ENTER / CLIQUE >";
+    int fim = x + MeasureText("ENTER >", tam);
+    DrawText(dica, fim - MeasureText(dica, tam), y, tam, GOLD);
+}
+
+// Botão "X" de fechar janela (faz o mesmo que ESC / BACKSPACE)
+static void DesenharBotaoFechar(Rectangle r, Color cor)
+{
+    bool sobre = MouseEm(r);
+    Color corX = sobre ? WHITE : cor;
+    float m = 6.0f;
+
+    DrawRectangleRec(r, sobre ? Fade(cor, 0.35f) : Fade(BLACK, 0.6f));
+    DrawRectangleLinesEx(r, 2, corX);
+    DrawLineEx((Vector2){ r.x + m, r.y + m }, (Vector2){ r.x + r.width - m, r.y + r.height - m }, 2.0f, corX);
+    DrawLineEx((Vector2){ r.x + r.width - m, r.y + m }, (Vector2){ r.x + m, r.y + r.height - m }, 2.0f, corX);
+}
+
+// Botão de texto: acende com o mouse em cima ou quando o teclado o marca
+static void DesenharBotaoMenu(Rectangle r, const char *texto, int tam, Color cor, bool marcado)
+{
+    bool aceso = marcado || MouseEm(r);
+
+    DrawRectangleRec(r, aceso ? Fade(cor, 0.25f) : Fade(BLACK, 0.55f));
+    DrawRectangleLinesEx(r, 2, aceso ? cor : Fade(GRAY, 0.7f));
+    DrawText(texto, (int)(r.x + r.width / 2) - MeasureText(texto, tam) / 2, (int)(r.y + r.height / 2) - tam / 2, tam, aceso ? cor : LIGHTGRAY);
+}
+
+// Texto clicável (atalhos escritos nas janelas, como "TAB - saber mais")
+static Rectangle RetTextoClicavel(const char *texto, int x, int y, int tam)
+{
+    return (Rectangle){ (float)x - 3, (float)y - 3, (float)MeasureText(texto, tam) + 6, (float)tam + 6 };
+}
+
+static void DesenharTextoClicavel(const char *texto, int x, int y, int tam, Color cor)
+{
+    bool sobre = MouseEm(RetTextoClicavel(texto, x, y, tam));
+
+    DrawText(texto, x, y, tam, sobre ? WHITE : cor);
+
+    if (sobre)
+        DrawLine(x, y + tam + 1, x + MeasureText(texto, tam), y + tam + 1, WHITE);
+}
+
 // Letras com acento ocupam 2 bytes em UTF-8. Na máquina de escrever,
 // isso garante que nunca aparece "meia letra" na tela.
 static int FimDoCaractere(const char *s, int n)
@@ -1444,6 +1498,46 @@ static int AlturaPainelPergunta(const SessaoDialogo *d)
     return h;
 }
 
+// Caixa de diálogo de baixo (a mesma conta de DialogoDesenhar)
+static Rectangle DialogoRetCaixa(const SessaoDialogo *d)
+{
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + ((d->estado == DLG_CONFIRMA) ? 30 : 0);
+
+    if (alturaCaixa < 150)
+        alturaCaixa = 150;
+
+    return (Rectangle){ 50, (float)(ALTURA_TELA - 14 - alturaCaixa), 700, (float)alturaCaixa };
+}
+
+// O atalho "TAB - ..." escrito na caixa (NULL = não aparece)
+static const char *DialogoTextoTab(const SessaoDialogo *d)
+{
+    if (d->estado != DLG_PAGINAS)                   return NULL;
+    if (d->conteudo.saberMais != NULL)              return "TAB - saber mais";
+    if (d->versaoCurta != NULL || d->veioDoCartao)  return "TAB - voltar ao resumo";
+    return NULL;
+}
+
+static Rectangle DialogoRetTab(const SessaoDialogo *d)
+{
+    Rectangle c = DialogoRetCaixa(d);
+    const char *t = DialogoTextoTab(d);
+
+    return RetTextoClicavel((t != NULL) ? t : "", (int)c.x + 20, (int)(c.y + c.height - 24), 12);
+}
+
+// Alternativa i da pergunta (a mesma conta de DialogoDesenhar), para o mouse
+static Rectangle DialogoRetOpcaoPergunta(const SessaoDialogo *d, int i)
+{
+    int espaco = d->fonteOpcao + 5;
+    int y = (ALTURA_TELA - AlturaPainelPergunta(d)) / 2 + 58 + ContarLinhas(d->texto) * 24 + 14;
+
+    for (int k = 0; k < i; k++)
+        y += ContarLinhas(d->opcoesTexto[k]) * espaco + 10;
+
+    return (Rectangle){ 56, (float)y - 5, 640, (float)(ContarLinhas(d->opcoesTexto[i]) * espaco + 8) };
+}
+
 static void DialogoMostrarPergunta(SessaoDialogo *d)
 {
     static const int fontes[] = {16, 15, 14, 13};
@@ -1484,6 +1578,10 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
                    IsKeyPressed(KEY_E) ||
                    IsKeyPressed(KEY_SPACE);
 
+    // Mouse: o clique vale como ENTER (o primeiro instante da conversa não conta,
+    // para um tiro dado bem na hora não pular a fala)
+    bool clique = CliqueMouse() && (GetTime() - d->inicio > 0.25);
+
     // Efeito máquina de escrever
     int total = (int)strlen(d->texto);
 
@@ -1501,8 +1599,13 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         case DLG_PAGINAS: {
 
-            // TAB: abre a versão completa / volta para a versão curta
-            if (IsKeyPressed(KEY_TAB)) {
+            // TAB (ou clique no "TAB - ..."): abre a versão completa / volta para a versão curta
+            bool cliqueTab = clique && DialogoTextoTab(d) != NULL && MouseEm(DialogoRetTab(d));
+
+            if (cliqueTab)
+                clique = false;
+
+            if (IsKeyPressed(KEY_TAB) || cliqueTab) {
 
                 if (d->conteudo.saberMais != NULL) {
 
@@ -1524,6 +1627,9 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
                     return RES_VOLTAR_CARTAO;
                 }
             }
+
+            if (clique)
+                avancar = true;
 
             if (!avancar)
                 break;
@@ -1558,7 +1664,7 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
             // A barra de tempo só começa quando a pergunta terminou de aparecer
             if (!terminou) {
 
-                if (avancar)
+                if (avancar || clique)
                     d->visiveis = (float)total;
 
                 break;
@@ -1581,6 +1687,21 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
             if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
                 d->selecao = (d->selecao + 1) % NUM_OPCOES;
 
+            // Mouse: passar por cima marca a alternativa, clicar responde
+            int cliqueOpcao = -1;
+
+            for (int i = 0; i < NUM_OPCOES; i++) {
+
+                if (!MouseEm(DialogoRetOpcaoPergunta(d, i)))
+                    continue;
+
+                if (MouseMexeu())
+                    d->selecao = i;
+
+                if (clique)
+                    cliqueOpcao = i;
+            }
+
             // Pequeno atraso para ninguém responder sem querer
             if (TEMPO_QUIZ - d->tempoRestante < ATRASO_RESPOSTA)
                 break;
@@ -1592,6 +1713,7 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
             if (IsKeyPressed(KEY_TWO)   || IsKeyPressed(KEY_KP_2)) escolha = 1;
             if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) escolha = 2;
             if (IsKeyPressed(KEY_FOUR)  || IsKeyPressed(KEY_KP_4)) escolha = 3;
+            if (cliqueOpcao >= 0)                                    escolha = cliqueOpcao;
 
             if (escolha >= 0) {
 
@@ -1619,6 +1741,9 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
         } break;
 
         case DLG_FEEDBACK: {
+
+            if (clique)
+                avancar = true;
 
             if (!avancar)
                 break;
@@ -1764,7 +1889,7 @@ static void DialogoDesenhar(const SessaoDialogo *d)
             }
 
             DrawText(
-                "W/S ou SETAS: escolher   |   ENTER: confirmar   |   1-4: atalho",
+                "W/S, SETAS ou MOUSE: escolher   |   ENTER ou CLIQUE: confirmar   |   1-4: atalho",
                 px,
                 (int)(painel.y + painel.height - 22),
                 10,
@@ -1804,9 +1929,9 @@ static void DialogoDesenhar(const SessaoDialogo *d)
 
     // TAB: abre a versão completa ou volta para a curta
     if (d->estado == DLG_PAGINAS && d->conteudo.saberMais != NULL)
-        DrawText("TAB - saber mais", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
+        DesenharTextoClicavel("TAB - saber mais", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
     else if (d->estado == DLG_PAGINAS && (d->versaoCurta != NULL || d->veioDoCartao))
-        DrawText("TAB - voltar ao resumo", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
+        DesenharTextoClicavel("TAB - voltar ao resumo", (int)caixa.x + 20, (int)(caixa.y + caixa.height - 24), 12, Fade(SKYBLUE, 0.85f));
 
     // Opções SIM / NÃO com o coração na escolhida
     if (confirma && terminou) {
@@ -1854,13 +1979,7 @@ static void DialogoDesenhar(const SessaoDialogo *d)
 
         if (piscar) {
 
-            DrawText(
-                "ENTER >",
-                (int)(caixa.x + caixa.width - 90),
-                (int)(caixa.y + caixa.height - 26),
-                12,
-                GOLD
-            );
+            DesenharDicaAvancar((int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12);
         }
     }
 }
@@ -2125,7 +2244,8 @@ static bool BatalhaAtualizar(Batalha *b)
     bool avancar = IsKeyPressed(KEY_ENTER) ||
                    IsKeyPressed(KEY_E) ||
                    IsKeyPressed(KEY_SPACE) ||
-                   IsKeyPressed(KEY_Z);
+                   IsKeyPressed(KEY_Z) ||
+                   CliqueMouse();                   // o clique vale como ENTER
 
     int total = (int)strlen(b->texto);
 
@@ -2382,7 +2502,7 @@ static void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo)
         DesenharTextoLinhas(parcial, (int)caixa.x + 24, (int)caixa.y + 22, FONTE_BATALHA, 30, WHITE);
 
         if (terminou && (((int)(GetTime() * 2.0)) % 2 == 0))
-            DrawText("ENTER >", (int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12, GOLD);
+            DesenharDicaAvancar((int)(caixa.x + caixa.width - 90), (int)(caixa.y + caixa.height - 26), 12);
     }
 
     // ---------- Esquiva ----------
@@ -2436,7 +2556,7 @@ static void BatalhaDesenhar(const Batalha *b, const char *nickname, float tempo)
     // ---------- Instruções ----------
     const char *instrucao = (b->fase == FASE_DESVIO)
         ? "W A S D ou SETAS  -  mova o coração e desvie!"
-        : "ENTER  -  continuar";
+        : "ENTER ou CLIQUE  -  continuar";
 
     DrawText(instrucao, LARGURA_TELA / 2 - MeasureText(instrucao, 12) / 2, 540, 12, GRAY);
 }
@@ -2815,7 +2935,7 @@ static bool AtualizarTelaRanking(TelaRanking *t)
     if (!t->aberto || GetTime() - t->inicio < 0.6)
         return false;
 
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse()) {
         t->aberto = false;
         return true;
     }
@@ -2882,7 +3002,7 @@ static void DesenharTelaRanking(const TelaRanking *t, const Ranking *r, float te
     DrawText(lugar, cx - MeasureText(lugar, 14) / 2, (int)painel.y + 408, 14, corLugar);
 
     if (GetTime() - t->inicio > 0.6 && ((int)(GetTime() * 2.0)) % 2 == 0)
-        DrawText("ENTER >", (int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12, GOLD);
+        DesenharDicaAvancar((int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12);
 }
 
 // Painel do ranking no menu principal
@@ -3742,11 +3862,45 @@ static void B2ComecarGolpeFinal(BatalhaB2 *b)
 }
 
 // Devolve true quando a batalha terminou
+// Onde ficam as opções da rodada (a mesma conta de BatalhaB2Desenhar), para o mouse.
+// i = numOpcoes é o botão de ajuda da Luci.
+static Rectangle B2RetOpcao(const BatalhaB2 *b, int i)
+{
+    const RodadaEscolha *r = RodadaAtualB2(b);
+
+    if (b->estiloAcao) {
+
+        int largura = 270, espaco = 24;
+        int total = r->numOpcoes * largura + (r->numOpcoes - 1) * espaco;
+        int x0 = LARGURA_TELA / 2 - total / 2;
+        float yBotao = CAIXA_ACAO.y + CAIXA_ACAO.height + 16;
+
+        if (i >= r->numOpcoes)
+            return (Rectangle){ LARGURA_TELA / 2.0f - 165, yBotao + 54, 330, 34 };
+
+        return (Rectangle){ (float)(x0 + i * (largura + espaco)), yBotao, (float)largura, 44 };
+    }
+
+    int px = (int)CAIXA_B2.x + 24, py = (int)CAIXA_B2.y + 16;
+    int f = b->fonteDesafio;
+    int y = py + ContarLinhas(b->enunciado) * (f + 6) + 12;
+
+    for (int k = 0; k < r->numOpcoes && k < i; k++)
+        y += ContarLinhas(b->opcoesTexto[k]) * (f + 6) + 6;
+
+    if (i >= r->numOpcoes)
+        return (Rectangle){ (float)px + 20, (float)y + 2, 330, 30 };
+
+    return (Rectangle){ (float)px, (float)y - 3, CAIXA_B2.width - 48, (float)(ContarLinhas(b->opcoesTexto[i]) * (f + 6) + 4) };
+}
+
 static bool BatalhaB2Atualizar(BatalhaB2 *b)
 {
     float dt = GetFrameTime();
 
-    bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_Z);
+    bool teclaConfirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_Z);
+    bool clique = CliqueMouse();
+    bool confirmar = teclaConfirmar || clique;          // nas telas de texto o clique vale como ENTER
     bool cima  = IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP);
     bool baixo = IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN);
 
@@ -3812,6 +3966,9 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
             bool temAjuda = (b->estabilidade != NULL);
             int ajuda = n;                          // o botão de ajuda é a "opção" n
 
+            // Nas opções, o clique só vale em cima de uma delas (ou do botão de ajuda)
+            confirmar = teclaConfirmar;
+
             bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT);
             bool direita  = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
 
@@ -3834,11 +3991,31 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                 if (baixo) b->selecao = (b->selecao + 1) % total;
             }
 
+            // Mouse: passar por cima marca, clicar escolhe
+            int cliqueOpcao = -1;
+
+            for (int i = 0; i < n + (temAjuda ? 1 : 0); i++) {
+
+                if (!MouseEm(B2RetOpcao(b, i)))
+                    continue;
+
+                if (MouseMexeu())
+                    b->selecao = i;
+
+                if (clique)
+                    cliqueOpcao = i;
+            }
+
             if (b->selecao != antes)
                 TocarSom(sfxSelecao);
 
             if (IsKeyPressed(KEY_H))
                 B2PedirAjuda(b);
+
+            if (cliqueOpcao >= 0) {
+                b->selecao = cliqueOpcao;
+                confirmar = true;
+            }
 
             // ENTER no botão de ajuda: pede ajuda e volta para as opções
             if (confirmar && temAjuda && b->selecao == ajuda) {
@@ -4447,7 +4624,7 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             if (k > 1.0f) k = 1.0f;
 
             if (((int)(GetTime() * 2.0)) % 2 == 0)
-                DrawText("ENTER >", ex, ey, 12, GOLD);
+                DesenharDicaAvancar(ex, ey, 12);
 
             DrawRectangle(ex, ey + 15, (int)(52 * k), 2, Fade(GOLD, 0.6f));
         }
@@ -4557,9 +4734,9 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
             yDica = yBotao + 96;
         }
 
-        const char *dica = (b->estabilidade == NULL) ? "A/D ou SETAS: escolher a ação    ENTER: confirmar"
-                         : (b->chefe ? "A/D: concordar ou contestar    S: pedir fonte à Luci    ENTER: confirmar"
-                                     : "A/D: escolher a ação    S: ajuda da Luci    ENTER: confirmar");
+        const char *dica = (b->estabilidade == NULL) ? "A/D, SETAS ou MOUSE: escolher a ação    ENTER ou CLIQUE: confirmar"
+                         : (b->chefe ? "A/D: concordar ou contestar    S: pedir fonte à Luci    ENTER ou CLIQUE: confirmar"
+                                     : "A/D ou MOUSE: escolher a ação    S: ajuda da Luci    ENTER ou CLIQUE: confirmar");
         DrawText(dica, LARGURA_TELA / 2 - MeasureText(dica, 10) / 2, yDica, 10, GRAY);
     }
 
@@ -4584,7 +4761,7 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
         if (b->estabilidade != NULL)
             B2DesenharBotaoAjuda(b, (Rectangle){ (float)px + 20, (float)y + 2, 330, 30 }, b->selecao == r->numOpcoes);
 
-        DrawText("W/S ou SETAS: escolher    ENTER: confirmar    1-4: atalho    H: ajuda da Luci",
+        DrawText("W/S ou MOUSE: escolher    ENTER ou CLIQUE: confirmar    1-4: atalho    H: ajuda da Luci",
                  px, (int)(caixa.y + caixa.height) - 22, 10, GRAY);
     }
 
@@ -4713,10 +4890,10 @@ static void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float te
     DrawRectangle(275, yStatus, b->hp * 4, 20, YELLOW);
     DrawText(TextFormat("%d / %d", b->hp, HP_MAX_B2), 275 + HP_MAX_B2 * 4 + 14, yStatus, 20, WHITE);
 
-    const char *instrucao = "ENTER  -  continuar";
+    const char *instrucao = "ENTER ou CLIQUE  -  continuar";
 
     if (b->fase == B2_DESVIO)          instrucao = "W A S D ou SETAS  -  mova o coração e desvie!";
-    else if (b->fase == B2_GOLPE_FINAL) instrucao = "ENTER  -  VERIFICAR!";
+    else if (b->fase == B2_GOLPE_FINAL) instrucao = "ENTER ou CLIQUE  -  VERIFICAR!";
     else if (b->fase == B2_FINALIZANDO) instrucao = "";
 
     if (b->fase != B2_DESAFIO)
@@ -4743,7 +4920,11 @@ static bool AtualizarCartao(CartaoResumo *c, SessaoDialogo *dlg)
     if (!c->ativo || GetTime() - c->inicio < 0.4)
         return false;
 
-    if (IsKeyPressed(KEY_TAB) && c->saberMais != NULL) {
+    // Clique no "TAB - saber mais" abre a versão completa; clique no resto do cartão fecha
+    bool cliqueTab = CliqueMouse() && c->saberMais != NULL &&
+                     MouseEm(RetTextoClicavel("TAB - saber mais", 160 + 130, 175 + 210 - 26, 12));
+
+    if ((IsKeyPressed(KEY_TAB) || cliqueTab) && c->saberMais != NULL) {
         c->ativo = false;
         Telemetria("saber_mais", c->titulo, (float)(GetTime() - c->inicio), 0);
         DialogoIniciar(dlg, c->saberMais, OBJ_NENHUM);
@@ -4751,7 +4932,7 @@ static bool AtualizarCartao(CartaoResumo *c, SessaoDialogo *dlg)
         return true;
     }
 
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse()) {
         c->ativo = false;
         Telemetria("cartao", c->titulo, (float)(GetTime() - c->inicio), 0);
         return true;
@@ -4810,10 +4991,10 @@ static void DesenharCartao(const CartaoResumo *c, float tempo)
     DesenharTextoLinhas(frase, tx, (int)painel.y + 74, 16, 22, WHITE);
 
     if (((int)(GetTime() * 2.0)) % 2 == 0)
-        DrawText("ENTER >", (int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12, GOLD);
+        DesenharDicaAvancar((int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12);
 
     if (c->saberMais != NULL)
-        DrawText("TAB - saber mais", tx, (int)(painel.y + painel.height) - 26, 12, Fade(SKYBLUE, 0.85f));
+        DesenharTextoClicavel("TAB - saber mais", tx, (int)(painel.y + painel.height) - 26, 12, Fade(SKYBLUE, 0.85f));
 }
 
 // Fim de uma batalha do Bloco 1: pontos, cartão e fala da Luci
@@ -9665,6 +9846,46 @@ static void RogueFecharDesafio(Biblioteca *b)
     }
 }
 
+// Onde fica a opção i do desafio do guardião (a mesma conta de DesenharDesafioRogue), para o mouse
+static Rectangle RogueRetOpcaoDesafio(const Biblioteca *b, int i)
+{
+    const DesafioEdu *d = &DESAFIOS[b->desafio];
+    Rectangle painel = { 60, 70, 680, 440 };
+    int x = (int)painel.x + 24, y = (int)painel.y + 16;
+    char linhas[512];
+
+    QuebrarTexto(d->enunciado, (int)painel.width - 48, 18, linhas, (int)sizeof(linhas));
+    y += 42 + ContarLinhas(linhas) * 24 + 14;
+
+    for (int k = 0; k <= i && k < d->numOpcoes; k++) {
+        char op[256];
+        QuebrarTexto(TextFormat("%d) %s", k + 1, d->opcoes[k]), (int)painel.width - 90, 16, op, (int)sizeof(op));
+        int n = ContarLinhas(op);
+        if (k == i)
+            return (Rectangle){ (float)x, (float)y - 4, painel.width - 48, (float)(n * 20 + 6) };
+        y += n * 20 + 8;
+    }
+
+    return (Rectangle){ 0, 0, 0, 0 };
+}
+
+// Atalhos de ajuda escritos no rodapé do desafio (também clicáveis)
+#define X_LENTE_DESAFIO   84
+#define X_LUCI_DESAFIO    334
+#define Y_AJUDA_DESAFIO   (70 + 440 - 46)
+
+static const char *RogueTextoLenteDesafio(const Biblioteca *b)
+{
+    return (b->j.itens[ITEM_LENTE] > 0) ? TextFormat("L: Lente da Verificação (x%d)", b->j.itens[ITEM_LENTE])
+                                        : "L: (sem Lente da Verificação)";
+}
+
+static const char *RogueTextoLuciDesafio(const Biblioteca *b)
+{
+    return !b->dicaDaLuci ? "H: dica da Luci (-1 de estabilidade)"
+         : ((b->verificouDica || b->opcaoDica < 0) ? "H: a Luci já deu a dica" : "V: verificar a dica (Lente ou 1 FC)");
+}
+
 static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float dt)
 {
     const DesafioEdu *d = &DESAFIOS[b->desafio];
@@ -9688,14 +9909,31 @@ static void RogueAtualizarDesafio(Biblioteca *b, ProgressoCorredor *prog, float 
     if (b->tempoDesafio < 0.4f)             // evita responder sem querer
         return;
 
+    bool clique = CliqueMouse();
+
     if (b->respondido) {
-        if (confirmar)
+        if (confirmar || clique)
             RogueFecharDesafio(b);
         return;
     }
 
     if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { RogueMoverSelecaoDesafio(b, -1); TocarSom(sfxSelecao); }
     if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { RogueMoverSelecaoDesafio(b, 1);  TocarSom(sfxSelecao); }
+
+    // Mouse: passar por cima marca, clicar responde (opção riscada não vale)
+    for (int i = 0; i < d->numOpcoes; i++) {
+        if (b->opcaoRiscada[i] || !MouseEm(RogueRetOpcaoDesafio(b, i))) continue;
+        if (MouseMexeu() && b->selecaoDesafio != i) { b->selecaoDesafio = i; TocarSom(sfxSelecao); }
+        if (clique) { b->selecaoDesafio = i; confirmar = true; }
+    }
+
+    // Os atalhos do rodapé também são clicáveis
+    if (clique && MouseEm(RetTextoClicavel(RogueTextoLenteDesafio(b), X_LENTE_DESAFIO, Y_AJUDA_DESAFIO, 12)))
+        RogueUsarLente(b);
+    if (clique && MouseEm(RetTextoClicavel(RogueTextoLuciDesafio(b), X_LUCI_DESAFIO, Y_AJUDA_DESAFIO, 12))) {
+        if (b->dicaDaLuci) RogueVerificarDica(b);
+        else               RoguePedirLuci(b);
+    }
 
     for (int i = 0; i < d->numOpcoes; i++)
         if (IsKeyPressed(KEY_ONE + i) && !b->opcaoRiscada[i]) {
@@ -15742,6 +15980,8 @@ static Rectangle RogueCartaEscolha(int i, int n)
     return (Rectangle){ 400.0f - total / 2.0f + (float)i * (w + gap), 132.0f, w, h };
 }
 
+#define RET_RECUSAR_ESCOLHA ((Rectangle){ 310, 480, 180, 26 })
+
 static void RogueAtualizarEscolha(Biblioteca *b)
 {
     int n = b->numOpcoes;
@@ -15763,7 +16003,7 @@ static void RogueAtualizarEscolha(Biblioteca *b)
     if (b->animEscolha < 0.35f)             // evita confirmar sem querer ao abrir
         return;
 
-    if (IsKeyPressed(KEY_BACKSPACE)) {
+    if (IsKeyPressed(KEY_BACKSPACE) || (CliqueMouse() && MouseEm(RET_RECUSAR_ESCOLHA))) {
         b->perm->fragmentos += FC_RECUSAR_ESCOLHA;
         b->escolhaAberta = false;
         RogueAviso(b, TextFormat("Recusou: +%d FRAGMENTOS", FC_RECUSAR_ESCOLHA));
@@ -16106,13 +16346,40 @@ static void RogueResolverEvento(Biblioteca *b, ProgressoCorredor *prog, SessaoDi
     }
 }
 
+#define RET_FECHAR_EVENTO ((Rectangle){ 698, 88, 24, 20 })
+
+// Opção i do evento (a mesma conta de DesenharEvento), para o mouse
+static Rectangle RogueRetOpcaoEvento(const TelaEvento *t, int i)
+{
+    Rectangle painel = { 70, 80, 660, 420 };
+    int x = (int)painel.x + 24, y = (int)painel.y + 18 + 40;
+    char linhas[640];
+
+    QuebrarTexto(t->texto, (int)painel.width - 48, 16, linhas, (int)sizeof(linhas));
+    y += ContarLinhas(linhas) * 22 + 18;
+
+    for (int k = 0; k <= i && k < t->numOpcoes; k++) {
+        QuebrarTexto(TextFormat("%d) %s", k + 1, t->rotulo[k]), (int)painel.width - 90, 16, linhas, (int)sizeof(linhas));
+        int nr = ContarLinhas(linhas);
+        char ef[300] = "";
+        if (t->efeito[k][0]) QuebrarTexto(t->efeito[k], (int)painel.width - 100, 12, ef, (int)sizeof(ef));
+        int ne = ef[0] ? ContarLinhas(ef) : 0;
+        int alt = nr * 20 + ne * 15 + 10;
+        if (k == i)
+            return (Rectangle){ (float)x - 10, (float)y - 5, painel.width - 28, (float)alt };
+        y += alt + 6;
+    }
+
+    return (Rectangle){ 0, 0, 0, 0 };
+}
+
 static void RogueAtualizarEvento(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo *dlg)
 {
     bool confirmar = IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
 
     // Mostrando o resultado: ENTER fecha (e abre a escolha prometida, se houver)
     if (b->eventoResolvido) {
-        if (confirmar) {
+        if (confirmar || CliqueMouse()) {
             b->eventoAberto = false;
             b->eventoResolvido = false;
             if (b->escolhaPendente >= 0) {
@@ -16132,7 +16399,15 @@ static void RogueAtualizarEvento(Biblioteca *b, ProgressoCorredor *prog, SessaoD
     for (int i = 0; i < n; i++)
         if (IsKeyPressed(KEY_ONE + i)) { b->selecaoEvento = i; TocarSom(sfxSelecao); }
 
-    if (IsKeyPressed(KEY_BACKSPACE)) {          // fecha sem escolher (dá para voltar)
+    // Mouse: passar por cima marca, clicar escolhe; o X fecha sem escolher
+    bool clique = CliqueMouse();
+    for (int i = 0; i < n; i++) {
+        if (!MouseEm(RogueRetOpcaoEvento(&t, i))) continue;
+        if (MouseMexeu() && b->selecaoEvento != i) { b->selecaoEvento = i; TocarSom(sfxSelecao); }
+        if (clique) { b->selecaoEvento = i; confirmar = true; }
+    }
+
+    if (IsKeyPressed(KEY_BACKSPACE) || (clique && MouseEm(RET_FECHAR_EVENTO))) {   // fecha sem escolher (dá para voltar)
         b->eventoAberto = false;
         return;
     }
@@ -17797,6 +18072,7 @@ typedef struct {
 #define LAB_PAINEL_Y     30
 #define LAB_PAINEL_W     744
 #define LAB_PAINEL_H     508
+#define RET_FECHAR_LAB   ((Rectangle){ 744, 36, 22, 20 })     // X do canto (o mesmo que ESC)
 #define LAB_Y_LUCI       410
 #define LAB_Y_BOTOES     470
 #define LAB_ALT_BOTAO    26
@@ -18277,7 +18553,7 @@ static void RogueAtualizarLab(Biblioteca *b, ProgressoCorredor *prog, float dt)
         }
     }
 
-    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || (CliqueMouse() && MouseEm(RET_FECHAR_LAB))) {
         if (L->etapa == LAB_RESULTADO) LabConcluir(b);
         else                           L->aberto = false;      // dá para voltar ao console
         TocarSom(sfxSelecao);
@@ -18983,17 +19259,35 @@ static bool RogueComprarArma(Biblioteca *b, TipoArma arma)
 }
 
 // Enciclopédia do átrio: W/S escolhe, E lê o texto completo, BACKSPACE/ESC sai
+#define RET_FECHAR_ENCICLOPEDIA ((Rectangle){ 656, 58, 26, 22 })
+
+// Linha do conceito c na enciclopédia (a mesma conta de DesenharEnciclopediaRogue)
+static Rectangle RogueRetConceito(int c)
+{
+    return (Rectangle){ 122, 120.0f + c * 96.0f, 556, 88 };
+}
+
 static void RogueAtualizarEnciclopedia(Biblioteca *b, SessaoDialogo *dlg)
 {
     if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { b->selecaoEnciclopedia = (b->selecaoEnciclopedia + NUM_CONCEITOS - 1) % NUM_CONCEITOS; TocarSom(sfxSelecao); }
     if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { b->selecaoEnciclopedia = (b->selecaoEnciclopedia + 1) % NUM_CONCEITOS;                  TocarSom(sfxSelecao); }
 
-    if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ESCAPE)) {
+    bool clique = CliqueMouse();
+
+    if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ESCAPE) || (clique && MouseEm(RET_FECHAR_ENCICLOPEDIA))) {
         b->enciclopediaAberta = false;
         return;
     }
 
     bool confirmar = IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
+
+    // Mouse: passar por cima marca o conceito, clicar lê
+    for (int k = 0; k < NUM_CONCEITOS; k++) {
+        if (!MouseEm(RogueRetConceito(k))) continue;
+        if (MouseMexeu() && b->selecaoEnciclopedia != k) { b->selecaoEnciclopedia = k; TocarSom(sfxSelecao); }
+        if (clique) { b->selecaoEnciclopedia = k; confirmar = true; }
+    }
+
     int c = b->selecaoEnciclopedia;
 
     if (!confirmar)
@@ -19009,10 +19303,34 @@ static void RogueAtualizarEnciclopedia(Biblioteca *b, SessaoDialogo *dlg)
 }
 
 // Loja do Byteco: A/D troca a aba, W/S escolhe, E (ou ENTER) compra, BACKSPACE/ESC sai
+// Abas e linhas da loja (a mesma conta de DesenharLojaRogue), para o mouse
+static Rectangle RogueRetAbaLoja(int a)
+{
+    return (Rectangle){ 174.0f + a * 152.0f, 122, 146, 24 };
+}
+
+static Rectangle RogueRetLinhaLoja(int i)
+{
+    return (Rectangle){ 162, 156.0f + i * 46.0f, 476, 40 };
+}
+
 static void RogueAtualizarLoja(Biblioteca *b)
 {
+    bool clique = CliqueMouse();
+    int abaClicada = -1;
+
+    for (int a = 0; a < 3; a++)
+        if (clique && MouseEm(RogueRetAbaLoja(a)))
+            abaClicada = a;
+
     bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT), direita = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
-    if (esquerda || direita) {
+    if (abaClicada >= 0) {
+        if (abaClicada != b->abaLoja) {
+            b->abaLoja = abaClicada;
+            b->selecaoLoja = 0;
+            TocarSom(sfxSelecao);
+        }
+    } else if (esquerda || direita) {
         b->abaLoja = (b->abaLoja + (direita ? 1 : 2)) % 3;
         b->selecaoLoja = 0;
         TocarSom(sfxSelecao);
@@ -19026,6 +19344,13 @@ static void RogueAtualizarLoja(Biblioteca *b)
 
     bool sair = IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ESCAPE);
     bool confirmar = IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
+
+    // Mouse: passar por cima marca a linha, clicar compra (ou sai, na linha SAIR)
+    for (int i = 0; i < total; i++) {
+        if (!MouseEm(RogueRetLinhaLoja(i))) continue;
+        if (MouseMexeu() && b->selecaoLoja != i) { b->selecaoLoja = i; TocarSom(sfxSelecao); }
+        if (clique && abaClicada < 0) { b->selecaoLoja = i; confirmar = true; }
+    }
 
     if (sair || (confirmar && b->selecaoLoja == linhas)) {
         b->lojaAberta = false;
@@ -19386,7 +19711,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     // Tela de resultado do fim do jogo: ENTER leva ao ranking e ao menu
     if (b->resultadoAberto) {
         b->tempoResultado += dt;
-        if (b->tempoResultado > 1.0f && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE))) {
+        if (b->tempoResultado > 1.0f && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse())) {
             b->resultadoAberto = false;
             RogueEsvaziarMochila(&b->j);
             RogueEntrarAtrio(b, false);
@@ -19455,7 +19780,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     }
 
     if (b->mapaAberto) {
-        if (IsKeyPressed(KEY_M) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ENTER))
+        if (IsKeyPressed(KEY_M) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ENTER) || CliqueMouse())
             b->mapaAberto = false;
         return ROGUE_NADA;
     }
@@ -19498,7 +19823,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     // Derrota: volta para o átrio sem os itens da tentativa
     if (b->morreu) {
         b->tempoMorte += dt;
-        bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE);
+        bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse();
         if (b->tempoMorte > 1.0f && (confirmar || b->tempoMorte > 5.0f)) {
             b->morreu = false;
             if (b->tipoSala == SALA_TRANSICAO || b->tipoSala == SALA_LUCI) {
@@ -20923,22 +21248,20 @@ static void DesenharDesafioRogue(const Biblioteca *b, float tempo)
             DrawText("A dica da Luci estava errada. Ela também pode alucinar!", x, yr + 70, 12, MAGENTA);
 
         if (((int)(GetTime() * 2.0)) % 2 == 0)
-            DrawText("ENTER >", (int)(painel.x + painel.width) - 90, (int)(painel.y + painel.height) - 24, 12, GOLD);
+            DesenharDicaAvancar((int)(painel.x + painel.width) - 90, (int)(painel.y + painel.height) - 24, 12);
         return;
     }
 
-    // Teclas de ajuda
-    const char *lente = (b->j.itens[ITEM_LENTE] > 0) ? TextFormat("L: Lente da Verificação (x%d)", b->j.itens[ITEM_LENTE])
-                                                      : "L: (sem Lente da Verificação)";
-    const char *luci  = !b->dicaDaLuci ? "H: dica da Luci (-1 de estabilidade)"
-                      : ((b->verificouDica || b->opcaoDica < 0) ? "H: a Luci já deu a dica" : "V: verificar a dica (Lente ou 1 FC)");
+    // Teclas de ajuda (também clicáveis)
+    const char *lente = RogueTextoLenteDesafio(b);
+    const char *luci  = RogueTextoLuciDesafio(b);
     const char *manual = (b->j.itens[ITEM_MANUAL] > 0) ? TextFormat("Manual: segunda chance (x%d)", b->j.itens[ITEM_MANUAL]) : "";
 
-    int yb = (int)(painel.y + painel.height) - 46;
-    DrawText(lente, x, yb, 12, (b->j.itens[ITEM_LENTE] > 0) ? GOLD : GRAY);
-    DrawText(luci, x + 250, yb, 12, b->dicaDaLuci ? GRAY : (Color){ 0, 228, 255, 255 });
+    int yb = Y_AJUDA_DESAFIO;
+    DesenharTextoClicavel(lente, X_LENTE_DESAFIO, yb, 12, (b->j.itens[ITEM_LENTE] > 0) ? GOLD : GRAY);
+    DesenharTextoClicavel(luci, X_LUCI_DESAFIO, yb, 12, b->dicaDaLuci ? GRAY : (Color){ 0, 228, 255, 255 });
     DrawText(manual, x + 500, yb, 12, GOLD);
-    DrawText("W/S ou 1-4: escolher    E/ENTER: responder", x, yb + 18, 10, GRAY);
+    DrawText("W/S, 1-4 ou MOUSE: escolher    E/ENTER ou CLIQUE: responder", x, yb + 18, 10, GRAY);
     (void)tempo;
 }
 
@@ -20974,7 +21297,9 @@ static void DesenharEnciclopediaRogue(const Biblioteca *b)
         DesenharTextoLinhas(resumo, (int)painel.x + 50, y + 24, 14, 18, sabe ? LIGHTGRAY : Fade(GRAY, 0.7f));
     }
 
-    const char *ajuda = "W/S escolher    E ler o texto completo    BACKSPACE sair";
+    DesenharBotaoFechar(RET_FECHAR_ENCICLOPEDIA, (Color){ 0, 228, 255, 255 });
+
+    const char *ajuda = "W/S ou MOUSE escolher    E / CLIQUE ler o texto completo    BACKSPACE ou X sair";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
 }
 
@@ -21073,7 +21398,7 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
         }
     }
 
-    const char *ajuda = "A/D trocar a aba    W/S escolher    E comprar    BACKSPACE sair";
+    const char *ajuda = "A/D aba    W/S ou MOUSE escolher    E / CLIQUE comprar    BACKSPACE sair";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
 }
 
@@ -22376,7 +22701,7 @@ static void DesenharResultadoFinal(const Biblioteca *b, float t)
     DrawText(luta, LARGURA_TELA / 2 - MeasureText(luta, 12) / 2, (int)painel.y + 394, 12, LIGHTGRAY);
 
     if (b->tempoResultado > 1.0f && ((int)(t * 2.0f)) % 2 == 0) {
-        const char *ok = "ENTER - ranking e menu";
+        const char *ok = "ENTER / CLIQUE - ranking e menu";
         DrawText(ok, LARGURA_TELA / 2 - MeasureText(ok, 14) / 2, (int)(painel.y + painel.height) - 34, 14, GOLD);
     }
 }
@@ -23032,8 +23357,10 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
         DrawText(PLACAS_SALAS_ROGUE[legenda[i]], lx + 18, yy + 1, 10, CORES_SALAS_ROGUE[legenda[i]]);
     }
 
-    const char *ajuda = "Portas douradas: as próximas salas.   M ou ENTER - fechar";
+    const char *ajuda = "Portas douradas: as próximas salas.   M, ENTER ou CLIQUE - fechar";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 16, 10, GRAY);
+
+    DesenharBotaoFechar((Rectangle){ painel.x + painel.width - 36, painel.y + 10, 26, 22 }, PURPLE);
 }
 
 // Ícone da categoria da melhoria (cartas e HUD)
@@ -23179,6 +23506,9 @@ static void DesenharEscolha(const Biblioteca *b, float tempo)
 
     const char *ajuda = TextFormat("A/D, 1-3 ou mouse: escolher     E / clique: confirmar     BACKSPACE: recusar (+%d FC)", FC_RECUSAR_ESCOLHA);
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 462, 10, GRAY);
+
+    // Recusar também com o mouse (o mesmo que BACKSPACE)
+    DesenharBotaoMenu(RET_RECUSAR_ESCOLHA, TextFormat("RECUSAR (+%d FC)", FC_RECUSAR_ESCOLHA), 12, GOLD, false);
 }
 
 // Janela dos eventos (o mesmo visual do desafio educativo)
@@ -23205,9 +23535,11 @@ static void DesenharEvento(const Biblioteca *b, float tempo)
 
     if (b->eventoResolvido) {
         if (((int)(tempo * 2.0f)) % 2 == 0)
-            DrawText("ENTER >", (int)(painel.x + painel.width) - 90, (int)(painel.y + painel.height) - 28, 14, GOLD);
+            DesenharDicaAvancar((int)(painel.x + painel.width) - 90, (int)(painel.y + painel.height) - 28, 14);
         return;
     }
+
+    DesenharBotaoFechar(RET_FECHAR_EVENTO, cor);
 
     for (int i = 0; i < t.numOpcoes; i++) {
         bool marcada = (i == b->selecaoEvento);
@@ -23231,7 +23563,7 @@ static void DesenharEvento(const Biblioteca *b, float tempo)
         y += alt + 6;
     }
 
-    const char *ajuda = "W/S escolher     E confirmar     BACKSPACE sair";
+    const char *ajuda = "W/S ou MOUSE escolher     E / CLIQUE confirmar     BACKSPACE ou X sair";
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
 }
 
@@ -24206,6 +24538,7 @@ static void DesenharLab(const Biblioteca *b, float tempo)
     DrawText(FALAS_INSTABILIDADE_LAB[e], 560 + dx, 56, 10, Fade(corL, 0.85f));
 
     DrawLine(40, 76, 760, 76, Fade(cor, 0.4f));
+    DesenharBotaoFechar(RET_FECHAR_LAB, cor);
 
     // Conteúdo
     if (L->etapa == LAB_INTRO && L->tipo == LAB_PROMPTS) {
@@ -25582,7 +25915,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
         if (b->tempoMorte > 1.0f && ((int)(GetTime() * 2.0)) % 2 == 0)
         {
-            const char *volta = bloco3 ? "ENTER - voltar ao corredor" : "ENTER - voltar ao átrio";
+            const char *volta = bloco3 ? "ENTER / CLIQUE - voltar ao corredor" : "ENTER / CLIQUE - voltar ao átrio";
             DrawText(volta, LARGURA_TELA / 2 - MeasureText(volta, 14) / 2, 340, 14, GOLD);
         }
     }
@@ -26037,13 +26370,21 @@ typedef struct {
     int foco;                             // campo marcado (CampoOpcoes)
     int aberta;                           // lista aberta (CampoOpcoes) ou -1
     int marcado;                          // item marcado dentro da lista aberta
+    bool sair;                            // o jogador escolheu VOLTAR AO MENU
 } MenuOpcoes;
+
+#define CAMPO_VOLTAR  NUM_CAMPOS_OPCOES     // o botão VOLTAR é o último "campo" do foco
 
 #define ALTURA_ITEM_LISTA  26
 
 static Rectangle CaixaOpcoes(int campo)
 {
     return (Rectangle){ 220, 206 + campo * 84.0f, 360, 36 };
+}
+
+static Rectangle BotaoVoltarOpcoes(void)
+{
+    return (Rectangle){ 300, 388, 200, 32 };
 }
 
 // Itens da lista aberta, logo abaixo da caixa
@@ -26082,8 +26423,19 @@ static bool AtualizarOpcoes(MenuOpcoes *m, ConfigExibicao *cfg)
     // Nenhuma lista aberta: escolhe qual abrir
     if (m->aberta < 0) {
 
-        if (cima || baixo)
-            m->foco = (m->foco + 1) % NUM_CAMPOS_OPCOES;
+        if (cima)  m->foco = (m->foco + NUM_CAMPOS_OPCOES) % (NUM_CAMPOS_OPCOES + 1);
+        if (baixo) m->foco = (m->foco + 1) % (NUM_CAMPOS_OPCOES + 1);
+
+        if (MouseEm(BotaoVoltarOpcoes())) {
+
+            if (mouseMexeu)
+                m->foco = CAMPO_VOLTAR;
+
+            if (clicou) {
+                m->sair = true;
+                return false;
+            }
+        }
 
         for (int c = 0; c < NUM_CAMPOS_OPCOES; c++) {
 
@@ -26099,8 +26451,10 @@ static bool AtualizarOpcoes(MenuOpcoes *m, ConfigExibicao *cfg)
             }
         }
 
-        if (confirmou)
-            AbrirListaOpcoes(m, m->foco, *cfg);
+        if (confirmou) {
+            if (m->foco == CAMPO_VOLTAR) m->sair = true;
+            else                         AbrirListaOpcoes(m, m->foco, *cfg);
+        }
 
         return false;
     }
@@ -26215,6 +26569,17 @@ static void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
 
         DrawText(valores[c], (int)caixa.x + 14, (int)(caixa.y + caixa.height / 2) - 10, 20, focado ? WHITE : LIGHTGRAY);
         DesenharSetaLista(caixa, m->aberta == c, focado ? SKYBLUE : GRAY);
+    }
+
+    // VOLTAR AO MENU (o mesmo que ESC)
+    {
+        Rectangle r = BotaoVoltarOpcoes();
+        bool marcado = (m->foco == CAMPO_VOLTAR && m->aberta < 0);
+
+        DesenharBotaoMenu(r, "VOLTAR AO MENU", 14, SKYBLUE, marcado);
+
+        if (marcado)
+            DesenharCoracao(r.x - 18, r.y + r.height / 2, 2, SKYBLUE);
     }
 
     const char *dica1 = (m->aberta < 0) ? "ENTER / CLIQUE - abrir a lista" : "ENTER / CLIQUE - escolher";
@@ -26815,6 +27180,7 @@ int main(void) {
     float avisoSave = 0.0f;                  // tempo restante do aviso "JOGO SALVO"
     bool saveFalhou = false;
     float confirmarNovoJogo = 0.0f;          // > 0 = clicou em JOGAR com save existente, falta confirmar
+    int focoMenu = 0;                        // botão do menu marcado (0 CONTINUAR, 1 JOGAR, 2 OPÇÕES, 3 SAIR)
 
     // =========================================================
     // VARIÁVEIS DO RANKING
@@ -26862,7 +27228,7 @@ int main(void) {
         // Na Biblioteca a mira desenhada substitui o cursor do sistema
         bool esconderCursor = (tela == BIBLIOTECA && !pausado && biblioteca.tipoSala != SALA_ATRIO && !biblioteca.lojaAberta && !biblioteca.desafioAberto &&
                                !biblioteca.escolhaAberta && !biblioteca.eventoAberto && !biblioteca.mapaAberto && !biblioteca.lab.aberto &&
-                               !biblioteca.seletorAberto);
+                               !biblioteca.seletorAberto && !biblioteca.morreu && !biblioteca.resultadoAberto);
         if (esconderCursor != IsCursorHidden()) {
             if (esconderCursor) HideCursor();
             else                ShowCursor();
@@ -27085,12 +27451,44 @@ int main(void) {
 
         else if (tela == MENU) {
 
+            // Teclado (W/S ou setas + ENTER) e mouse (passar por cima + clique) nos mesmos botões
+            Rectangle botoesMenu[4] = { btnContinuar, btnJogar, btnOpcoes, btnSair };
+            int primeiroBotao = existeSave ? 0 : 1;          // sem save, o CONTINUAR não aparece
+            int numBotoes = 4 - primeiroBotao;
+            int acionado = -1;
+
+            if (focoMenu < primeiroBotao || focoMenu > 3)
+                focoMenu = primeiroBotao;
+
+            if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
+                focoMenu = primeiroBotao + (focoMenu - primeiroBotao + numBotoes - 1) % numBotoes;
+
+            if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
+                focoMenu = primeiroBotao + (focoMenu - primeiroBotao + 1) % numBotoes;
+
+            for (int i = primeiroBotao; i < 4; i++) {
+
+                if (!CheckCollisionPointRec(mouse, botoesMenu[i]))
+                    continue;
+
+                if (MouseMexeu())
+                    focoMenu = i;
+
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    focoMenu = i;
+                    acionado = i;
+                }
+            }
+
+            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_SPACE))
+                acionado = focoMenu;
+
             // CONTINUAR (carrega o save)
-            if (existeSave && CheckCollisionPointRec(mouse, btnContinuar)) {
+            if (existeSave && focoMenu == 0) {
 
                 corBtnContinuar = PURPLE;
 
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (acionado == 0) {
 
                     if (LerSave(&saveLido)) {
 
@@ -27130,16 +27528,16 @@ int main(void) {
             }
 
             // JOGAR
-            if (CheckCollisionPointRec(mouse, btnJogar)) {
+            if (focoMenu == 1) {
 
                 corBtnJogar = GREEN;
 
-                // Com save existente, pede um segundo clique para confirmar
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && existeSave && confirmarNovoJogo <= 0.0f) {
+                // Com save existente, pede uma segunda confirmação (clique ou ENTER)
+                if (acionado == 1 && existeSave && confirmarNovoJogo <= 0.0f) {
 
                     confirmarNovoJogo = 3.0f;
 
-                } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                } else if (acionado == 1) {
 
                     confirmarNovoJogo = 0.0f;
                     tela = INTRO;
@@ -27168,22 +27566,22 @@ int main(void) {
             }
 
             // OPÇÕES
-            if (CheckCollisionPointRec(mouse, btnOpcoes)) {
+            if (focoMenu == 2) {
 
                 corBtnOpcoes = LIGHTGRAY;
 
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (acionado == 2) {
                     tela = OPCOES;
                     menuOpcoes = (MenuOpcoes){ .foco = CAMPO_MODO, .aberta = -1 };
                 }
             }
 
             // SAIR
-            if (CheckCollisionPointRec(mouse, btnSair)) {
+            if (focoMenu == 3) {
 
                 corBtnSair = RED;
 
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+                if (acionado == 3)
                     fecharJogo = true;
             }
         }
@@ -27677,6 +28075,12 @@ int main(void) {
                 SalvarConfigExibicao(exibicao);
             }
 
+            // Botão VOLTAR AO MENU (clique ou ENTER nele)
+            if (menuOpcoes.sair) {
+                menuOpcoes.sair = false;
+                tela = MENU;
+            }
+
             // BACKSPACE: fecha a lista aberta ou volta ao menu (igual ao ESC)
             if (IsKeyPressed(KEY_BACKSPACE)) {
 
@@ -27792,7 +28196,7 @@ int main(void) {
             DesenharTextoBotao(btnSair, "SAIR", 20, WHITE);
 
             if (pedindoConfirmacao) {
-                const char *aviso = "Clique de novo para começar do zero (o progresso salvo será substituído)";
+                const char *aviso = "Clique ou ENTER de novo para começar do zero (o progresso salvo será substituído)";
                 DrawText(aviso, LARGURA_TELA / 2 - MeasureText(aviso, 10) / 2, (int)(btnSair.y + btnSair.height) + 14, 10, LIGHTGRAY);
             }
 
@@ -27896,7 +28300,7 @@ int main(void) {
                 }
 
                 if (avisoNomeRepetido > 0.0f)
-                    DrawText("Esse nome já está no ranking! Escolha outro.", xConteudo + 12, 480, 10, RED);
+                    DrawText("Esse nome já está no ranking! Escolha outro.", xConteudo + 12, 453, 10, RED);
             }
 
             // =================================================
@@ -27938,6 +28342,34 @@ int main(void) {
             DrawText(">", (int)btnContinuar.x + 102, (int)btnContinuar.y + 7, 12, WHITE);
 
             // =================================================
+            // BOTÃO VOLTAR (o mesmo que BACKSPACE: na etapa do nome apaga a última letra)
+            // =================================================
+
+            Rectangle btnVoltarIntro = { (float)xConteudo, btnContinuar.y, 125, 30 };
+            bool apagarLetra = (etapaIntro == 3 && nicknamePos > 0);
+            Color corVoltar = BLACK;
+
+            if (CheckCollisionPointRec(mouse, btnVoltarIntro)) {
+
+                corVoltar = DARKGRAY;
+
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+
+                    if (apagarLetra) {
+                        nicknamePos--;
+                        nickname[nicknamePos] = '_';
+                    } else {
+                        etapaIntro = 0;
+                        tela = MENU;
+                    }
+                }
+            }
+
+            DrawRectangleRec(btnVoltarIntro, corVoltar);
+            DrawText("<", (int)btnVoltarIntro.x + 14, (int)btnVoltarIntro.y + 7, 12, WHITE);
+            DrawText(apagarLetra ? "APAGAR" : "VOLTAR", (int)btnVoltarIntro.x + 32, (int)btnVoltarIntro.y + 9, 8, WHITE);
+
+            // =================================================
             // INSTRUÇÕES
             // =================================================
 
@@ -27946,13 +28378,13 @@ int main(void) {
 
             if (etapaIntro == 3) {
 
-                instrucao1 = "Digite A-Z | ENTER para confirmar";
-                instrucao2 = "BACKSPACE apaga a ultima letra";
+                instrucao1 = "Digite A-Z | ENTER ou CONTINUAR para confirmar";
+                instrucao2 = "BACKSPACE ou APAGAR apaga a ultima letra";
 
             } else {
 
-                instrucao1 = "ENTER para continuar";
-                instrucao2 = "BACKSPACE para voltar";
+                instrucao1 = "ENTER ou CONTINUAR para continuar";
+                instrucao2 = "BACKSPACE ou VOLTAR para voltar ao menu";
             }
 
             DrawText(instrucao1, 400 - MeasureText(instrucao1, 10) / 2, 510, 10, GRAY);

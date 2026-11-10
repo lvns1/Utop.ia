@@ -1195,3 +1195,23 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 341.4;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;2.1;4
 341.4;fim_do_jogo;bom;82.0;208
 343.7;ranking;LIC;208.0;9
+3.4;sessao_inicio;;0.0;0
+25.2;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;2.0;3
+30.7;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;2.2;3
+50.4;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;50.0;2
+62.5;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+66.2;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;30.8;2
+66.6;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;31.3;0
+68.8;cartao;ALUCINAÇÃO;2.2;0
+73.4;atalho_bloco2_terminal;;1.0;0
+78.2;atalho_bloco1_bloco2;sim;1.0;0
+84.9;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;3.8;5
+89.7;dialogo;Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens;1.9;2
+103.5;seletor_aberto;;0.0;0
+109.4;seletor_fechado;;5.9;3
+110.6;rogue_missao;inicio;0.0;1
+110.6;rogue_sala;COMBATE;0.0;0
+110.6;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+122.6;rogue_temporario;OVERCLOCK;0.0;0
+126.5;rogue_sala_limpa;sala 1 ELIMINAR;15.9;9
+128.2;rogue_recompensa_sala;MELHORIA;0.0;0

@@ -275,6 +275,7 @@ typedef struct {
     int alucinacao;                         // cresce a cada erro (README: errar fortalece a alucinação)
     bool introVista;
     bool fimAnunciado;
+    unsigned char hp;                       // vida entre os monitores (0 = cheia). Usa o padding: o formato do save não muda
 } ProgressoCorredor;
 
 // Bloco 2 ANTIGO (Arquivo de Treinamento, já removido do jogo). A struct continua
@@ -2135,14 +2136,14 @@ static void BatalhaTexto(Batalha *b, const char *texto)
     b->visiveis = 0.0f;
 }
 
-static void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao)
+static void BatalhaIniciar(Batalha *b, TipoBatalha tipo, int quiz, int nivelAlucinacao, int hpInicial)
 {
     memset(b, 0, sizeof(*b));
 
     b->tipo = tipo;
     b->quiz = quiz;
     b->fase = FASE_INTRO;
-    b->hp = HP_MAX_BATALHA;
+    b->hp = hpInicial;
 
     // README: quanto mais o jogador erra, mais forte a alucinação fica
     int nivel = (nivelAlucinacao > 10) ? 10 : nivelAlucinacao;
@@ -3038,6 +3039,20 @@ static void DesenharRankingMenu(const Ranking *r, float tempo)
 #define ESPERA_COLA_B2        3.0f       // na abertura com a cola da Luci, um pouco mais para ler
 #define ESPERA_FIM_B2         2.0f       // texto final da batalha
 #define HP_MAX_B2             20
+
+// Vida do Thomas entre os monitores do Bloco 1: o dano de um monitor continua no próximo.
+// 0 = cheia (novo jogo, save antigo, ou derrota: a Luci recompõe o Thomas).
+_Static_assert(HP_MAX_B2 <= 255 && HP_MAX_BATALHA <= 255, "o hp do corredor cabe em um byte");
+
+static int HpDoCorredor(const ProgressoCorredor *p)
+{
+    return (p->hp == 0 || p->hp > HP_MAX_B2) ? HP_MAX_B2 : (int)p->hp;
+}
+
+static void GuardarHpDoCorredor(ProgressoCorredor *p, int hp, bool derrota)
+{
+    p->hp = derrota ? 0 : (unsigned char)Clamp((float)hp, 1.0f, (float)HP_MAX_B2);
+}
 #define MAX_OPCOES_B2         4
 #define ATRASO_DESAFIO_B2     0.6f       // evita responder sem querer apertando ENTER rápido
 
@@ -3280,6 +3295,7 @@ typedef struct {
     char opcoesTexto[MAX_OPCOES_B2][256];
 
     int hp;
+    int hpTeto;                 // vida com que a batalha começou: as verdades curam só o dano desta batalha
     Vector2 alma;
     float invencivel, tremor, anim, tempoDesvio, duracaoDesvio, cronoBala, intervaloBala, velocidadeBala;
     int padrao;
@@ -3476,7 +3492,7 @@ static void BatalhaB2Base(BatalhaB2 *b, int guardiao, int nivelAlucinacao)
 
     b->guardiao = guardiao;
     b->fase = B2_INTRO;
-    b->hp = HP_MAX_B2;
+    b->hp = b->hpTeto = HP_MAX_B2;
     b->alucinacaoGuardiao = 100.0f;
     b->duracaoDesvio = DURACAO_DESVIO_B2;
 
@@ -3502,9 +3518,10 @@ static void BatalhaB2LigarLuci(BatalhaB2 *b, int *estabilidade, int *ajudasTotal
 
 // Duelo completo (rodadas de lógica + esquiva quando erra)
 // Batalha de um monitor do Bloco 1 (estilo de ação + pegar e desviar)
-static void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao)
+static void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao, int hpInicial)
 {
     BatalhaB2Base(b, GUARDIAO_ALUCINACAO, nivelAlucinacao);
+    b->hp = b->hpTeto = hpInicial;              // a vida vem do monitor anterior (ALUCINAÇÃO MESTRE continua cheia)
 
     b->rodadas = RODADAS_MONITORES[monitor];
     b->numRodadas = RODADAS_POR_MONITOR;
@@ -4147,7 +4164,7 @@ static bool BatalhaB2Atualizar(BatalhaB2 *b)
                         B2Particulas(b, b->alma, GOLD, 8);
                         B2Impacto(b, 0.04f, 0.12f);
                     } else {
-                        b->hp = (b->hp + 2 > HP_MAX_B2) ? HP_MAX_B2 : b->hp + 2;
+                        b->hp = (b->hp + 2 > b->hpTeto) ? b->hpTeto : b->hp + 2;
                         B2Particulas(b, b->alma, LIME, 6);
                     }
 
@@ -5023,6 +5040,7 @@ static void FimBatalhaB2(ContextoB2 *c)
         int m = b->monitor;
 
         c->progresso->estado[m] = b->venceu ? MON_ACERTOU : MON_ERROU;
+        GuardarHpDoCorredor(c->progresso, b->hp, b->derrota);
         if (b->venceu) delta += PONTOS_POR_ACERTO;
 
         AlterarPontos(c->progresso, delta);
@@ -27821,7 +27839,8 @@ int main(void) {
                         &batalha,
                         (r == RES_TEMPO) ? BAT_COMBATE : BAT_MINIGAME,
                         m,
-                        progresso.alucinacao
+                        progresso.alucinacao,
+                        HpDoCorredor(&progresso)
                     );
 
                     IniciarTransicao(&transicao, BATALHA, DURACAO_FADE_BATALHA);
@@ -27964,7 +27983,7 @@ int main(void) {
 
                                 // NEUTRO -> ATIVO: a alucinação do monitor vira uma batalha
                                 progresso.estado[i] = MON_ATIVO;
-                                BatalhaB2IniciarMonitor(&batalhaB2, i, progresso.alucinacao);
+                                BatalhaB2IniciarMonitor(&batalhaB2, i, progresso.alucinacao, HpDoCorredor(&progresso));
                                 BatalhaB2LigarLuci(&batalhaB2, &estabilidadeLuci, &ajudasPedidas);
                                 salaDaBatalhaB2 = CORREDOR;
                                 motivoBatalhaB2 = MOTIVO_MONITOR;
@@ -27985,6 +28004,8 @@ int main(void) {
         else if (tela == BATALHA && !transicao.ativa) {
 
             if (BatalhaAtualizar(&batalha)) {
+
+                GuardarHpDoCorredor(&progresso, batalha.hp, batalha.derrota);
 
                 if (batalha.derrota)
                     progresso.alucinacao++;

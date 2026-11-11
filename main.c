@@ -6473,8 +6473,8 @@ typedef enum { DESAFIO_SALA_ECOS, DESAFIO_SALA_INTEGRIDADE, NUM_DESAFIOS_SALA } 
 //   FIREWALL ÉTICO          viés algorítmico (problema + correção) e privacidade
 //                            (pacotes de dados passando pelo firewall)
 //   CÂMARA DE PESQUISA      investiga uma mídia suspeita: pistas, ferramentas e veredito
-// As três primeiras são COMUNS: a porta só abre quando o desafio termina (sempre dá
-// para terminar). As duas últimas são ESPECIAIS: opcionais, com recompensa maior.
+// Todas são OPCIONAIS: a porta da sala já está aberta e a recompensa sai só ao concluir.
+// As três primeiras são COMUNS; as duas últimas são ESPECIAIS, com recompensa maior.
 // A Luci ajuda em todas (dica, análise, verificação, reformulação) gastando
 // estabilidade: a CARGA de ajuda vira -1 de estabilidade a cada LAB_CARGA_POR_ESTAB.
 typedef enum { LAB_PROMPTS, LAB_ARQUIVO, LAB_NUCLEO, LAB_FIREWALL, LAB_PESQUISA, NUM_LABS } TipoLab;
@@ -6584,12 +6584,12 @@ static const char *PLACAS_LAB[NUM_LABS] = { "LAB. DE PROMPTS", "ARQUIVO CORROMPI
 static const Color CORES_LAB[NUM_LABS]  = {
     { 0, 228, 255, 255 }, { 255, 109, 194, 255 }, { 150, 140, 255, 255 }, { 0, 228, 48, 255 }, { 255, 203, 0, 255 }
 };
-static const bool LAB_ESPECIAL[NUM_LABS] = { false, false, false, true, true };    // especiais: opcionais e mais generosos
+static const bool LAB_ESPECIAL[NUM_LABS] = { false, false, false, true, true };    // especiais: mais generosos (todos são opcionais)
 
 static const char *FALAS_LUCI_LAB[NUM_LABS] = {
-    "Luci: Um laboratório de prompts! Vamos ver como se conversa com uma IA.",
-    "Luci: Um arquivo corrompido... Nem tudo o que está escrito aqui é verdade.",
-    "Luci: O Núcleo Neural. Ele só aguenta um tanto de informação por vez.",
+    "Luci: Um laboratório de prompts! É opcional: a porta já está aberta.",
+    "Luci: Um arquivo corrompido... Opcional, e a porta já está aberta.",
+    "Luci: O Núcleo Neural. Desafio opcional: a porta já está aberta.",
     "Luci: Firewall Ético. Opcional, mas guarda algo raro. A porta já está aberta.",
     "Luci: Câmara de Pesquisa: uma investigação opcional. A porta já está aberta."
 };
@@ -9475,7 +9475,7 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
         b->posObjetoSala = POS_OBJETO_SALA;
         TipoLab lab = (b->noAtual >= 0) ? (TipoLab)b->mapa.no[b->noAtual].lab : LAB_PROMPTS;
         LabPreparar(b, lab);
-        b->limpa = LAB_ESPECIAL[lab];          // comum: a porta abre ao terminar; especial: opcional
+        b->limpa = true;                       // desafio opcional: a porta já abre (a recompensa sai só ao concluir)
         RogueRecadoLuci(b, FALAS_LUCI_LAB[lab]);
         b->luciMsgTempo = 4.5f;
     }
@@ -18395,7 +18395,7 @@ static void LabFinalizar(Biblioteca *b, ProgressoCorredor *prog)
     LabRecompensar(b, prog);
 }
 
-// Fecha o laboratório concluído: a porta abre e a escolha prometida (se houver) aparece
+// Fecha o laboratório concluído (a porta já estava aberta: o desafio é opcional)
 static void LabConcluir(Biblioteca *b)
 {
     LabEdu *L = &b->lab;
@@ -24080,7 +24080,7 @@ static void DesenharConsoleLab(const Biblioteca *b, float tempo)
 
     const char *nome = NOMES_LAB[L->tipo];
     DrawText(nome, (int)c.x - MeasureText(nome, 10) / 2, (int)c.y + 30, 10, Fade(cor, k));
-    if (LAB_ESPECIAL[L->tipo] && !L->concluido) {
+    if (!L->concluido) {
         const char *t = "OPCIONAL";
         DrawText(t, (int)c.x - MeasureText(t, 8) / 2, (int)c.y + 42, 8, GOLD);
     }
@@ -24657,7 +24657,7 @@ static void DesenharIntroPrompt(const Biblioteca *b, float tempo)
 
     DesenharLuciTamanho((Vector2){ 58, 378 }, 24.0f);
     DrawText("Luci: H pede dica (gasta estabilidade). V confere o que eu disser.", 78, 372, 10, (Color){ 0, 228, 255, 255 });
-    DrawText("Sala comum: a porta abre quando você terminar.", 44, 404, 10, LIGHTGRAY);
+    DrawText("Sala comum: opcional. A porta já está aberta; concluir dá a recompensa.", 44, 404, 10, LIGHTGRAY);
 }
 
 static void DesenharLabArquivo(const Biblioteca *b, float tempo)
@@ -24963,7 +24963,7 @@ static void DesenharLab(const Biblioteca *b, float tempo)
     DesenharIconeLab(L->tipo, (Vector2){ 58, 52 }, 0.9f, tempo);
     DrawText(NOMES_LAB[L->tipo], 82, 40, 18, cor);
     int dif = LabDificuldadeMissao(L->tipo, L->missao);
-    const char *sub = TextFormat("%s   NÍVEL %d/3%s", LAB_ESPECIAL[L->tipo] ? "SALA ESPECIAL (opcional)" : "SALA COMUM (abre a porta)", dif, "");
+    const char *sub = TextFormat("%s   NÍVEL %d/3%s", LAB_ESPECIAL[L->tipo] ? "SALA ESPECIAL (opcional)" : "SALA COMUM (opcional)", dif, "");
     DrawText(sub, 82, 60, 10, LAB_ESPECIAL[L->tipo] ? GOLD : LIGHTGRAY);
 
     int e = RogueEstab(b);
@@ -25014,7 +25014,7 @@ static void DesenharLab(const Biblioteca *b, float tempo)
             y += DesenharTextoLab(AVISO_TOKENS, 44, y, 712, 10, 13, Fade(SKYBLUE, 0.85f)) + 8;
 
         DesenharTextoLab(LAB_ESPECIAL[L->tipo] ? "Sala especial: opcional, com recompensa maior. A porta já está aberta."
-                                                : "Sala comum: a porta abre quando o desafio terminar. Sempre dá para terminar; o desempenho decide a recompensa.",
+                                                : "Sala comum: opcional. A porta já está aberta; concluir dá a recompensa (o desempenho decide quanto).",
                          44, y, 712, 10, 13, LAB_ESPECIAL[L->tipo] ? GOLD : LIGHTGRAY);
         y += 30;
         DesenharTextoLab("A Luci pode ajudar: DICA (1 de carga), ANALISAR e VERIFICAR (2), REFORMULAR (3). A cada 3 de carga ela perde 1 de "
@@ -26092,8 +26092,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         } break;
         case SALA_LABORATORIO:
             if (b->lab.concluido)                 snprintf(o.texto, sizeof(o.texto), "%s concluído (%d/3). Escolha uma porta", PLACAS_LAB[b->lab.tipo], b->lab.estrelas);
-            else if (LAB_ESPECIAL[b->lab.tipo])   snprintf(o.texto, sizeof(o.texto), "%s (opcional): use o console (E) ou siga", PLACAS_LAB[b->lab.tipo]);
-            else                                  snprintf(o.texto, sizeof(o.texto), "%s: use o console (E) para abrir a porta", PLACAS_LAB[b->lab.tipo]);
+            else                                  snprintf(o.texto, sizeof(o.texto), "%s (opcional): use o console (E) ou siga", PLACAS_LAB[b->lab.tipo]);
             break;
         case SALA_TRANSICAO: {
             int lidos = ((b->registrosLidos & 1) != 0) + ((b->registrosLidos & 2) != 0) + ((b->registrosLidos & 4) != 0);

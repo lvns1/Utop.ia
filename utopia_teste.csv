@@ -1215,3 +1215,27 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 122.6;rogue_temporario;OVERCLOCK;0.0;0
 126.5;rogue_sala_limpa;sala 1 ELIMINAR;15.9;9
 128.2;rogue_recompensa_sala;MELHORIA;0.0;0
+5.3;sessao_inicio;;0.0;0
+27.9;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;4.4;3
+35.1;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.5;3
+62.3;atalho_bloco2_terminal;;0.0;0
+62.8;atalho_bloco1_bloco2;nao;0.0;0
+63.3;atalho_bloco2_terminal;;0.0;0
+65.0;atalho_bloco1_bloco2;sim;0.0;0
+69.3;atalho_bloco3_terminal;;0.0;0
+69.9;atalho_bloco2_bloco3;nao;4.6;0
+70.3;atalho_bloco3_terminal;;0.0;0
+71.6;atalho_bloco2_bloco3;sim;6.3;0
+72.5;bloco3_entrada;boa;70.0;0
+75.4;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;2.1;3
+88.2;dialogo;* REGISTRO 1 // CONFIANÇA. Você seguiu minhas dicas sem co;0.8;2
+93.6;dialogo;* REGISTRO 2 // CONTRADIÇÕES. Eu contradisse o que você v;0.8;2
+96.9;dialogo;* REGISTRO 3 // ORIGEM. Arquivo LUCI.exe, criado antes de Ut;0.8;2
+98.1;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;1.2;1
+101.7;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.3;2
+114.4;bloco3_fase;;49.1;2
+116.4;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;1.9;3
+121.8;bloco3_contestar;errado;0.0;1
+131.4;bloco3_contestar;certo;0.0;-1
+158.8;bloco3_contestar;certo;0.0;-1
+160.5;bloco3_queda;1;95.2;1

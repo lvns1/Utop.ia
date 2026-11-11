@@ -201,16 +201,60 @@ static const Rectangle PAREDES_SALA[] = {
 static const Rectangle PORTA_SALA      = RETANGULO_MAPA(464, 101, 116, 159);
 static const Rectangle ZONA_PORTA_SALA = RETANGULO_MAPA(447, 154, 150, 145);
 
-// Corredor: porta de baixo volta para a sala / porta da direita é a saída
-static const Rectangle PORTA_VOLTAR_CORREDOR = {100, 406, 90, 18};
-static const Rectangle PORTA_FIM_CORREDOR    = {722, 265, 28, 140};
-// Terminal de atalho do Bloco 1 (para o Bloco 2): embutido na parede de baixo, perto da saída da direita
-static const Vector2   TERMINAL_ATALHO_CORREDOR = {630, 404};
-static const Rectangle ZONA_TERMINAL_CORREDOR   = {592, 360, 76, 60};    // o Thomas encosta e aperta E
+// ---- CORREDOR DO BLOCO 1: arte "mapa2_terminais.png" (1350 x 801) ----
+// A imagem é reduzida no carregamento para a largura da tela, SEM deformar (800 x 474,7),
+// e fica logo abaixo do HUD. Tudo do corredor é medido NA IMAGEM e convertido com
+// CORR_X / CORR_Y: portas, paredes, terminal e spawns acompanham o mapa sozinhos.
+// (Os monitores ficam na parede de cima, em monitores[].area, que já cai na parede da arte.)
+#define ARQUIVO_MAPA_CORREDOR   "resources/maps/mapa2_terminais.png"
+#define TAM_IMG_CORREDOR_L      1350.0f
+#define TAM_IMG_CORREDOR_A       801.0f
+#define MAPA_CORREDOR_X            0.0f
+#define MAPA_CORREDOR_Y          100.0f      // o HUD do corredor fica em cima (y 62 e 82)
+#define MAPA_CORREDOR_LARGURA    800.0f
+#define ESCALA_MAPA_CORREDOR    (MAPA_CORREDOR_LARGURA / TAM_IMG_CORREDOR_L)
+#define MAPA_CORREDOR_ALTURA    (TAM_IMG_CORREDOR_A * ESCALA_MAPA_CORREDOR)
+
+// Converte uma medida da imagem (pixels) para a tela
+#define CORR_X(px)  (MAPA_CORREDOR_X + (px) * ESCALA_MAPA_CORREDOR)
+#define CORR_Y(py)  (MAPA_CORREDOR_Y + (py) * ESCALA_MAPA_CORREDOR)
+#define CORR_T(p)   ((p) * ESCALA_MAPA_CORREDOR)
+#define RETANGULO_CORREDOR(x, y, l, a)  { CORR_X(x), CORR_Y(y), CORR_T(l), CORR_T(a) }
+
+#define MOSTRAR_COLISOES_CORREDOR  0   // 1 = desenha paredes, portas e zonas de interação (para calibrar) | 0 = escondidas
+
+static Texture2D texMapaCorredor = {0};      // sem o arquivo, o corredor usa o cenário simples
+
+// Portas = as aberturas da arte: a de baixo volta para a sala, a da direita é a saída
+static const Rectangle PORTA_VOLTAR_CORREDOR = RETANGULO_CORREDOR( 602, 735, 158,  66);
+static const Rectangle PORTA_FIM_CORREDOR    = RETANGULO_CORREDOR(1305, 402,  45, 118);
+
+// Terminal de atalho do Bloco 1 (para o Bloco 2): encostado na parede de baixo, perto da saída da direita
+#define TERMINAL_CORREDOR_X  CORR_X(1160)
+#define TERMINAL_CORREDOR_Y  CORR_Y(725)
+static const Vector2   TERMINAL_ATALHO_CORREDOR = { TERMINAL_CORREDOR_X, TERMINAL_CORREDOR_Y };
+static const Rectangle ZONA_TERMINAL_CORREDOR   = { TERMINAL_CORREDOR_X - 38, TERMINAL_CORREDOR_Y - 58, 76, 64 };   // o Thomas encosta e aperta E
+
+// Paredes do corredor: o que bate nos PÉS do jogador (a cabeça pode passar "por trás" da parede).
+// Cabos, luzes, telas e marcas do chão são só desenho: não bloqueiam.
+static const Rectangle PAREDES_CORREDOR[] = {
+    RETANGULO_CORREDOR(   0,   0, 1350, 250),   // parede de cima (até a base dos tijolos)
+    RETANGULO_CORREDOR(   0,   0,   42, 801),   // parede da esquerda
+    RETANGULO_CORREDOR(1308,   0,   42, 400),   // parede da direita, acima da saída
+    RETANGULO_CORREDOR(1308, 520,   42, 281),   // parede da direita, abaixo da saída
+    RETANGULO_CORREDOR(   0, 765,  562,  36),   // parede de baixo, à esquerda da porta
+    RETANGULO_CORREDOR( 800, 765,  550,  36),   // parede de baixo, à direita da porta
+    RETANGULO_CORREDOR( 560, 680,   42, 121),   // batente esquerdo da porta de baixo
+    RETANGULO_CORREDOR( 760, 680,   40, 121),   // batente direito da porta de baixo
+    RETANGULO_CORREDOR(   0, 801, 1350,  60),   // fim do mapa embaixo (a porta não deixa sair da tela)
+    RETANGULO_CORREDOR(1350,   0,   60, 801),   // fim do mapa à direita
+    { TERMINAL_CORREDOR_X - 20, TERMINAL_CORREDOR_Y - 14, 40, 34 },   // o próprio terminal de atalho
+};
+#define NUM_PAREDES_CORREDOR ((int)(sizeof(PAREDES_CORREDOR) / sizeof(PAREDES_CORREDOR[0])))
 
 static const Vector2 SPAWN_SALA       = { MAPA_X(512), MAPA_Y(512) };
 static const Vector2 SPAWN_SALA_VOLTA = { MAPA_X(522), MAPA_Y(300) };   // logo abaixo da porta de cima
-static const Vector2 SPAWN_CORREDOR   = {145, 368};   // logo acima da porta de baixo
+static const Vector2 SPAWN_CORREDOR   = { CORR_X(681), CORR_Y(655) };   // logo acima da porta de baixo
 
 // Caixa da batalha: larga para texto, estreita para desviar (como no Undertale)
 static const Rectangle CAIXA_TEXTO_BATALHA = {50, 270, 700, 160};
@@ -998,6 +1042,36 @@ static bool BateNasParedes(Rectangle r)
 
 // Impede o jogador de atravessar as paredes invisíveis.
 // Testa X e Y separados, assim ele desliza pela parede em vez de travar.
+// Algum retângulo encosta em alguma parede da lista?
+static bool BateEmParedes(Rectangle r, const Rectangle *paredes, int n)
+{
+    for (int i = 0; i < n; i++)
+        if (CheckCollisionRecs(r, paredes[i]))
+            return true;
+
+    return false;
+}
+
+// Mesma ideia de ColidirComParedes, para outra lista de paredes (X e Y separados: desliza na parede)
+static void ColidirComLista(Vector2 *pos, Vector2 posAnterior, const Rectangle *paredes, int n)
+{
+    // Já estava dentro de uma parede (ex.: save antigo): deixa sair
+    if (BateEmParedes(PesJogador(posAnterior), paredes, n))
+        return;
+
+    Vector2 teste = { pos->x, posAnterior.y };
+
+    if (BateEmParedes(PesJogador(teste), paredes, n))
+        teste.x = posAnterior.x;
+
+    teste.y = pos->y;
+
+    if (BateEmParedes(PesJogador(teste), paredes, n))
+        teste.y = posAnterior.y;
+
+    *pos = teste;
+}
+
 static void ColidirComParedes(Vector2 *pos, Vector2 posAnterior)
 {
     // Já estava dentro de uma parede (ex.: save antigo): deixa sair
@@ -1174,16 +1248,30 @@ static void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 p
 }
 
 // ---------- Luci ----------
-// A arte fica em "luci.png" (pasta do repositório ou resources/sprites/luci/).
-// O mesmo desenho é usado parada na sala, acompanhando o jogador e na intro.
+// A arte fica em "new.luci.png" (pasta do repositório ou resources/sprites/luci/); sem ela,
+// vale a antiga "luci.png" e, sem nenhuma, um quadradinho. O mesmo desenho é usado parada na
+// sala, acompanhando o jogador, na intro, no Bloco 3 e na luta final (DesenharLuciTamanho).
+// Enquanto ela FALA, a folha "sprites_new.luci.falando.png" (6 quadros) faz o brilho pulsar.
 
-#define SPRITE_LUCI   "luci.png"
+#define SPRITE_LUCI            "new.luci.png"
+#define SPRITE_LUCI_ANTIGA     "luci.png"
+#define SPRITE_LUCI_FALANDO    "sprites_new.luci.falando.png"
+#define ALTURA_TEXTURA_LUCI    160      // as artes (bem maiores que a tela) são reduzidas para esta altura ao carregar
+#define MAX_QUADROS_FALA_LUCI  8        // a folha tem 6 quadros
+#define FPS_FALA_LUCI          10.0f    // ritmo do brilho da fala (vai e volta pelos quadros)
 #define ALTURA_LUCI        18.0f     // Luci acompanhando o jogador: pequenina (AJUSTE AQUI)
 #define ALTURA_LUCI_SALA   24.0f     // Luci parada na sala inicial (um pouco maior, para ser encontrada)
 #define RAIO_ORBITA_LUCI   26.0f     // distância da volta que ela dá em torno do personagem
 
 static Texture2D texLuci = {0};
 static Rectangle recorteLuci = {0};  // só a parte desenhada da imagem, sem o espaço vazio em volta
+
+// Fala: a folha e o recorte de cada quadro (todos do mesmo tamanho, centrados no desenho)
+static Texture2D texLuciFala = {0};
+static Rectangle quadrosFalaLuci[MAX_QUADROS_FALA_LUCI];
+static int numQuadrosFalaLuci = 0;
+static bool luciFalando = false;       // a Luci está falando agora (o main atualiza a cada quadro)
+static float tempoFalaLuci = 0.0f;
 
 // Emoções da Luci sobre a cabeça. O main atualiza estes valores a cada frame.
 typedef enum { EMOCAO_NENHUMA, EMOCAO_ALEGRE, EMOCAO_DUVIDA, EMOCAO_ALERTA } EmocaoLuci;
@@ -1201,21 +1289,14 @@ static void MostrarEmocaoLuci(EmocaoLuci e, float segundos)
     tempoEmocaoLuci = segundos;
 }
 
-// Carrega a arte e descobre onde a Luci está dentro da imagem
-static void CarregarLuci(void)
+// Caixa do que está desenhado (alpha > 8) entre as colunas x0 e x1 da imagem
+static Rectangle CaixaAlphaColunas(const Color *px, int largura, int altura, int x0, int x1)
 {
-    const char *arquivo = AcharSpriteJogador(SPRITE_LUCI);
+    int minX = x1 + 1, maxX = -1, minY = altura, maxY = -1;
 
-    if (arquivo == NULL)
-        return;
-
-    Image img = LoadImage(arquivo);
-    Color *px = LoadImageColors(img);
-    int minX = img.width, maxX = -1, minY = img.height, maxY = -1;
-
-    for (int y = 0; y < img.height; y++) {
-        for (int x = 0; x < img.width; x++) {
-            if (px[y * img.width + x].a > 0) {
+    for (int y = 0; y < altura; y++) {
+        for (int x = x0; x <= x1; x++) {
+            if (px[y * largura + x].a > 8) {
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
@@ -1224,18 +1305,122 @@ static void CarregarLuci(void)
         }
     }
 
-    recorteLuci = (maxX >= 0)
-        ? (Rectangle){ (float)minX, (float)minY, (float)(maxX - minX + 1), (float)(maxY - minY + 1) }
-        : (Rectangle){ 0, 0, (float)img.width, (float)img.height };
+    if (maxX < 0)
+        return (Rectangle){ 0 };
 
-    texLuci = LoadTextureFromImage(img);
+    return (Rectangle){ (float)minX, (float)minY, (float)(maxX - minX + 1), (float)(maxY - minY + 1) };
+}
 
-    // A imagem é bem maior que o tamanho na tela: suaviza a redução
-    GenTextureMipmaps(&texLuci);
-    SetTextureFilter(texLuci, TEXTURE_FILTER_TRILINEAR);
+static bool ColunaTemDesenho(const Color *px, int largura, int altura, int x)
+{
+    for (int y = 0; y < altura; y++)
+        if (px[y * largura + x].a > 8)
+            return true;
 
-    UnloadImageColors(px);
-    UnloadImage(img);
+    return false;
+}
+
+// Carrega a arte (recortada e já reduzida) e a folha da fala com os quadros achados pelo alpha
+static void CarregarLuci(void)
+{
+    // Sprite parado: a arte nova ou, sem ela, a antiga
+    const char *arquivo = AcharSpriteJogador(SPRITE_LUCI);
+
+    if (arquivo == NULL)
+        arquivo = AcharSpriteJogador(SPRITE_LUCI_ANTIGA);
+
+    if (arquivo != NULL) {
+
+        Image img = LoadImage(arquivo);
+        ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+
+        Rectangle caixa = CaixaAlphaColunas((const Color *)img.data, img.width, img.height, 0, img.width - 1);
+        if (caixa.width > 0.0f)
+            ImageCrop(&img, caixa);                 // só a parte desenhada
+
+        if (img.height > ALTURA_TEXTURA_LUCI)       // a imagem é bem maior que a Luci na tela
+            ImageResize(&img, (int)roundf((float)img.width * ALTURA_TEXTURA_LUCI / (float)img.height), ALTURA_TEXTURA_LUCI);
+
+        recorteLuci = (Rectangle){ 0, 0, (float)img.width, (float)img.height };
+        texLuci = LoadTextureFromImage(img);
+
+        // Ainda maior que o tamanho na tela: suaviza a redução
+        GenTextureMipmaps(&texLuci);
+        SetTextureFilter(texLuci, TEXTURE_FILTER_TRILINEAR);
+        UnloadImage(img);
+    }
+
+    // Folha da fala: os quadros vêm separados por colunas transparentes. Cada um é achado pelo
+    // alpha (nada de dividir a folha em partes iguais) e todos ganham o mesmo tamanho, centrado
+    // no desenho, para a Luci não pular nem mudar de tamanho de um quadro para o outro.
+    arquivo = AcharSpriteJogador(SPRITE_LUCI_FALANDO);
+
+    if (arquivo == NULL)
+        return;
+
+    Image folha = LoadImage(arquivo);
+    ImageFormat(&folha, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+
+    const Color *px = (const Color *)folha.data;
+    Rectangle caixas[MAX_QUADROS_FALA_LUCI];
+    int n = 0, inicio = -1, ultima = -1;
+
+    for (int x = 0; x <= folha.width; x++) {
+
+        if (x < folha.width && ColunaTemDesenho(px, folha.width, folha.height, x)) {
+            if (inicio < 0) inicio = x;
+            ultima = x;
+            continue;
+        }
+
+        // Coluna vazia: um vão de 6 colunas (ou o fim da folha) fecha o quadro
+        if (inicio >= 0 && (x - ultima >= 6 || x == folha.width)) {
+            if (n < MAX_QUADROS_FALA_LUCI)
+                caixas[n++] = CaixaAlphaColunas(px, folha.width, folha.height, inicio, ultima);
+            inicio = -1;
+        }
+    }
+
+    if (n < 2) {                                    // sem animação: fica o sprite parado
+        UnloadImage(folha);
+        return;
+    }
+
+    float w = 0.0f, h = 0.0f;
+
+    for (int i = 0; i < n; i++) {
+        if (caixas[i].width > w)  w = caixas[i].width;
+        if (caixas[i].height > h) h = caixas[i].height;
+    }
+
+    // Mesmo tamanho para todos, centrado no desenho de cada quadro (sem sair da folha)
+    for (int i = 0; i < n; i++) {
+        float cx = caixas[i].x + caixas[i].width / 2.0f, cy = caixas[i].y + caixas[i].height / 2.0f;
+        quadrosFalaLuci[i] = (Rectangle){
+            Clamp(roundf(cx - w / 2.0f), 0.0f, (float)folha.width - w),
+            Clamp(roundf(cy - h / 2.0f), 0.0f, (float)folha.height - h),
+            w, h
+        };
+    }
+
+    // Reduz a folha para um quadro ter ALTURA_TEXTURA_LUCI de altura (como o sprite parado)
+    if (h > ALTURA_TEXTURA_LUCI) {
+        int larguraNova = (int)roundf((float)folha.width * ALTURA_TEXTURA_LUCI / h);
+        int alturaNova  = (int)roundf((float)folha.height * ALTURA_TEXTURA_LUCI / h);
+        float kx = (float)larguraNova / (float)folha.width, ky = (float)alturaNova / (float)folha.height;
+
+        ImageResize(&folha, larguraNova, alturaNova);
+
+        for (int i = 0; i < n; i++)
+            quadrosFalaLuci[i] = (Rectangle){ quadrosFalaLuci[i].x * kx, quadrosFalaLuci[i].y * ky,
+                                              quadrosFalaLuci[i].width * kx, quadrosFalaLuci[i].height * ky };
+    }
+
+    numQuadrosFalaLuci = n;
+    texLuciFala = LoadTextureFromImage(folha);
+    GenTextureMipmaps(&texLuciFala);
+    SetTextureFilter(texLuciFala, TEXTURE_FILTER_TRILINEAR);
+    UnloadImage(folha);
 }
 
 static void DescarregarLuci(void)
@@ -1243,7 +1428,68 @@ static void DescarregarLuci(void)
     if (texLuci.id > 0)
         UnloadTexture(texLuci);
 
+    if (texLuciFala.id > 0)
+        UnloadTexture(texLuciFala);
+
     texLuci = (Texture2D){0};
+    texLuciFala = (Texture2D){0};
+    numQuadrosFalaLuci = 0;
+}
+
+// Quadro atual da fala: do brilho fraco ao forte e de volta (0 1 2 3 4 5 4 3 2 1 0 ...)
+static int QuadroFalaLuci(void)
+{
+    int n = numQuadrosFalaLuci;
+
+    if (n <= 1)
+        return 0;
+
+    int ciclo = 2 * n - 2;
+    int i = (int)(tempoFalaLuci * FPS_FALA_LUCI) % ciclo;
+
+    return (i < n) ? i : ciclo - i;
+}
+
+// O main chama a cada quadro. Parou de falar: volta na hora ao sprite parado.
+static void AtualizarFalaLuci(bool falando, float dt)
+{
+    luciFalando = falando;
+    tempoFalaLuci = falando ? tempoFalaLuci + dt : 0.0f;
+}
+
+// O texto é fala da Luci? ("Luci:" no começo, sem ligar para espaços e maiúsculas)
+static bool TextoDeFalaDaLuci(const char *t)
+{
+    static const char nome[] = "luci";
+
+    if (t == NULL)
+        return false;
+
+    while (*t == ' ' || *t == '\n' || *t == '\t')
+        t++;
+
+    for (int i = 0; i < 4; i++) {
+        char c = t[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c != nome[i]) return false;
+    }
+
+    t += 4;
+
+    while (*t == ' ')
+        t++;
+
+    return *t == ':';
+}
+
+// A página aberta do diálogo é fala da Luci? (não basta o objeto da conversa: várias falas
+// dela acontecem em conversas de outros objetos, e o Byte e o Byteco falam em outras)
+static bool DialogoFalaDaLuci(const SessaoDialogo *d)
+{
+    if (d->estado != DLG_PAGINAS && d->estado != DLG_FEEDBACK && d->estado != DLG_CONFIRMA)
+        return false;
+
+    return TextoDeFalaDaLuci(d->texto);
 }
 
 // Desenha a Luci com centro em p e a altura pedida.
@@ -1257,12 +1503,21 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
 
     DrawCircleV(p, altura * (0.55f + 0.07f * brilhoLuci), Fade(SKYBLUE, (0.10f + 0.08f * pulso) * brilhoLuci));
 
-    if (texLuci.id > 0) {
+    // Falando: o quadro da folha da fala no lugar do sprite parado (mesmo centro e mesma altura)
+    Texture2D tex = texLuci;
+    Rectangle recorte = recorteLuci;
 
-        float escala = altura / recorteLuci.height;
+    if (luciFalando && texLuciFala.id > 0 && numQuadrosFalaLuci > 0) {
+        tex = texLuciFala;
+        recorte = quadrosFalaLuci[QuadroFalaLuci()];
+    }
+
+    if (tex.id > 0) {
+
+        float escala = altura / recorte.height;
         float asas = 1.0f + 0.07f * sinf(t * 14.0f);
-        float w = recorteLuci.width * escala * asas;
-        float h = recorteLuci.height * escala;
+        float w = recorte.width * escala * asas;
+        float h = recorte.height * escala;
 
         Rectangle destino = { p.x - w / 2, p.y - h / 2, w, h };
 
@@ -1272,11 +1527,11 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
 
         if (k > 0.5f) {
             float d = 2.0f + 3.0f * k;
-            DrawTexturePro(texLuci, recorteLuci, (Rectangle){ destino.x - d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(RED, 0.5f));
-            DrawTexturePro(texLuci, recorteLuci, (Rectangle){ destino.x + d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(SKYBLUE, 0.5f));
+            DrawTexturePro(tex, recorte, (Rectangle){ destino.x - d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(RED, 0.5f));
+            DrawTexturePro(tex, recorte, (Rectangle){ destino.x + d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(SKYBLUE, 0.5f));
         }
 
-        DrawTexturePro(texLuci, recorteLuci, destino, (Vector2){ 0, 0 }, 0.0f, tinta);
+        DrawTexturePro(tex, recorte, destino, (Vector2){ 0, 0 }, 0.0f, tinta);
         return;
     }
 
@@ -2124,6 +2379,66 @@ static void DesenharPortaCorredor(Rectangle porta, Color corBorda)
         DrawCircle((int)(porta.x + porta.width - 12), (int)(porta.y + porta.height / 2), 3, GOLD);
     else
         DrawCircle((int)(porta.x + 9), (int)(porta.y + porta.height / 2), 4, GOLD);
+}
+
+// Fundo do corredor: a arte azul (fica atrás de monitores, terminal, jogador, HUD e diálogos).
+// Sem o arquivo, o cenário simples, com a mesma geometria (parede, chão e aberturas).
+static void DesenharCenarioCorredor(float tempo)
+{
+    if (texMapaCorredor.id > 0) {
+        DrawTexture(texMapaCorredor, (int)MAPA_CORREDOR_X, (int)MAPA_CORREDOR_Y, WHITE);
+        return;
+    }
+
+    Rectangle mapa = { MAPA_CORREDOR_X, MAPA_CORREDOR_Y, MAPA_CORREDOR_LARGURA, MAPA_CORREDOR_ALTURA };
+    Rectangle chao = RETANGULO_CORREDOR(42, 250, 1266, 515);
+
+    DrawRectangleRec(mapa, (Color){26, 20, 46, 255});
+    DrawRectangleRec(chao, (Color){18, 15, 30, 255});
+    DrawRectangle((int)chao.x, (int)chao.y - 4, (int)chao.width, 6, Fade(PURPLE, 0.45f));
+
+    for (float x = chao.x; x < chao.x + chao.width; x += 70.0f)
+        DrawLine((int)x, (int)chao.y, (int)x, (int)(chao.y + chao.height), Fade(PURPLE, 0.12f));
+
+    // Luminárias pulsando no alto da parede
+    for (int i = 0; i < 5; i++) {
+        float pulso = 0.5f + 0.5f * sinf(tempo * 1.5f + i * 1.3f);
+        int lx = 120 + i * 140;
+        DrawCircle(lx, (int)MAPA_CORREDOR_Y + 8, 20, Fade(SKYBLUE, 0.04f + 0.08f * pulso));
+        DrawRectangle(lx - 12, (int)MAPA_CORREDOR_Y + 2, 24, 5, Fade(SKYBLUE, 0.5f + 0.4f * pulso));
+    }
+
+    DrawRectangleLinesEx(mapa, 4, Fade(PURPLE, 0.55f));
+}
+
+// Porta do corredor sobre a abertura da arte: moldura na cor do estado e, trancada,
+// uma barreira de energia correndo. Sem a arte, a porta simples de sempre.
+static void DesenharPortaMapaCorredor(Rectangle porta, Color cor, bool barreira, float t)
+{
+    if (texMapaCorredor.id == 0) {
+        DesenharPortaCorredor(porta, cor);
+        return;
+    }
+
+    if (barreira) {
+        float pulso = 0.5f + 0.5f * sinf(t * 5.0f);
+        bool vertical = porta.height > porta.width;
+
+        DrawRectangleRec(porta, Fade(cor, 0.16f + 0.10f * pulso));
+
+        for (int k = 0; k < 5; k++) {
+            float f = fmodf(t * 0.6f + (float)k / 5.0f, 1.0f);
+            if (vertical) {
+                float y = porta.y + f * porta.height;
+                DrawLineEx((Vector2){ porta.x, y }, (Vector2){ porta.x + porta.width, y }, 2.0f, Fade(cor, 0.55f));
+            } else {
+                float x = porta.x + f * porta.width;
+                DrawLineEx((Vector2){ x, porta.y }, (Vector2){ x, porta.y + porta.height }, 2.0f, Fade(cor, 0.55f));
+            }
+        }
+    }
+
+    DrawRectangleLinesEx(porta, 2, Fade(cor, 0.85f));
 }
 
 // =============================================================
@@ -3070,7 +3385,7 @@ typedef enum {
     VAR_LUPA            // monitor 3: só a lupa em volta do coração revela a alucinação (verificação)
 } VarianteMinigame;
 
-static const Vector2 SPAWN_CORREDOR_VOLTA = {690, 340};            // voltando ao corredor pela porta da direita
+static const Vector2 SPAWN_CORREDOR_VOLTA = { CORR_X(1228), CORR_Y(440) };   // voltando ao corredor pela porta da direita
 
 // Caixas da batalha
 static const Rectangle CAIXA_B2         = {50, 205, 700, 300};
@@ -5481,7 +5796,96 @@ static const int CHANCE_LUCI_ALUCINAR_B2[ESTABILIDADE_MAX_LUCI + 1] = { 80, 60, 
 #define OBJ_ATALHO_BLOCO3        -26      // terminal do átrio: confirmação do atalho para o Bloco 3
 
 // Arena (o HUD fica embaixo, o objetivo em cima)
-static const Rectangle ARENA_ROGUE         = { 40, 60, 720, 470 };
+// Arena das salas da Biblioteca. Todas usam a de sempre (ARENA_ROGUE_PADRAO), menos a luta
+// final da Luci (SALA_LUCI), que fica dentro do chão do mapa quadrado do Bloco 3. Quem precisa
+// dos limites pergunta ao ArenaRogue(); a troca acontece ao entrar na sala (RogueLimparSala).
+#define RET_ARENA_ROGUE_PADRAO  { 40, 60, 720, 470 }
+static const Rectangle ARENA_ROGUE_PADRAO = RET_ARENA_ROGUE_PADRAO;
+static Rectangle arenaRogueAtual = RET_ARENA_ROGUE_PADRAO;
+
+static Rectangle ArenaRogue(void)
+{
+    return arenaRogueAtual;
+}
+
+// ---- ARENA FINAL DO BLOCO 3: arte "mapa3_luci.png" (1026 x 1026, quadrada) ----
+// Reduzida no carregamento para MAPA_LUCI_LADO, SEM deformar: centrada na tela e com a base
+// encostada no HUD de baixo (só a fileira de tijolos do topo da imagem fica fora da tela).
+// O chão da arte (entre as paredes) vira a arena da luta. Tudo é medido NA IMAGEM.
+#define ARQUIVO_MAPA_LUCI    "resources/maps/mapa3_luci.png"
+#define TAM_IMG_MAPA_LUCI    1026.0f
+#define MAPA_LUCI_LADO        574.0f
+#define MAPA_LUCI_X          (400.0f - MAPA_LUCI_LADO / 2.0f)     // 113
+#define MAPA_LUCI_Y          (538.0f - MAPA_LUCI_LADO)            // -36 (o HUD de baixo começa em 538)
+#define LUCI_MX(px)  (MAPA_LUCI_X + (px) * MAPA_LUCI_LADO / TAM_IMG_MAPA_LUCI)
+#define LUCI_MY(py)  (MAPA_LUCI_Y + (py) * MAPA_LUCI_LADO / TAM_IMG_MAPA_LUCI)
+#define LUCI_MT(p)   ((p) * MAPA_LUCI_LADO / TAM_IMG_MAPA_LUCI)
+
+// O chão: da base da parede de cima (y 280) até a borda de baixo (992), entre as laterais (22 a 1004)
+static const Rectangle ARENA_LUCI = { LUCI_MX(22), LUCI_MY(280), LUCI_MT(982), LUCI_MT(712) };
+
+static Texture2D texMapaLuci = {0};          // sem o arquivo, a luta usa o chão simples (na mesma arena)
+
+// Um ponto pensado para a arena de sempre, levado para a arena atual (mesma posição relativa).
+// Nas salas de sempre devolve o próprio ponto.
+static Vector2 PontoNaArena(Vector2 p)
+{
+    Rectangle a = arenaRogueAtual, d = ARENA_ROGUE_PADRAO;
+
+    if (a.x == d.x && a.y == d.y && a.width == d.width && a.height == d.height)
+        return p;
+
+    return (Vector2){ a.x + (p.x - d.x) * a.width / d.width, a.y + (p.y - d.y) * a.height / d.height };
+}
+
+static Rectangle RetanguloNaArena(Rectangle r)
+{
+    Rectangle a = arenaRogueAtual, d = ARENA_ROGUE_PADRAO;
+    Vector2 p = PontoNaArena((Vector2){ r.x, r.y });
+
+    return (Rectangle){ p.x, p.y, r.width * a.width / d.width, r.height * a.height / d.height };
+}
+
+// Carrega a arte de um mapa já no tamanho que ela ocupa na tela (a imagem original é bem maior).
+// Sem o arquivo, devolve uma textura vazia e o jogo usa o cenário simples.
+static Texture2D CarregarMapaReduzido(const char *arquivo, int largura, int altura)
+{
+    if (!FileExists(arquivo)) {
+        TraceLog(LOG_WARNING, "MAPA: '%s' nao encontrado (usando o cenario simples)", arquivo);
+        return (Texture2D){0};
+    }
+
+    Image img = LoadImage(arquivo);
+
+    if (img.data == NULL)
+        return (Texture2D){0};
+
+    ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+
+    if (img.width != largura || img.height != altura)
+        ImageResize(&img, largura, altura);
+
+    Texture2D t = LoadTextureFromImage(img);
+    UnloadImage(img);
+    return t;
+}
+
+// Mapas novos (corredor do Bloco 1 e arena final): carregados uma vez, depois do InitWindow
+static void CarregarMapasNovos(void)
+{
+    texMapaCorredor = CarregarMapaReduzido(ARQUIVO_MAPA_CORREDOR, (int)roundf(MAPA_CORREDOR_LARGURA), (int)roundf(MAPA_CORREDOR_ALTURA));
+    texMapaLuci     = CarregarMapaReduzido(ARQUIVO_MAPA_LUCI, (int)MAPA_LUCI_LADO, (int)MAPA_LUCI_LADO);
+}
+
+static void DescarregarMapasNovos(void)
+{
+    if (texMapaCorredor.id > 0) UnloadTexture(texMapaCorredor);
+    if (texMapaLuci.id > 0)     UnloadTexture(texMapaLuci);
+
+    texMapaCorredor = (Texture2D){0};
+    texMapaLuci = (Texture2D){0};
+}
+
 static const Rectangle PORTA_PROXIMA_ROGUE = { 370, 60, 60, 14 };
 static const Rectangle PORTA_SAIDA_ROGUE   = { 40, 260, 14, 70 };
 static const Rectangle PORTA_BLOCO3_ROGUE  = { 746, 160, 14, 70 };   // abre ao vencer o Alucinador
@@ -7974,8 +8378,8 @@ static Direcao DirecaoDoVetor(Vector2 v)
 // Mantém um círculo dentro da arena e fora das estantes
 static void RogueEmpurrarParaFora(Vector2 *p, float raio, const Rectangle *obst, int n)
 {
-    p->x = Clamp(p->x, ARENA_ROGUE.x + raio, ARENA_ROGUE.x + ARENA_ROGUE.width - raio);
-    p->y = Clamp(p->y, ARENA_ROGUE.y + raio, ARENA_ROGUE.y + ARENA_ROGUE.height - raio);
+    p->x = Clamp(p->x, ArenaRogue().x + raio, ArenaRogue().x + ArenaRogue().width - raio);
+    p->y = Clamp(p->y, ArenaRogue().y + raio, ArenaRogue().y + ArenaRogue().height - raio);
 
     for (int i = 0; i < n; i++) {
 
@@ -8571,6 +8975,7 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     memset(b->areas, 0, sizeof(b->areas));
 
     b->tipoSala = tipo;
+    arenaRogueAtual = (tipo == SALA_LUCI) ? ARENA_LUCI : ARENA_ROGUE_PADRAO;
     b->encontro = -1;
     b->limpa = false;
     b->terminalLido = false;
@@ -8580,7 +8985,7 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     b->silogista.ativo = false;
     b->luci.ativo = false;
     b->fadeEntrada = 0.35f;
-    b->j.pos = entrada;
+    b->j.pos = PontoNaArena(entrada);
     b->j.tempoEsquiva = 0.0f;
     b->j.golpesSofridos = 0;
 
@@ -8717,8 +9122,8 @@ static ObjetivoCombate RogueSortearObjetivo(const Biblioteca *b)
 // longe da entrada do jogador e de outras armadilhas
 static bool RogueLugarLivre(const Biblioteca *b, Vector2 p, float raio, float longeJogador)
 {
-    if (p.x < ARENA_ROGUE.x + raio + 10 || p.x > ARENA_ROGUE.x + ARENA_ROGUE.width - raio - 10) return false;
-    if (p.y < ARENA_ROGUE.y + raio + 10 || p.y > ARENA_ROGUE.y + ARENA_ROGUE.height - raio - 10) return false;
+    if (p.x < ArenaRogue().x + raio + 10 || p.x > ArenaRogue().x + ArenaRogue().width - raio - 10) return false;
+    if (p.y < ArenaRogue().y + raio + 10 || p.y > ArenaRogue().y + ArenaRogue().height - raio - 10) return false;
     if (RogueNaZonaLivre(p, raio))                                                   return false;
     if (Vector2Distance(p, b->j.pos) < longeJogador)                                 return false;
 
@@ -8764,8 +9169,8 @@ static void RogueCriarArmadilha(Biblioteca *b, TipoArmadilha tipo)
                 float c = a->vertical ? (float)GetRandomValue(120, 680) : (float)GetRandomValue(130, 450);
                 float jog = a->vertical ? b->j.pos.x : b->j.pos.y;
                 if (fabsf(c - jog) < 90.0f) continue;
-                a->r = a->vertical ? (Rectangle){ c - FEIXE_LARGURA / 2, ARENA_ROGUE.y, FEIXE_LARGURA, ARENA_ROGUE.height }
-                                   : (Rectangle){ ARENA_ROGUE.x, c - FEIXE_LARGURA / 2, ARENA_ROGUE.width, FEIXE_LARGURA };
+                a->r = a->vertical ? (Rectangle){ c - FEIXE_LARGURA / 2, ArenaRogue().y, FEIXE_LARGURA, ArenaRogue().height }
+                                   : (Rectangle){ ArenaRogue().x, c - FEIXE_LARGURA / 2, ArenaRogue().width, FEIXE_LARGURA };
                 break;
             }
             if (a->r.width <= 0.0f) { a->ativo = false; return; }
@@ -10005,8 +10410,8 @@ static Vector2 RoguePrevisaoJogador(const Biblioteca *b, Vector2 origem, float v
     float t = fminf(Vector2Distance(origem, j->pos) / velProjetil, KEYLOGGER_PREVISAO_MAX);
     Vector2 p = Vector2Add(j->pos, Vector2Scale(j->velMedia, t * confianca));
 
-    p.x = Clamp(p.x, ARENA_ROGUE.x + 10.0f, ARENA_ROGUE.x + ARENA_ROGUE.width - 10.0f);
-    p.y = Clamp(p.y, ARENA_ROGUE.y + 10.0f, ARENA_ROGUE.y + ARENA_ROGUE.height - 10.0f);
+    p.x = Clamp(p.x, ArenaRogue().x + 10.0f, ArenaRogue().x + ArenaRogue().width - 10.0f);
+    p.y = Clamp(p.y, ArenaRogue().y + 10.0f, ArenaRogue().y + ArenaRogue().height - 10.0f);
     return p;
 }
 
@@ -10535,7 +10940,7 @@ static void RogueMarcarDedutivo(Biblioteca *b, int *marca, float *tempo, int alv
     *tempo = 0.6f;                              // os símbolos ficam um instante na tela
     j->recargaDedutivo = DEDUTIVO_RECARGA * (j->seloAmplificado ? SIL_BH_DEDUTIVO_RECARGA : 1.0f);
 
-    Vector2 origem = { pos.x, fmaxf(ARENA_ROGUE.y + 8.0f, pos.y - 70.0f) };
+    Vector2 origem = { pos.x, fmaxf(ArenaRogue().y + 8.0f, pos.y - 70.0f) };
     Projetil *q = RogueDisparar(b, origem, (Vector2){ 0, 1 }, DEDUTIVO_VEL, RogueDanoTiro(b) * DEDUTIVO_DANO * (j->seloAmplificado ? SIL_BH_DEDUTIVO_BONUS : 1.0f), 7.0f, true);
     if (q != NULL) q->alvoDedutivo = alvo;
 
@@ -11726,7 +12131,7 @@ static AtaqueSil *SilNovoAtaque(Silogista *s, TipoAtaqueSil tipo, float aviso)
 // Linhas: quantas balas cabem e onde nasce a bala i
 static int SilBalasLinha(const AtaqueSil *a)
 {
-    float comprimento = (a->dir.y != 0.0f) ? ARENA_ROGUE.width : ARENA_ROGUE.height;
+    float comprimento = (a->dir.y != 0.0f) ? ArenaRogue().width : ArenaRogue().height;
     return (int)(comprimento / SIL_LINHA_ESPACO);
 }
 
@@ -11735,10 +12140,10 @@ static Vector2 SilPontoLinha(const AtaqueSil *a, int i)
     float t = ((float)i + 0.5f) * SIL_LINHA_ESPACO;
 
     if (a->dir.y != 0.0f)                       // linha deitada, descendo do alto
-        return (Vector2){ ARENA_ROGUE.x + t, ARENA_ROGUE.y + 8.0f };
+        return (Vector2){ ArenaRogue().x + t, ArenaRogue().y + 8.0f };
 
-    float x = (a->dir.x > 0.0f) ? ARENA_ROGUE.x + 8.0f : ARENA_ROGUE.x + ARENA_ROGUE.width - 8.0f;
-    return (Vector2){ x, ARENA_ROGUE.y + t };
+    float x = (a->dir.x > 0.0f) ? ArenaRogue().x + 8.0f : ArenaRogue().x + ArenaRogue().width - 8.0f;
+    return (Vector2){ x, ArenaRogue().y + t };
 }
 
 // Errou um puzzle: anel de balas (com aviso)
@@ -11792,7 +12197,7 @@ static void SilComecarAtaque(Biblioteca *b)
             int lado = GetRandomValue(0, 2);
             a->dir = (lado == 0) ? (Vector2){ 0, 1 } : ((lado == 1) ? (Vector2){ 1, 0 } : (Vector2){ -1, 0 });
 
-            float ref = (a->dir.y != 0.0f) ? jp.x - ARENA_ROGUE.x : jp.y - ARENA_ROGUE.y;
+            float ref = (a->dir.y != 0.0f) ? jp.x - ArenaRogue().x : jp.y - ArenaRogue().y;
             int balas = SilBalasLinha(a);
             int meio = (int)(ref / SIL_LINHA_ESPACO) + GetRandomValue(-4, 4);
             a->brecha = (int)Clamp((float)(meio - SIL_LINHA_BRECHA / 2), 0.0f, (float)(balas - SIL_LINHA_BRECHA));
@@ -12235,7 +12640,7 @@ static void SilBHComecarPadrao(Biblioteca *b)
             float a = (float)i * 2.0f * PI / (float)n;
             Vector2 d = { cosf(a), sinf(a) };
             Vector2 p = Vector2Add(j->pos, Vector2Scale(d, 230.0f));
-            if (!CheckCollisionPointRec(p, (Rectangle){ ARENA_ROGUE.x + 20, ARENA_ROGUE.y + 20, ARENA_ROGUE.width - 40, ARENA_ROGUE.height - 40 }))
+            if (!CheckCollisionPointRec(p, (Rectangle){ ArenaRogue().x + 20, ArenaRogue().y + 20, ArenaRogue().width - 40, ArenaRogue().height - 40 }))
                 continue;
             Vector2 tangente = { -d.y * giro, d.x * giro };
             SilBHCriarSimbolo(b, p, Vector2Add(Vector2Scale(d, -55.0f), Vector2Scale(tangente, 22.0f)),
@@ -12444,7 +12849,7 @@ static void RogueAtualizarSilogistaBH(Biblioteca *b, ProgressoCorredor *prog, fl
 
         q->posicao = Vector2Add(q->posicao, Vector2Scale(q->velocidade, dt));
         q->vida -= dt;
-        if (q->vida <= 0.0f || !CheckCollisionPointRec(q->posicao, (Rectangle){ ARENA_ROGUE.x + 4, ARENA_ROGUE.y + 12, ARENA_ROGUE.width - 8, ARENA_ROGUE.height - 16 })) {
+        if (q->vida <= 0.0f || !CheckCollisionPointRec(q->posicao, (Rectangle){ ArenaRogue().x + 4, ArenaRogue().y + 12, ArenaRogue().width - 8, ArenaRogue().height - 16 })) {
             q->ativo = false;
             continue;
         }
@@ -12907,7 +13312,12 @@ static const char *CONTEXTO_LUCI[NUM_CONTEXTO_LUCI] = {
 };
 #define CONTEXTO_CERTOS 3       // os 3 primeiros são o pedido claro
 
-static const Vector2 NUCLEO_LUCI = { 400, 340 };
+static const Vector2 NUCLEO_LUCI_PADRAO = { 400, 340 };     // pensado na arena de sempre
+
+static Vector2 NucleoLuci(void)
+{
+    return PontoNaArena(NUCLEO_LUCI_PADRAO);
+}
 
 // A frase contradiz o que dá para ver agora?
 static bool RogueFraseContradiz(const Biblioteca *b, int f)
@@ -12949,7 +13359,7 @@ static void RogueIniciarLuciChefe(Biblioteca *b)
     l->faseOculta = 1;
     l->hpMax = l->hp = RogueHpBarraLuci(l, 1);
     l->ritmo = boa ? 1.0f : LUCI_RITMO_RUIM;
-    l->pos = (Vector2){ 400, 150 };
+    l->pos = PontoNaArena((Vector2){ 400, 150 });
     l->tempoDica = 2.0f;
     l->frase = -1;
     l->carregando = -1;
@@ -13116,7 +13526,7 @@ static void RogueLuciContexto(Biblioteca *b, int k)
 
     if (c < CONTEXTO_CERTOS) {
         l->entregue[c] = true;
-        RogueParticulas(b, NUCLEO_LUCI, (Color){ 0, 228, 255, 255 }, 16, 160);
+        RogueParticulas(b, NucleoLuci(), (Color){ 0, 228, 255, 255 }, 16, 160);
         if (++l->entregues >= CONTEXTO_CERTOS) {
             l->contextoPronto = true;
             RogueAviso(b, "PEDIDO CLARO! A armadura dela caiu.");
@@ -13127,7 +13537,7 @@ static void RogueLuciContexto(Biblioteca *b, int k)
     } else {
         // Pedido vago: ela preenche a lacuna inventando (e se cura)
         l->hp = fminf(l->hpMax, l->hp + l->hpMax * LUCI_CURA_ERRO);
-        l->posContexto[c] = PONTOS_PECAS_SIL[GetRandomValue(0, NUM_PONTOS_PECAS_SIL - 1)];
+        l->posContexto[c] = PontoNaArena(PONTOS_PECAS_SIL[GetRandomValue(0, NUM_PONTOS_PECAS_SIL - 1)]);
         RogueLuciAnel(b, 12);
         RogueAviso(b, "Pedido vago: ela inventa uma resposta!");
         RogueErroVerificacao(b, CONTEXTO_LUCI[c], "Pedido vago: sem assunto, objetivo e formato, a IA preenche a lacuna inventando.");
@@ -13244,9 +13654,9 @@ static void RogueLuciComecarFaseOculta(Biblioteca *b, int fase)
         // O chão fragmentado: ladrilhos que racham e caem (longe do núcleo e sem se sobrepor)
         int criados = 0;
         for (int t = 0; t < 80 && criados < NUM_PISO_LUCI; t++) {
-            Rectangle r = { 60.0f + 40.0f * (float)GetRandomValue(0, 15), 100.0f + 40.0f * (float)GetRandomValue(0, 8), 80, 80 };
-            if (r.x + r.width > ARENA_ROGUE.x + ARENA_ROGUE.width - 10 || r.y + r.height > ARENA_ROGUE.y + ARENA_ROGUE.height - 10) continue;
-            if (CheckCollisionCircleRec(NUCLEO_LUCI, 70.0f, r)) continue;
+            Rectangle r = RetanguloNaArena((Rectangle){ 60.0f + 40.0f * (float)GetRandomValue(0, 15), 100.0f + 40.0f * (float)GetRandomValue(0, 8), 80, 80 });
+            if (r.x + r.width > ArenaRogue().x + ArenaRogue().width - 10 || r.y + r.height > ArenaRogue().y + ArenaRogue().height - 10) continue;
+            if (CheckCollisionCircleRec(NucleoLuci(), 70.0f, r)) continue;
             bool sobrepoe = false;
             for (int k = 0; k < criados; k++)
                 if (CheckCollisionRecs((Rectangle){ r.x - 10, r.y - 10, r.width + 20, r.height + 20 }, l->piso[k])) sobrepoe = true;
@@ -13260,7 +13670,7 @@ static void RogueLuciComecarFaseOculta(Biblioteca *b, int fase)
 
         if (l->exigeContexto) {
             for (int k = 0; k < NUM_CONTEXTO_LUCI; k++) {
-                l->posContexto[k] = PONTOS_PECAS_SIL[(k * 3 + GetRandomValue(0, 1)) % NUM_PONTOS_PECAS_SIL];
+                l->posContexto[k] = PontoNaArena(PONTOS_PECAS_SIL[(k * 3 + GetRandomValue(0, 1)) % NUM_PONTOS_PECAS_SIL]);
                 l->entregue[k] = false;
             }
             l->entregues = 0;
@@ -13555,7 +13965,7 @@ static void RogueLuciNucleo(Biblioteca *b, float dt)
     }
 
     // Ondas de choque: ela vai ao centro, brilha (aviso) e solta o anel com uma brecha
-    l->pos = Vector2Lerp(l->pos, (Vector2){ 400, 290 }, fminf(1.0f, 4.0f * dt));
+    l->pos = Vector2Lerp(l->pos, PontoNaArena((Vector2){ 400, 290 }), fminf(1.0f, 4.0f * dt));
 
     if (!l->ondaAtiva) {
         l->avisoOnda -= dt;
@@ -13616,7 +14026,7 @@ static void RogueLuciConflito(Biblioteca *b, float dt)
         l->angulo += dt * 0.6f * l->ritmo;
         for (int k = 0; k < 3; k++) {
             float a = l->angulo + k * (2.0f * PI / 3.0f);
-            l->copia[k] = (Vector2){ 400.0f + cosf(a) * 190.0f, 240.0f + sinf(a) * 90.0f };
+            l->copia[k] = PontoNaArena((Vector2){ 400.0f + cosf(a) * 190.0f, 240.0f + sinf(a) * 90.0f });
         }
         l->troca -= dt;
         if (l->troca <= 0.0f) {                         // trocam de lugar num clarão
@@ -13626,7 +14036,7 @@ static void RogueLuciConflito(Biblioteca *b, float dt)
         }
         l->pos = l->copia[l->real];
     } else {
-        l->pos = Vector2Lerp(l->pos, (Vector2){ 400.0f + sinf(l->anim * 0.6f) * 170.0f, 150.0f }, fminf(1.0f, 3.0f * dt));
+        l->pos = Vector2Lerp(l->pos, PontoNaArena((Vector2){ 400.0f + sinf(l->anim * 0.6f) * 170.0f, 150.0f }), fminf(1.0f, 3.0f * dt));
     }
 
     // Leque (dica) ou espiral em rajadas (contradições)
@@ -13670,7 +14080,7 @@ static void RogueLuciConflito(Biblioteca *b, float dt)
                 }
             }
             for (int k = 0; k < 24; k++)
-                RogueParticulas(b, (Vector2){ (l->ladoAtaque == 0 ? 60.0f : 420.0f) + GetRandomValue(0, 320), (float)GetRandomValue(80, 520) }, RED, 1, 60);
+                RogueParticulas(b, PontoNaArena((Vector2){ (l->ladoAtaque == 0 ? 60.0f : 420.0f) + GetRandomValue(0, 320), (float)GetRandomValue(80, 520) }), RED, 1, 60);
             TocarSomTom(sfxDano, 0.6f);
         }
     }
@@ -13770,7 +14180,7 @@ static bool RogueAlvoContexto(const Biblioteca *b, int *k)
     if (!l->ativo || l->faseOculta != 3 || !l->exigeContexto || l->contextoPronto || l->emRegeneracao)
         return false;
 
-    if (l->carregando >= 0 && Vector2Distance(b->j.pos, NUCLEO_LUCI) < 50.0f) { *k = -1; return true; }
+    if (l->carregando >= 0 && Vector2Distance(b->j.pos, NucleoLuci()) < 50.0f) { *k = -1; return true; }
 
     for (int c = 0; c < NUM_CONTEXTO_LUCI; c++)
         if (!l->entregue[c] && c != l->carregando && Vector2Distance(b->j.pos, l->posContexto[c]) < SIL_RAIO_PEGAR) { *k = c; return true; }
@@ -14075,7 +14485,7 @@ static Vector2 RogueFimFeixe(const Biblioteca *b, Vector2 origem, Vector2 dir)
 
     for (int k = 0; k < 200; k++) {
         Vector2 q = Vector2Add(p, Vector2Scale(dir, 6.0f));
-        if (!CheckCollisionPointRec(q, ARENA_ROGUE))
+        if (!CheckCollisionPointRec(q, ArenaRogue()))
             return q;
         for (int i = 0; i < b->numObst; i++)
             if (CheckCollisionPointRec(q, b->obst[i]))
@@ -15130,7 +15540,7 @@ static void RogueAtualizarProjeteis(Biblioteca *b, ProgressoCorredor *prog, floa
         }
 
         // Saiu da arena ou bateu numa estante (o projétil Q passa por cima delas)
-        bool bateu = !CheckCollisionPointRec(p->pos, ARENA_ROGUE);
+        bool bateu = !CheckCollisionPointRec(p->pos, ArenaRogue());
         for (int k = 0; k < b->numObst && !bateu && p->alvoDedutivo == 0; k++)
             bateu = CheckCollisionPointRec(p->pos, b->obst[k]);
 
@@ -15727,8 +16137,8 @@ static void RogueAtualizarArmadilhas(Biblioteca *b, ProgressoCorredor *prog, flo
                     // Marca o chão perto do jogador (dá tempo de sair)
                     a->fase = 1;
                     a->timer = EXPLOSAO_AVISO;
-                    a->pos = (Vector2){ Clamp(j->pos.x + (float)GetRandomValue(-40, 40), ARENA_ROGUE.x + 30, ARENA_ROGUE.x + ARENA_ROGUE.width - 30),
-                                        Clamp(j->pos.y + (float)GetRandomValue(-40, 40), ARENA_ROGUE.y + 30, ARENA_ROGUE.y + ARENA_ROGUE.height - 30) };
+                    a->pos = (Vector2){ Clamp(j->pos.x + (float)GetRandomValue(-40, 40), ArenaRogue().x + 30, ArenaRogue().x + ArenaRogue().width - 30),
+                                        Clamp(j->pos.y + (float)GetRandomValue(-40, 40), ArenaRogue().y + 30, ArenaRogue().y + ArenaRogue().height - 30) };
                 }
                 else if (a->fase == 1 && a->timer <= 0.0f) {
                     // Explode e fere todo mundo por perto (dá para atrair os inimigos)
@@ -21872,8 +22282,8 @@ static void DesenharAtaquesSilogista(const Silogista *s, float t)
                 Vector2 b0 = SilPontoLinha(a, a->brecha), b1 = SilPontoLinha(a, a->brecha + SIL_LINHA_BRECHA - 1);
                 float meia = SIL_LINHA_ESPACO / 2.0f;
                 Rectangle brecha = (a->dir.y != 0.0f)
-                    ? (Rectangle){ b0.x - meia, ARENA_ROGUE.y, b1.x - b0.x + 2 * meia, ARENA_ROGUE.height }
-                    : (Rectangle){ ARENA_ROGUE.x, b0.y - meia, ARENA_ROGUE.width, b1.y - b0.y + 2 * meia };
+                    ? (Rectangle){ b0.x - meia, ArenaRogue().y, b1.x - b0.x + 2 * meia, ArenaRogue().height }
+                    : (Rectangle){ ArenaRogue().x, b0.y - meia, ArenaRogue().width, b1.y - b0.y + 2 * meia };
                 DrawRectangleRec(brecha, Fade(GREEN, 0.08f + 0.06f * pisca));
             } break;
 
@@ -22433,14 +22843,15 @@ static bool RogueNoBloco3(const Biblioteca *b)
 static void DesenharChaoNucleo(const Biblioteca *b, float t)
 {
     for (int i = 0; i < 12; i++) {
-        float y = ARENA_ROGUE.y + fmodf(i * 40.0f + t * 18.0f, ARENA_ROGUE.height);
+        float y = ArenaRogue().y + fmodf(i * 40.0f + t * 18.0f, ArenaRogue().height);
         int largura = 120 + (int)(Ruido((unsigned int)i * 7u) % 400);
-        int x = (int)ARENA_ROGUE.x + 10 + (int)(Ruido((unsigned int)i * 13u) % 200);
+        int x = (int)ArenaRogue().x + 10 + (int)(Ruido((unsigned int)i * 13u) % 200);
         DrawRectangle(x, (int)y, largura, 2, Fade(MAGENTA, 0.07f));
     }
     if (b->tipoSala == SALA_LUCI) {
-        DrawCircleLines(400, 300, 200, Fade(MAGENTA, 0.08f));
-        DrawCircleLines(400, 300, 120, Fade((Color){ 0, 228, 255, 255 }, 0.08f));
+        Vector2 c = PontoNaArena((Vector2){ 400, 300 });
+        DrawCircleLines((int)c.x, (int)c.y, 200, Fade(MAGENTA, 0.08f));
+        DrawCircleLines((int)c.x, (int)c.y, 120, Fade((Color){ 0, 228, 255, 255 }, 0.08f));
     }
 }
 
@@ -22489,7 +22900,7 @@ static void DesenharLuciChefe(const Biblioteca *b, float t)
             float q = Clamp(1.0f - l->tempoRegeneracao / LUCI_RENASCER, 0.0f, 1.0f);
             p.y += 26.0f * (1.0f - q);
             altura *= 0.65f + 0.35f * q;
-            DrawRectangle((int)p.x - (int)(10 + 30 * q), (int)ARENA_ROGUE.y, (int)(20 + 60 * q), (int)(p.y - ARENA_ROGUE.y), Fade(corNova, 0.10f + 0.15f * q));
+            DrawRectangle((int)p.x - (int)(10 + 30 * q), (int)ArenaRogue().y, (int)(20 + 60 * q), (int)(p.y - ArenaRogue().y), Fade(corNova, 0.10f + 0.15f * q));
             DrawCircleV(p, LUCI_RAIO + 10 + 30 * q, Fade(corNova, 0.25f * q));
         }
     }
@@ -22561,7 +22972,7 @@ static void DesenharAvisoMetade(const Biblioteca *b, float t)
         return;
 
     float k = 1.0f - l->tempoDica / LUCI_DICA_AVISO;
-    Rectangle metade = { (l->ladoAtaque == 0) ? ARENA_ROGUE.x : 400.0f, ARENA_ROGUE.y, ARENA_ROGUE.width / 2.0f, ARENA_ROGUE.height };
+    Rectangle metade = { (l->ladoAtaque == 0) ? ArenaRogue().x : 400.0f, ArenaRogue().y, ArenaRogue().width / 2.0f, ArenaRogue().height };
     bool nitido = RogueTemConceito(b, CONCEITO_FUNDAMENTOS);
 
     DrawRectangleRec(metade, Fade(RED, (nitido ? 0.12f : 0.06f) + 0.18f * k));
@@ -22587,10 +22998,10 @@ static void DesenharContextoLuci(const Biblioteca *b, float t)
         return;
 
     float pulso = 0.5f + 0.5f * sinf(t * 4.0f);
-    DrawCircleV(NUCLEO_LUCI, 34 + pulso * 4, Fade((Color){ 0, 228, 255, 255 }, l->contextoPronto ? 0.3f : 0.12f));
-    DrawPolyLinesEx(NUCLEO_LUCI, 8, 30, t * 20.0f, 3, (Color){ 0, 228, 255, 255 });
-    DrawText(TextFormat("%d/%d", l->entregues, CONTEXTO_CERTOS), (int)NUCLEO_LUCI.x - 12, (int)NUCLEO_LUCI.y - 8, 16, WHITE);
-    DrawText("NÚCLEO", (int)NUCLEO_LUCI.x - MeasureText("NÚCLEO", 10) / 2, (int)NUCLEO_LUCI.y + 36, 10, (Color){ 0, 228, 255, 255 });
+    DrawCircleV(NucleoLuci(), 34 + pulso * 4, Fade((Color){ 0, 228, 255, 255 }, l->contextoPronto ? 0.3f : 0.12f));
+    DrawPolyLinesEx(NucleoLuci(), 8, 30, t * 20.0f, 3, (Color){ 0, 228, 255, 255 });
+    DrawText(TextFormat("%d/%d", l->entregues, CONTEXTO_CERTOS), (int)NucleoLuci().x - 12, (int)NucleoLuci().y - 8, 16, WHITE);
+    DrawText("NÚCLEO", (int)NucleoLuci().x - MeasureText("NÚCLEO", 10) / 2, (int)NucleoLuci().y + 36, 10, (Color){ 0, 228, 255, 255 });
 
     if (l->contextoPronto)
         return;
@@ -22606,6 +23017,20 @@ static void DesenharContextoLuci(const Biblioteca *b, float t)
 }
 
 // Faixa no alto: o "lado seguro" (fase 1), a frase para contestar (fase 2) ou o pedido (fase 3)
+// A Luci está falando na Biblioteca? (o recado curto dela, ou a fala do chefe na faixa de cima)
+static bool RogueLuciFalando(const Biblioteca *b)
+{
+    const LuciChefe *l = &b->luci;
+
+    if (b->luciMsgTempo > 0.0f)
+        return true;
+
+    if (b->tipoSala != SALA_LUCI || !l->ativo || !l->apresentado || l->morrendo > 0.0f || l->emRegeneracao)
+        return false;
+
+    return (l->fase == LUCI_SUB_DICA && l->avisando) || (l->fase == LUCI_SUB_CONTRADICAO && l->frase >= 0);
+}
+
 static void DesenharFaixaLuci(const Biblioteca *b, float t)
 {
     const LuciChefe *l = &b->luci;
@@ -25034,8 +25459,8 @@ static void DesenharSimbolosSilogistaBH(const Biblioteca *b, float t)
         w += 16;
 
         float bx = q->posicao.x + 26.0f, by = q->posicao.y - 40.0f;
-        if (bx + (float)w > ARENA_ROGUE.x + ARENA_ROGUE.width - 4) bx = q->posicao.x - 26.0f - (float)w;
-        by = Clamp(by, ARENA_ROGUE.y + 4, ARENA_ROGUE.y + ARENA_ROGUE.height - 40);
+        if (bx + (float)w > ArenaRogue().x + ArenaRogue().width - 4) bx = q->posicao.x - 26.0f - (float)w;
+        by = Clamp(by, ArenaRogue().y + 4, ArenaRogue().y + ArenaRogue().height - 40);
         Rectangle caixa = { bx, by, (float)w, 34 };
 
         DrawLineEx(q->posicao, (Vector2){ (bx < q->posicao.x) ? bx + (float)w : bx, by + 17 }, 1, Fade(GOLD, 0.8f));
@@ -25303,13 +25728,23 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     BeginMode2D(cam);
 
-    // Chão da biblioteca: ladrilhos (no átrio, um tapete no caminho da porta)
-    DrawRectangleRec(ARENA_ROGUE, atrio ? (Color){ 22, 18, 38, 255 } : (Color){ 18, 15, 30, 255 });
+    // Luta final da Luci: a arte do mapa roxo no lugar do chão, da grade, das estantes e da borda
+    bool mapaLuci = (b->tipoSala == SALA_LUCI && texMapaLuci.id > 0);
 
-    for (int x = (int)ARENA_ROGUE.x; x < ARENA_ROGUE.x + ARENA_ROGUE.width; x += 40)
-        DrawLine(x, (int)ARENA_ROGUE.y, x, (int)(ARENA_ROGUE.y + ARENA_ROGUE.height), Fade(PURPLE, 0.10f));
-    for (int y = (int)ARENA_ROGUE.y; y < ARENA_ROGUE.y + ARENA_ROGUE.height; y += 40)
-        DrawLine((int)ARENA_ROGUE.x, y, (int)(ARENA_ROGUE.x + ARENA_ROGUE.width), y, Fade(PURPLE, 0.10f));
+    if (mapaLuci) {
+
+        DrawTexture(texMapaLuci, (int)MAPA_LUCI_X, (int)MAPA_LUCI_Y, WHITE);
+
+    } else {
+
+        // Chão da biblioteca: ladrilhos (no átrio, um tapete no caminho da porta)
+        DrawRectangleRec(ArenaRogue(), atrio ? (Color){ 22, 18, 38, 255 } : (Color){ 18, 15, 30, 255 });
+
+        for (int x = (int)ArenaRogue().x; x < ArenaRogue().x + ArenaRogue().width; x += 40)
+            DrawLine(x, (int)ArenaRogue().y, x, (int)(ArenaRogue().y + ArenaRogue().height), Fade(PURPLE, 0.10f));
+        for (int y = (int)ArenaRogue().y; y < ArenaRogue().y + ArenaRogue().height; y += 40)
+            DrawLine((int)ArenaRogue().x, y, (int)(ArenaRogue().x + ArenaRogue().width), y, Fade(PURPLE, 0.10f));
+    }
 
     if (atrio)
         DrawRectangle(370, 74, 60, 456, Fade(PURPLE, 0.18f));
@@ -25320,11 +25755,13 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (RogueNoBloco3(b))
         DesenharChaoNucleo(b, tempo);
 
-    // Prateleira decorativa na parede de cima
-    DesenharEstante((Rectangle){ ARENA_ROGUE.x, 42, 320, 16 }, tempo);
-    DesenharEstante((Rectangle){ 440, 42, 320, 16 }, tempo);
+    // Prateleira decorativa na parede de cima e a borda (a arte da luta final já tem as suas paredes)
+    if (!mapaLuci) {
+        DesenharEstante((Rectangle){ ArenaRogue().x, 42, 320, 16 }, tempo);
+        DesenharEstante((Rectangle){ 440, 42, 320, 16 }, tempo);
 
-    DrawRectangleLinesEx(ARENA_ROGUE, 4, Fade(PURPLE, 0.6f));
+        DrawRectangleLinesEx(ArenaRogue(), 4, Fade(PURPLE, 0.6f));
+    }
 
     // Estantes (no átrio, o Byte e o Byteco também ocupam lugar, mas são desenhados à parte)
     for (int i = 0; i < b->numObstFixos; i++)        // as barreiras das armadilhas são desenhadas à parte
@@ -25541,7 +25978,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         else if (alvo == ALVO_ENCAIXE)  DesenharTeclaE((Vector2){ POS_ENCAIXES[pedestal].x + 44, POS_ENCAIXES[pedestal].y - 20 }, tempo);
         else if (alvo == ALVO_REGISTRO) DesenharTeclaE((Vector2){ POS_REGISTROS[pedestal].x, POS_REGISTROS[pedestal].y - 36 }, tempo);
         else if (alvo == ALVO_CONTEXTO) {
-            Vector2 c = (pedestal < 0) ? NUCLEO_LUCI : b->luci.posContexto[pedestal];
+            Vector2 c = (pedestal < 0) ? NucleoLuci() : b->luci.posContexto[pedestal];
             DesenharTeclaE((Vector2){ c.x, c.y - 34 }, tempo);
         }
         else if (alvo == ALVO_RECOMPENSA)    DesenharTeclaE((Vector2){ b->recompensaPos.x, b->recompensaPos.y - 40 }, tempo);
@@ -27094,6 +27531,7 @@ int main(void) {
     // caminhos das imagens (sprites) do jogo e carregamento delas
     Texture2D imagem_titulo = LoadTexture("resources/ui/titulo.png");
     CarregarLuci();
+    CarregarMapasNovos();                // corredor do Bloco 1 e arena final (reduzidos para a tela)
 
     // Personagem: uma folha de animação por direção (na ordem do enum Direcao)
     SpriteDirecao spritesJogador[NUM_DIRECOES];
@@ -27914,13 +28352,11 @@ int main(void) {
 
             else {
 
+                Vector2 posAntesCorredor = playerPos;
                 direcaoAtual = MoverJogador(&playerPos, direcaoAtual);
 
-                // Limites do corredor (só a faixa do chão é andável)
-                if (playerPos.x < 80)  playerPos.x = 80;
-                if (playerPos.x > 720) playerPos.x = 720;
-                if (playerPos.y < 285) playerPos.y = 285;
-                if (playerPos.y > 395) playerPos.y = 395;
+                // Paredes do mapa: os pés batem nelas (e o jogador desliza junto da parede)
+                ColidirComLista(&playerPos, posAntesCorredor, PAREDES_CORREDOR, NUM_PAREDES_CORREDOR);
 
                 Rectangle jogador = AreaJogador(playerPos);
 
@@ -28170,6 +28606,10 @@ int main(void) {
         if (tela == BIBLIOTECA)
             instabilidadeLuci = fmaxf(instabilidadeLuci, RogueCorrupcaoLuci(&biblioteca));
         brilhoLuci = 1.0f + 0.15f * (float)(ContarConcluidos(&progresso));
+
+        // A Luci brilha enquanto fala: página de diálogo com "Luci:" ou, na Biblioteca, o recado
+        // dela e as falas do chefe. Parou de falar, volta ao sprite parado.
+        AtualizarFalaLuci(DialogoFalaDaLuci(&dlg) || (tela == BIBLIOTECA && RogueLuciFalando(&biblioteca)), pausado ? 0.0f : dt);
 
         // =====================================================
         // DESENHO
@@ -28554,33 +28994,7 @@ int main(void) {
 
             ClearBackground((Color){8, 6, 18, 255});
 
-            Rectangle corredor = {50, 100, 700, 320};
-
-            // -------------------------------------------------
-            // CENÁRIO: parede de fundo e chão
-            // -------------------------------------------------
-
-            DrawRectangle(50, 100, 700, 140, (Color){26, 20, 46, 255});
-            DrawRectangle(50, 240, 700, 180, (Color){18, 15, 30, 255});
-
-            // Rodapé (linha entre a parede e o chão)
-            DrawRectangle(50, 236, 700, 6, Fade(PURPLE, 0.45f));
-
-            // Divisões do piso
-            for (int x = 50; x < 750; x += 70)
-                DrawLine(x, 242, x, 420, Fade(PURPLE, 0.12f));
-
-            // Luminárias pulsando no teto
-            for (int i = 0; i < 5; i++) {
-
-                float pulso = 0.5f + 0.5f * sinf(tempo * 1.5f + i * 1.3f);
-                int lx = 120 + i * 140;
-
-                DrawCircle(lx, 108, 20, Fade(SKYBLUE, 0.04f + 0.08f * pulso));
-                DrawRectangle(lx - 12, 102, 24, 5, Fade(SKYBLUE, 0.5f + 0.4f * pulso));
-            }
-
-            DrawRectangleLinesEx(corredor, 4, Fade(PURPLE, 0.55f));
+            DesenharCenarioCorredor(tempo);
 
             // -------------------------------------------------
             // PORTAS
@@ -28595,8 +29009,8 @@ int main(void) {
             Color bordaSaida = saidaLiberada ? Fade(GREEN, 0.55f + 0.45f * pulsoPorta)
                              : (chefeNaPorta ? Fade(MAGENTA, 0.55f + 0.45f * pulsoPorta) : MAROON);
 
-            DesenharPortaCorredor(PORTA_VOLTAR_CORREDOR, PURPLE);
-            DesenharPortaCorredor(PORTA_FIM_CORREDOR, bordaSaida);
+            DesenharPortaMapaCorredor(PORTA_VOLTAR_CORREDOR, PURPLE, false, tempo);
+            DesenharPortaMapaCorredor(PORTA_FIM_CORREDOR, bordaSaida, !saidaLiberada, tempo);
 
             DrawText(
                 "SALA",
@@ -28711,6 +29125,19 @@ int main(void) {
             DesenharJogadorComLuci(spritesJogador, playerPos, direcaoAtual, animJogador.quadro,
                                    true, companionAngulo);
 
+            // Calibração do mapa (MOSTRAR_COLISOES_CORREDOR = 1)
+            if (MOSTRAR_COLISOES_CORREDOR) {
+                for (int i = 0; i < NUM_PAREDES_CORREDOR; i++)
+                    DrawRectangleLinesEx(PAREDES_CORREDOR[i], 1, RED);
+                for (int i = 0; i < TOTAL_MONITORES; i++)
+                    DrawRectangleLinesEx(ZonaInteracao(monitores[i].area), 1, GOLD);
+                DrawRectangleLinesEx(ZONA_TERMINAL_CORREDOR, 1, COR_ATALHO);
+                DrawRectangleLinesEx(PORTA_VOLTAR_CORREDOR, 1, GREEN);
+                DrawRectangleLinesEx(PORTA_FIM_CORREDOR, 1, GREEN);
+                DrawRectangleLinesEx(PesJogador(playerPos), 1, SKYBLUE);
+                DrawRectangleLinesEx(AreaJogador(playerPos), 1, Fade(SKYBLUE, 0.5f));
+            }
+
             // -------------------------------------------------
             // HUD
             // -------------------------------------------------
@@ -28729,7 +29156,7 @@ int main(void) {
 
             if (dlg.estado == DLG_NENHUM) {
 
-                DrawText("W A S D  -  MOVIMENTAR", 65, 452, 12, LIGHTGRAY);
+                DrawText("W A S D  -  MOVIMENTAR", 65, 582, 12, LIGHTGRAY);
             }
 
             // Ambiente, objetivo e marcador
@@ -28832,6 +29259,7 @@ int main(void) {
 
     UnloadTexture(imagem_titulo);
     DescarregarLuci();
+    DescarregarMapasNovos();
     DescarregarIconesBiblioteca();       // Bloco 2: ícones opcionais das salas
     DescarregarAberracao();              // Bloco 3: alvo do pós-efeito
     for (int i = 0; i < NUM_DIRECOES; i++)

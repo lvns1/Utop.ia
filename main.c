@@ -5979,7 +5979,7 @@ typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_C
 //       os dados dourados que voam até ela são o que ela sabe sobre a posição do jogador. Passando do
 //       limite, o mais antigo é esquecido: sem PROTEGER, o escudo cai; sem dados, a mira se perde.
 
-#define SENTINELA_HP             300.0f   // era 260
+#define SENTINELA_HP             420.0f   // era 260
 #define SENTINELA_RAIO           19.0f
 #define SENTINELA_VELOCIDADE     70.0f
 #define SENTINELA_FOCO_TEMPO     1.7f     // segundos com linha de visão até travar
@@ -5994,7 +5994,7 @@ typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_C
 #define SENTINELA_DANO_BLINDADA  0.55f    // focada: a lente protege
 #define SENTINELA_DANO_VULNERAVEL 2.0f
 
-#define RETRO_HP                 340.0f   // era 300
+#define RETRO_HP                 480.0f   // era 300
 #define RETRO_RAIO               21.0f
 #define RETRO_VELOCIDADE         80.0f
 #define RETRO_FORWARD            4.2f     // passagem "para frente": registra os golpes
@@ -6006,7 +6006,7 @@ typedef enum { SALA_ATRIO, SALA_COMBATE, SALA_EDUCATIVA, SALA_RECOMPENSA, SALA_C
 #define RETRO_TIRO_DANO          8.0f
 #define RETRO_DANO_RECALIBRANDO  1.7f
 
-#define JANELA_HP                1100.0f  // era 1000
+#define JANELA_HP                1500.0f  // era 1000
 #define JANELA_RAIO              30.0f
 #define JANELA_MAX_SLOTS         9
 #define JANELA_DANO_POR_RUIDO    40.0f    // dano batendo no escudo que vira 1 bloco de ruído
@@ -6857,7 +6857,7 @@ typedef struct {
 //   contradizem o que ele mesmo disse). C = CONFIÁVEL, F = PROBLEMÁTICA.
 //   Acertou: o escudo cai por CHEFE_JANELA segundos (só aí ele leva dano).
 //   Errou ou o tempo acabou: ataque especial.
-#define CHEFE_HP                 600.0f   // era 700 (simulação: luta longa demais para quem erra a mira)
+#define CHEFE_HP                 900.0f   // era 700 (simulação: luta longa demais para quem erra a mira)
 #define CHEFE_FASE2              0.55f    // fração da vida em que a fase 2 começa
 #define CHEFE_RAIO               38.0f
 #define CHEFE_DANO_CONTATO       15.0f
@@ -6921,7 +6921,7 @@ typedef struct {
 //   com uma brecha, ZONAS de bloqueio em volta dos mecanismos, REFUTAÇÃO (rajada numa
 //   linha mirada, usada contra quem carrega um fragmento), CORTE (trava um terminal ou
 //   uma porta do circuito por um tempo) e ANEL (quando o jogador erra um puzzle).
-#define SIL_HP                   360.0f
+#define SIL_HP                   520.0f
 #define SIL_RAIO                 34.0f
 #define SIL_DANO_CONTATO         12.0f
 #define SIL_TIRO_VEL             190.0f
@@ -7106,8 +7106,8 @@ typedef struct {
 } Silogista;
 
 // ---------- BLOCO 3: a Luci como chefe final (AJUSTE AQUI) ----------
-#define LUCI_HP_BOA              1000.0f  // índice bom (as 3 barras ocultas somadas; era 900 com uma barra só)
-#define LUCI_HP_RUIM             1250.0f  // índice ruim: mais vida, mais ritmo e a guarda do contexto (era 1100)
+#define LUCI_HP_BOA              1900.0f  // índice bom (as 3 barras ocultas somadas; era 900 com uma barra só)
+#define LUCI_HP_RUIM             2400.0f  // índice ruim: mais vida, mais ritmo e a guarda do contexto (era 1100)
 #define LUCI_RAIO                30.0f
 #define LUCI_FASE2               0.65f    // fração da vida em que começa a fase 2
 #define LUCI_FASE3               0.30f    // ... e a fase 3 (só com índice ruim)
@@ -7296,7 +7296,7 @@ typedef struct {
 //   cair só reergue o Thomas (ensinar, não punir). Vencida: ranking e o átrio do Bloco 2.
 // =============================================================
 #define MESTRE_TREINO_COMBATE    1        // 1 = sala de treino com a arma (atual); 0 = o debate com fontes (versão anterior)
-#define MESTRE_HP                260.0f   // uns 26 tiros do Disparador (AJUSTE AQUI)
+#define MESTRE_HP                380.0f   // uns 26 tiros do Disparador (AJUSTE AQUI)
 #define MESTRE_RAIO              44.0f
 #define MESTRE_FASE2             0.5f     // fração da vida em que as 3 alucinações chegam
 #define MESTRE_DANO_BALA         7.0f
@@ -27138,7 +27138,7 @@ static int AtualizarPausa(int *selecao)
     return -1;
 }
 
-static void DesenharPausa(Texture2D fundo, int selecao)
+static void DesenharPausa(Texture2D fundo, int selecao, bool confirmandoSaida)
 {
     // Paleta do jogo
     Color fundoEscuro = (Color){ 8, 6, 18, 255 };      // fundo das salas
@@ -27172,7 +27172,7 @@ static void DesenharPausa(Texture2D fundo, int selecao)
     DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 170, 40, PURPLE);
 
     // Opções, com o coração na marcada (estilo Undertale, em azul)
-    const char *opcoes[NUM_OPCOES_PAUSA] = { "CONTINUAR", "MENU PRINCIPAL", "SAIR DO JOGO" };
+    const char *opcoes[NUM_OPCOES_PAUSA] = { "CONTINUAR", "MENU PRINCIPAL", confirmandoSaida ? "FECHAR O JOGO?" : "SAIR DO JOGO" };
 
     for (int i = 0; i < NUM_OPCOES_PAUSA; i++) {
 
@@ -27184,11 +27184,16 @@ static void DesenharPausa(Texture2D fundo, int selecao)
             DesenharCoracao(r.x + 26, r.y + r.height / 2, 2, SKYBLUE);
         }
 
-        DrawText(opcoes[i], (int)r.x + 50, (int)(r.y + r.height / 2) - 10, 20, marcada ? SKYBLUE : LIGHTGRAY);
+        bool pedindo = (i == PAUSA_SAIR && confirmandoSaida);
+
+        if (pedindo)
+            DrawRectangleRec(r, Fade(MAROON, 0.55f));
+
+        DrawText(opcoes[i], (int)r.x + 50, (int)(r.y + r.height / 2) - 10, 20, pedindo ? WHITE : (marcada ? SKYBLUE : LIGHTGRAY));
     }
 
-    const char *dica1 = "ESC - voltar ao jogo";
-    const char *dica2 = "O progresso é salvo ao sair ou voltar ao menu";
+    const char *dica1 = confirmandoSaida ? "Clique ou ENTER de novo para fechar o jogo (ESC cancela)" : "ESC - voltar ao jogo";
+    const char *dica2 = confirmandoSaida ? "Seu progresso será salvo antes de fechar" : "O progresso é salvo ao sair ou voltar ao menu";
 
     DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 440, 10, Fade(SKYBLUE, 0.6f));
     DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 454, 10, GRAY);
@@ -28345,6 +28350,7 @@ int main(void) {
     bool pausado = false;
     bool capturarPausa = false;              // apertou ESC: tira a "foto" do fundo no fim deste frame
     int selecaoPausa = PAUSA_CONTINUAR;
+    float confirmarSaida = 0.0f;             // > 0 = clicou em SAIR DO JOGO no pause, falta confirmar
     Texture2D fundoPausa = {0};
 
 
@@ -28390,8 +28396,9 @@ int main(void) {
 
             if (pausado) {
 
-                // Volta para o jogo
+                // Volta para o jogo (cancela também uma confirmação de saída pendente)
                 pausado = false;
+                confirmarSaida = 0.0f;
                 UnloadTexture(fundoPausa);
                 fundoPausa = (Texture2D){0};
 
@@ -28402,6 +28409,7 @@ int main(void) {
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 capturarPausa = true;
                 selecaoPausa = PAUSA_CONTINUAR;
+                confirmarSaida = 0.0f;
 
             } else if (tela == OPCOES) {
 
@@ -28530,6 +28538,9 @@ int main(void) {
         if (confirmarNovoJogo > 0.0f)
             confirmarNovoJogo -= dt;
 
+        if (confirmarSaida > 0.0f)
+            confirmarSaida -= dt;
+
         // =====================================================
         // MENU DE PAUSE (enquanto pausado, o resto do jogo fica congelado:
         // personagem, diálogos, barra de tempo do quiz e batalha)
@@ -28538,6 +28549,13 @@ int main(void) {
         if (pausado) {
 
             int escolha = AtualizarPausa(&selecaoPausa);
+
+            if (escolha != -1)
+                selecaoPausa = escolha;        // clique sem mexer o mouse também marca a opção
+
+            // Qualquer outra coisa marcada ou escolhida cancela o pedido de confirmação da saída
+            if (selecaoPausa != PAUSA_SAIR || (escolha != -1 && escolha != PAUSA_SAIR))
+                confirmarSaida = 0.0f;
 
             if (escolha == PAUSA_CONTINUAR) {
 
@@ -28565,8 +28583,17 @@ int main(void) {
 
             } else if (escolha == PAUSA_SAIR) {
 
-                // O auto save do final do programa guarda o progresso
-                fecharJogo = true;
+                if (confirmarSaida <= 0.0f) {
+
+                    // 1º clique/ENTER: só pede a confirmação (vale por 5 segundos)
+                    confirmarSaida = 5.0f;
+
+                } else {
+
+                    // 2º clique/ENTER: o auto save do final do programa guarda o progresso
+                    confirmarSaida = 0.0f;
+                    fecharJogo = true;
+                }
             }
         }
 
@@ -28675,6 +28702,10 @@ int main(void) {
                 }
             }
 
+            // Mexer o foco para outro botão cancela o pedido de confirmação
+            if (focoMenu != 1)
+                confirmarNovoJogo = 0.0f;
+
             // JOGAR
             if (focoMenu == 1) {
 
@@ -28683,7 +28714,7 @@ int main(void) {
                 // Com save existente, pede uma segunda confirmação (clique ou ENTER)
                 if (acionado == 1 && existeSave && confirmarNovoJogo <= 0.0f) {
 
-                    confirmarNovoJogo = 3.0f;
+                    confirmarNovoJogo = 5.0f;
 
                 } else if (acionado == 1) {
 
@@ -29315,7 +29346,7 @@ int main(void) {
 
         if (pausado) {
 
-            DesenharPausa(fundoPausa, selecaoPausa);
+            DesenharPausa(fundoPausa, selecaoPausa, confirmarSaida > 0.0f);
         }
 
         // =====================================================
@@ -29344,13 +29375,16 @@ int main(void) {
             DrawRectangleRec(btnSair, corBtnSair);
 
             // Textos
-            DesenharTextoBotao(btnJogar, pedindoConfirmacao ? "TEM CERTEZA?" : "JOGAR", 20, WHITE);
+            DesenharTextoBotao(btnJogar, pedindoConfirmacao ? "APAGAR SAVE?" : "JOGAR", 20, WHITE);
             DesenharTextoBotao(btnOpcoes, "OPÇÕES", 20, WHITE);
             DesenharTextoBotao(btnSair, "SAIR", 20, WHITE);
 
             if (pedindoConfirmacao) {
-                const char *aviso = "Clique ou ENTER de novo para começar do zero (o progresso salvo será substituído)";
-                DrawText(aviso, LARGURA_TELA / 2 - MeasureText(aviso, 10) / 2, (int)(btnSair.y + btnSair.height) + 14, 10, LIGHTGRAY);
+                const char *aviso1 = "Já existe um jogo salvo. Um novo jogo APAGA esse progresso.";
+                const char *aviso2 = "Clique ou ENTER de novo para apagar e começar do zero. Para manter o save, use CONTINUAR.";
+                int yAviso = (int)(btnSair.y + btnSair.height) + 14;
+                DrawText(aviso1, LARGURA_TELA / 2 - MeasureText(aviso1, 12) / 2, yAviso, 12, ORANGE);
+                DrawText(aviso2, LARGURA_TELA / 2 - MeasureText(aviso2, 10) / 2, yAviso + 18, 10, LIGHTGRAY);
             }
 
             DesenharRankingMenu(&ranking, tempo);

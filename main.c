@@ -15920,6 +15920,37 @@ static void RogueVoltarAoLobby(Biblioteca *b)
     RogueEntrarAtrio(b, false);
 }
 
+// Dá para abandonar a run? Só dentro de uma sala da missão do Bloco 2 (nem no átrio, nem no Bloco 3,
+// nem na tela de derrota ou de resultado)
+static bool RoguePodeAbandonar(const Biblioteca *b)
+{
+    return RogueSalaDaMissao(b) && !b->morreu && !b->resultadoAberto && b->transicaoNucleo <= 0.0f;
+}
+
+// O jogador desistiu da run pelo menu de pause: volta ao átrio como depois de uma derrota
+// (a mochila da tentativa se perde), mas sem contar morte nem tirar pontos
+static void RogueAbandonarRun(Biblioteca *b)
+{
+    Telemetria("rogue_abandono", TextFormat("sala %d", b->indiceRota + 1), (float)(GetTime() - b->inicio), b->abatidos);
+
+    b->morreu = false;
+    b->tempoMorte = 0.0f;
+    b->desafioAberto = false;
+    b->pausaImpacto = 0.0f;
+    b->falaPendente = NULL;
+    b->conversaPendente = NULL;
+    RogueLimparBalasInimigas(b);
+
+    if (b->modoSeletor) {
+        RogueVoltarAoLobby(b);                 // confronto do seletor: devolve a mochila guardada
+    } else {
+        RogueEsvaziarMochila(&b->j);
+        RogueEntrarAtrio(b, false);
+    }
+
+    RogueAviso(b, "Run abandonada. De volta ao lobby.");
+}
+
 // O confronto do seletor terminou com vitória (o retorno espera os diálogos de vitória)
 static void RogueSeletorVenceu(Biblioteca *b, ProgressoCorredor *prog, int pontos)
 {
@@ -27074,7 +27105,19 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
 #define DESFOQUE_PAUSA  4        // quanto maior, mais desfocado fica o fundo (2 a 8)
 
-typedef enum { PAUSA_CONTINUAR, PAUSA_MENU, PAUSA_SAIR, NUM_OPCOES_PAUSA } OpcaoPausa;
+typedef enum { PAUSA_CONTINUAR, PAUSA_LOBBY, PAUSA_MENU, PAUSA_SAIR, NUM_OPCOES_PAUSA } OpcaoPausa;
+
+// PAUSA_LOBBY só aparece durante a run do Bloco 2; sem ele, as outras opções sobem uma posição
+static int PausaSlot(int opcao, bool temLobby)
+{
+    return opcao - ((!temLobby && opcao > PAUSA_LOBBY) ? 1 : 0);
+}
+
+static int PausaOpcaoVizinha(int opcao, int passo, bool temLobby)
+{
+    do { opcao = (opcao + NUM_OPCOES_PAUSA + passo) % NUM_OPCOES_PAUSA; } while (opcao == PAUSA_LOBBY && !temLobby);
+    return opcao;
+}
 
 // Tira uma "foto" da tela atual (com as cores normais do jogo) e desfoca:
 // diminui e aumenta de novo a imagem, perdendo os detalhes finos.
@@ -27099,9 +27142,9 @@ static Texture2D CapturarFundoPausa(RenderTexture2D alvo)
     return t;
 }
 
-static Rectangle RetanguloOpcaoPausa(int i)
+static Rectangle RetanguloOpcaoPausa(int slot)
 {
-    return (Rectangle){ 270, 255 + i * 60.0f, 260, 44 };
+    return (Rectangle){ 270, 228 + slot * 52.0f, 260, 42 };
 }
 
 // Lê teclado e mouse no menu de pause.
@@ -27109,20 +27152,26 @@ static Rectangle RetanguloOpcaoPausa(int i)
 //   W / S / SETAS          : troca a opção
 //   ENTER / E / ESPAÇO     : confirma
 //   mouse                  : passa por cima para marcar, clica para escolher
-static int AtualizarPausa(int *selecao)
+static int AtualizarPausa(int *selecao, bool temLobby)
 {
+    if (*selecao == PAUSA_LOBBY && !temLobby)
+        *selecao = PAUSA_CONTINUAR;
+
     if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))
-        *selecao = (*selecao + NUM_OPCOES_PAUSA - 1) % NUM_OPCOES_PAUSA;
+        *selecao = PausaOpcaoVizinha(*selecao, -1, temLobby);
 
     if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN))
-        *selecao = (*selecao + 1) % NUM_OPCOES_PAUSA;
+        *selecao = PausaOpcaoVizinha(*selecao, 1, temLobby);
 
     Vector2 mouse = GetMousePosition();
     bool mouseMexeu = (Vector2Length(GetMouseDelta()) > 0.0f);
 
     for (int i = 0; i < NUM_OPCOES_PAUSA; i++) {
 
-        if (!CheckCollisionPointRec(mouse, RetanguloOpcaoPausa(i)))
+        if (i == PAUSA_LOBBY && !temLobby)
+            continue;
+
+        if (!CheckCollisionPointRec(mouse, RetanguloOpcaoPausa(PausaSlot(i, temLobby))))
             continue;
 
         if (mouseMexeu)
@@ -27138,7 +27187,7 @@ static int AtualizarPausa(int *selecao)
     return -1;
 }
 
-static void DesenharPausa(Texture2D fundo, int selecao, bool confirmandoSaida)
+static void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmando)
 {
     // Paleta do jogo
     Color fundoEscuro = (Color){ 8, 6, 18, 255 };      // fundo das salas
@@ -27172,11 +27221,19 @@ static void DesenharPausa(Texture2D fundo, int selecao, bool confirmandoSaida)
     DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 170, 40, PURPLE);
 
     // Opções, com o coração na marcada (estilo Undertale, em azul)
-    const char *opcoes[NUM_OPCOES_PAUSA] = { "CONTINUAR", "MENU PRINCIPAL", confirmandoSaida ? "FECHAR O JOGO?" : "SAIR DO JOGO" };
+    const char *opcoes[NUM_OPCOES_PAUSA] = {
+        "CONTINUAR",
+        (opConfirmando == PAUSA_LOBBY) ? "ABANDONAR RUN?" : "VOLTAR AO LOBBY",
+        "MENU PRINCIPAL",
+        (opConfirmando == PAUSA_SAIR) ? "FECHAR O JOGO?" : "SAIR DO JOGO"
+    };
 
     for (int i = 0; i < NUM_OPCOES_PAUSA; i++) {
 
-        Rectangle r = RetanguloOpcaoPausa(i);
+        if (i == PAUSA_LOBBY && !temLobby)
+            continue;
+
+        Rectangle r = RetanguloOpcaoPausa(PausaSlot(i, temLobby));
         bool marcada = (i == selecao);
 
         if (marcada) {
@@ -27184,7 +27241,7 @@ static void DesenharPausa(Texture2D fundo, int selecao, bool confirmandoSaida)
             DesenharCoracao(r.x + 26, r.y + r.height / 2, 2, SKYBLUE);
         }
 
-        bool pedindo = (i == PAUSA_SAIR && confirmandoSaida);
+        bool pedindo = (i == opConfirmando);
 
         if (pedindo)
             DrawRectangleRec(r, Fade(MAROON, 0.55f));
@@ -27192,8 +27249,16 @@ static void DesenharPausa(Texture2D fundo, int selecao, bool confirmandoSaida)
         DrawText(opcoes[i], (int)r.x + 50, (int)(r.y + r.height / 2) - 10, 20, pedindo ? WHITE : (marcada ? SKYBLUE : LIGHTGRAY));
     }
 
-    const char *dica1 = confirmandoSaida ? "Clique ou ENTER de novo para fechar o jogo (ESC cancela)" : "ESC - voltar ao jogo";
-    const char *dica2 = confirmandoSaida ? "Seu progresso será salvo antes de fechar" : "O progresso é salvo ao sair ou voltar ao menu";
+    const char *dica1 = "ESC - voltar ao jogo";
+    const char *dica2 = "O progresso é salvo ao sair ou voltar ao menu";
+
+    if (opConfirmando == PAUSA_LOBBY) {
+        dica1 = "Clique ou ENTER de novo para voltar ao lobby (ESC cancela)";
+        dica2 = "Os itens e o avanço desta tentativa serão perdidos";
+    } else if (opConfirmando == PAUSA_SAIR) {
+        dica1 = "Clique ou ENTER de novo para fechar o jogo (ESC cancela)";
+        dica2 = "Seu progresso será salvo antes de fechar";
+    }
 
     DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 440, 10, Fade(SKYBLUE, 0.6f));
     DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 454, 10, GRAY);
@@ -28332,7 +28397,6 @@ int main(void) {
     bool pedirAutoSave = false;              // marcado nos momentos importantes; salva no fim do frame
     float avisoSave = 0.0f;                  // tempo restante do aviso "JOGO SALVO"
     bool saveFalhou = false;
-    float confirmarNovoJogo = 0.0f;          // > 0 = clicou em JOGAR com save existente, falta confirmar
     int focoMenu = 0;                        // botão do menu marcado (0 CONTINUAR, 1 JOGAR, 2 OPÇÕES, 3 SAIR)
 
     // =========================================================
@@ -28350,7 +28414,8 @@ int main(void) {
     bool pausado = false;
     bool capturarPausa = false;              // apertou ESC: tira a "foto" do fundo no fim deste frame
     int selecaoPausa = PAUSA_CONTINUAR;
-    float confirmarSaida = 0.0f;             // > 0 = clicou em SAIR DO JOGO no pause, falta confirmar
+    float confirmarSaida = 0.0f;             // > 0 = clicou em LOBBY ou SAIR no pause, falta confirmar
+    int opConfirmandoPausa = -1;             // qual opção do pause está pedindo a confirmação
     Texture2D fundoPausa = {0};
 
 
@@ -28535,9 +28600,6 @@ int main(void) {
         btnOpcoes.y = yBotoes + 70;
         btnSair.y   = yBotoes + 140;
 
-        if (confirmarNovoJogo > 0.0f)
-            confirmarNovoJogo -= dt;
-
         if (confirmarSaida > 0.0f)
             confirmarSaida -= dt;
 
@@ -28548,16 +28610,37 @@ int main(void) {
 
         if (pausado) {
 
-            int escolha = AtualizarPausa(&selecaoPausa);
+            bool temLobby = (tela == BIBLIOTECA) && RoguePodeAbandonar(&biblioteca);
+            int escolha = AtualizarPausa(&selecaoPausa, temLobby);
 
             if (escolha != -1)
                 selecaoPausa = escolha;        // clique sem mexer o mouse também marca a opção
 
-            // Qualquer outra coisa marcada ou escolhida cancela o pedido de confirmação da saída
-            if (selecaoPausa != PAUSA_SAIR || (escolha != -1 && escolha != PAUSA_SAIR))
+            // Qualquer outra coisa marcada ou escolhida cancela o pedido de confirmação
+            if (selecaoPausa != opConfirmandoPausa || (escolha != -1 && escolha != opConfirmandoPausa))
                 confirmarSaida = 0.0f;
 
-            if (escolha == PAUSA_CONTINUAR) {
+            if (escolha == PAUSA_LOBBY) {
+
+                if (confirmarSaida <= 0.0f) {
+
+                    // 1º clique/ENTER: só pede a confirmação (vale por 5 segundos)
+                    confirmarSaida = 5.0f;
+                    opConfirmandoPausa = PAUSA_LOBBY;
+
+                } else {
+
+                    confirmarSaida = 0.0f;
+                    RogueAbandonarRun(&biblioteca);
+                    dlg = (SessaoDialogo){0};
+                    pedirAutoSave = true;
+
+                    pausado = false;
+                    UnloadTexture(fundoPausa);
+                    fundoPausa = (Texture2D){0};
+                }
+
+            } else if (escolha == PAUSA_CONTINUAR) {
 
                 pausado = false;
                 UnloadTexture(fundoPausa);
@@ -28579,7 +28662,6 @@ int main(void) {
                 telaRanking = (TelaRanking){0};
                 pedirAutoSave = false;
                 avisoSave = 0.0f;
-                confirmarNovoJogo = 0.0f;
 
             } else if (escolha == PAUSA_SAIR) {
 
@@ -28587,6 +28669,7 @@ int main(void) {
 
                     // 1º clique/ENTER: só pede a confirmação (vale por 5 segundos)
                     confirmarSaida = 5.0f;
+                    opConfirmandoPausa = PAUSA_SAIR;
 
                 } else {
 
@@ -28702,23 +28785,13 @@ int main(void) {
                 }
             }
 
-            // Mexer o foco para outro botão cancela o pedido de confirmação
-            if (focoMenu != 1)
-                confirmarNovoJogo = 0.0f;
-
             // JOGAR
             if (focoMenu == 1) {
 
                 corBtnJogar = GREEN;
 
-                // Com save existente, pede uma segunda confirmação (clique ou ENTER)
-                if (acionado == 1 && existeSave && confirmarNovoJogo <= 0.0f) {
+                if (acionado == 1) {
 
-                    confirmarNovoJogo = 5.0f;
-
-                } else if (acionado == 1) {
-
-                    confirmarNovoJogo = 0.0f;
                     tela = INTRO;
                     etapaIntro = 0;
 
@@ -29346,7 +29419,8 @@ int main(void) {
 
         if (pausado) {
 
-            DesenharPausa(fundoPausa, selecaoPausa, confirmarSaida > 0.0f);
+            DesenharPausa(fundoPausa, selecaoPausa, (tela == BIBLIOTECA) && RoguePodeAbandonar(&biblioteca),
+                          (confirmarSaida > 0.0f) ? opConfirmandoPausa : -1);
         }
 
         // =====================================================
@@ -29368,24 +29442,14 @@ int main(void) {
                 DesenharTextoBotao(btnContinuar, "CONTINUAR", 20, WHITE);
             }
 
-            bool pedindoConfirmacao = (confirmarNovoJogo > 0.0f);
-
-            DrawRectangleRec(btnJogar, pedindoConfirmacao ? MAROON : corBtnJogar);
+            DrawRectangleRec(btnJogar, corBtnJogar);
             DrawRectangleRec(btnOpcoes, corBtnOpcoes);
             DrawRectangleRec(btnSair, corBtnSair);
 
             // Textos
-            DesenharTextoBotao(btnJogar, pedindoConfirmacao ? "APAGAR SAVE?" : "JOGAR", 20, WHITE);
+            DesenharTextoBotao(btnJogar, "NOVO JOGO", 20, WHITE);
             DesenharTextoBotao(btnOpcoes, "OPÇÕES", 20, WHITE);
             DesenharTextoBotao(btnSair, "SAIR", 20, WHITE);
-
-            if (pedindoConfirmacao) {
-                const char *aviso1 = "Já existe um jogo salvo. Um novo jogo APAGA esse progresso.";
-                const char *aviso2 = "Clique ou ENTER de novo para apagar e começar do zero. Para manter o save, use CONTINUAR.";
-                int yAviso = (int)(btnSair.y + btnSair.height) + 14;
-                DrawText(aviso1, LARGURA_TELA / 2 - MeasureText(aviso1, 12) / 2, yAviso, 12, ORANGE);
-                DrawText(aviso2, LARGURA_TELA / 2 - MeasureText(aviso2, 10) / 2, yAviso + 18, 10, LIGHTGRAY);
-            }
 
             DesenharRankingMenu(&ranking, tempo);
         }

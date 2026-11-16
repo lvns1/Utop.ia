@@ -5751,7 +5751,12 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 
 // Pulso de Integridade
 #define PULSO_CUSTO_EP           35.0f
-#define RAIO_CUSTO_EP            16.0f    // Raio de Processamento: cada disparo gasta EP (a "mana" do Thomas)
+#define RAIO_CUSTO_EP            11.0f    // Raio de Processamento: cada disparo gasta EP (a "mana" do Thomas)
+#define RAIO_SUPER_FATOR         0.65f    // Supercondutor: o sigilo gasta 35% menos EP
+#define RAIO_EP_RETORNO          4.0f     // EP devolvido por inimigo atingido pela coluna de luz...
+#define RAIO_EP_RETORNO_MAX      3        // ...contando no máximo 3 inimigos por sigilo
+#define RAIO_RESIDUO_DPS         10.0f    // dano por segundo da luz residual que fica no chão
+#define RAIO_RESIDUO_TEMPO       1.8f     // quanto tempo a luz residual dura
 #define PULSO_RECARGA            4.0f
 #define PULSO_RAIO               130.0f
 #define PULSO_DANO               25.0f
@@ -5896,7 +5901,7 @@ static const Color CORES_RARIDADE[NUM_RARIDADES] = { { 200, 200, 200, 255 }, { 0
 #define CHANCE_TEMPORARIO        7        // % de um inimigo derrotado soltar um item temporário
 #define CHANCE_UPGRADE_SALA      20       // % de um combate vencido deixar um upgrade passivo (era 40: agora há a escolha 1 de 3)
 #define CHANCE_ARMA_PEDESTAL     45       // % de um dos pedestais trazer uma arma
-#define ARMAS_NA_LOJA            2        // armas à venda no Byteco (sorteadas a cada volta ao átrio)
+#define ARMAS_NA_LOJA            3        // armas à venda no Byteco (sorteadas a cada volta ao átrio)
 
 // Itens temporários (valem na hora em que são pegos; pegar de novo só renova o tempo)
 #define EFEITO_OVERCLOCK_DURACAO 8.0f
@@ -6376,7 +6381,7 @@ static const DefArma DEF_ARMAS[NUM_ARMAS] = {
       RARIDADE_RARA, 14, { 0, 228, 48, 255 } },
     { "KATANA DE BYTES",     "Golpe em arco, corpo a corpo. Corta as balas.",  2, 24.0f, 0.42f, 0.28f, 480.0f, 8.0f, 300.0f, 0, 120.0f,
       RARIDADE_RARA, 13, { 235, 240, 255, 255 } },
-    { "RAIO DE PROCESSAMENTO", "Gasta EP a cada tiro: raio que atravessa tudo.",   0, 55.0f, 0.60f, 0.45f, 1100.0f, 7.0f, 0.0f, 1, 0.0f,
+    { "RAIO DE PROCESSAMENTO", "Gasta EP: um circuito se desenha no inimigo e vira uma coluna de luz. Acertar devolve EP.",   0, 42.0f, 0.55f, 0.40f, 1100.0f, 7.0f, 0.0f, 1, 0.0f,
       RARIDADE_RARA, 16, { 255, 230, 80, 255 } },
 };
 
@@ -6479,8 +6484,8 @@ static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
     { "FRAGMENTOS QUICANTES",    "Fragmentadora: cada fragmento ricocheteia 1 vez nas paredes e inimigos.", CAT_APRIMORAMENTO, RARIDADE_COMUM, 1, 0, ARMA_FRAGMENTADORA },
     { "ECO DUPLO",               "Pulso de Firewall: um segundo eco volta depois do primeiro.",      CAT_APRIMORAMENTO, RARIDADE_RARA,    1, 0, ARMA_PULSO_FW },
     { "CAMPO DE REPARO",         "Pulso de Firewall: cada pulso recupera 0,6 de vida (backup em nuvem).", CAT_APRIMORAMENTO, RARIDADE_COMUM, 1, 0, ARMA_PULSO_FW },
-    { "SUPERCONDUTOR",           "Raio de Processamento: cada disparo gasta 45% menos EP.",           CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_RAIO },
-    { "LENTE DE PLASMA",         "Raio de Processamento: +40% de dano e um feixe mais grosso.",       CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_RAIO },
+    { "SUPERCONDUTOR",           "Raio de Processamento: cada sigilo gasta 35% menos EP.",           CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_RAIO },
+    { "LENTE DE PLASMA",         "Raio de Processamento: +40% de dano e um sigilo bem maior.",       CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_RAIO },
     { "LÂMINA AFIADA",           "Katana de Bytes: +25% de dano por nível.",                         CAT_APRIMORAMENTO, RARIDADE_COMUM,   2, 0, ARMA_KATANA },
     { "ARCO AMPLIADO",           "Katana de Bytes: +35% de alcance e um arco 45% maior.",            CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_KATANA },
     { "TÊMPERA RÁPIDA",          "Katana de Bytes: golpeia 20% mais rápido.",                        CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_KATANA },
@@ -6718,6 +6723,7 @@ typedef struct {
     float dps, tick;
     float danoInstantaneo;      // explode uma vez quando o atraso acaba
     Color cor;
+    int estilo;                 // 0 = poça/explosão comum; 1 = Sigilo de Luz (Raio de Processamento)
 } AreaDano;
 
 #define MAX_AREAS                10
@@ -6727,6 +6733,8 @@ typedef enum { OPC_UPGRADE, OPC_ITEM, OPC_ARMA, OPC_FRAGMENTOS } TipoOpcao;
 typedef struct { TipoOpcao tipo; int id; } OpcaoEscolha;
 typedef enum { ESCOLHA_NORMAL, ESCOLHA_RARA, ESCOLHA_ARMA } ModoEscolha;
 #define FC_RECUSAR_ESCOLHA       3
+#define REROLL_GRATIS            2        // trocas grátis das opções, por tentativa
+#define REROLL_CUSTO_FC          8        // depois das grátis, cada reroll custa isto
 #define FC_OPCAO_RESERVA         5
 
 // Eventos (salas de evento, de descanso e de desafio usam a mesma janela de escolhas)
@@ -7067,8 +7075,11 @@ typedef struct {
     float tempoMesmaDirecao;    // ... e há quanto tempo ele anda na mesma direção
 
     // Armas: o Disparador sempre, mais uma arma extra (TAB ou a rodinha do mouse troca)
-    TipoArma armaExtra;         // ARMA_DISPARADOR = nenhuma
-    bool usandoExtra;
+    TipoArma armaBase;          // arma 1: começa com o Disparador (a do tutorial) e pode ser trocada
+    TipoArma armaExtra;         // arma 2 (ARMA_DISPARADOR = vaga livre)
+    bool usandoExtra;          // false = arma 1, true = arma 2
+    float permVel, permRegen;   // bônus das melhorias permanentes (velocidade e regeneração de EP)
+    int rerolls;                // REROLAR: quantas trocas grátis de opções ainda restam nesta tentativa
     float carga;                // Vetor de Compilação
     float calor;                // Fluxo Contínuo (0 a 1)
     bool superaquecida;
@@ -7700,6 +7711,7 @@ typedef struct {
     TipoItem pedestal[NUM_PEDESTAIS];
     TipoArma armaPedestal[NUM_PEDESTAIS];  // ARMA_DISPARADOR = o pedestal tem um item
     TipoArma estoqueArmas[ARMAS_NA_LOJA];  // armas à venda no Byteco
+    int ofertaItem;                        // item em OFERTA do Byteco nesta volta ao átrio (-30%)
     unsigned int armasOferecidas;          // nesta tentativa (evita oferecer sempre a mesma)
     bool golpeSecundario;                  // o golpe atual veio de um efeito secundário (não encadeia)
     AnelEfeito aneis[MAX_ANEIS];
@@ -7715,6 +7727,18 @@ typedef struct {
     bool lojaAberta;
     int selecaoLoja;
     int abaLoja;
+
+    // Reroll das opções: o que já foi mostrado não volta na mesma escolha
+    unsigned long long rerollUsados;
+    unsigned int rerollItens, rerollArmas;
+
+    // Troca de arma: com as duas vagas cheias o jogador escolhe qual arma substituir
+    bool trocaArmaAberta;
+    TipoArma armaNova;
+    int trocaOrigem;            // 0 = recompensa, 1 = loja do Byteco, 2 = pedestal
+    int trocaPedestal;
+    int trocaSel;
+    float animTroca;
 
     // Enciclopédia do átrio
     bool enciclopediaAberta;
@@ -7820,7 +7844,7 @@ typedef struct {
     bool seletorVencido;            // venceu: o átrio volta depois dos diálogos de vitória
     float seletorRetorno;
     int itensGuardados[NUM_ITENS];  // a mochila do átrio, devolvida ao voltar
-    TipoArma armaGuardada;
+    TipoArma armaGuardada, armaBaseGuardada;
     bool usandoExtraGuardado, seloGuardado, seloAmplificadoGuardado, temMochilaGuardada;
 
     bool morreu;
@@ -8461,10 +8485,47 @@ static const Dialogo *TEXTOS_CONCEITOS[NUM_CONCEITOS] = {
 
 // ---------- Melhorias permanentes (Byteco) ----------
 
-enum { MELHORIA_VIDA, MELHORIA_ATAQUE, MELHORIA_ENERGIA, NUM_MELHORIAS };
+enum { MELHORIA_VIDA, MELHORIA_ATAQUE, MELHORIA_ENERGIA, MELHORIA_VELOCIDADE, MELHORIA_REGEN, MELHORIA_REROLL, NUM_MELHORIAS };
 
-static const char *NOMES_MELHORIAS[NUM_MELHORIAS]   = { "MEMÓRIA EXPANDIDA", "NÚCLEO DE PROCESSAMENTO", "BATERIA DE DADOS" };
-static const char *EFEITOS_MELHORIAS[NUM_MELHORIAS] = { "+20 de HP máximo por nível.", "+15% de dano por nível.", "+20 de EP máximo por nível." };
+// Os níveis ficam dentro do mesmo vetor do save (melhorias[3]) para não quebrar saves antigos:
+// as 3 primeiras usam o byte baixo; as 3 novas usam o byte seguinte (bits 8..15) de cada posição.
+static int PermNivel(const ProgressoBiblioteca *p, int m)
+{
+    return (m < 3) ? (p->melhorias[m] & 0xFF) : ((p->melhorias[m - 3] >> 8) & 0xFF);
+}
+
+static void PermSubir(ProgressoBiblioteca *p, int m)
+{
+    if (m < 3) p->melhorias[m] += 1;
+    else       p->melhorias[m - 3] += 0x100;
+}
+
+#define MELHORIA_VEL_NIVEL       0.04f    // +velocidade por nível
+#define MELHORIA_REGEN_NIVEL     0.7f     // +EP por segundo por nível
+
+// Passa as melhorias permanentes novas para o jogador (velocidade, regeneração de EP e rerolls grátis)
+static void RogueSincronizarPerm(Biblioteca *b)
+{
+    b->j.permVel = MELHORIA_VEL_NIVEL * (float)PermNivel(b->perm, MELHORIA_VELOCIDADE);
+    b->j.permRegen = MELHORIA_REGEN_NIVEL * (float)PermNivel(b->perm, MELHORIA_REGEN);
+}
+
+static const char *NOMES_MELHORIAS[NUM_MELHORIAS]   = { "MEMÓRIA EXPANDIDA", "NÚCLEO DE PROCESSAMENTO", "BATERIA DE DADOS", "REFLEXOS DE CACHE", "CIRCUITO EFICIENTE", "BOLSO EXTRA" };
+static const char *EFEITOS_MELHORIAS[NUM_MELHORIAS] = { "+20 de HP máximo por nível.", "+15% de dano por nível.", "+20 de EP máximo por nível.",
+                                                         "+4% de velocidade por nível.", "+0,7 de EP por segundo por nível.", "+1 reroll grátis por tentativa, por nível." };
+
+// O que a melhoria dá num certo nível (para mostrar "agora" e "próximo" na loja)
+static const char *TextoEfeitoMelhoria(int m, int nivel)
+{
+    switch (m) {
+        case MELHORIA_VIDA:       return TextFormat("+%d de HP máximo", nivel * 20);
+        case MELHORIA_ATAQUE:     return TextFormat("+%d%% de dano", nivel * 15);
+        case MELHORIA_ENERGIA:    return TextFormat("+%d de EP máximo", nivel * 20);
+        case MELHORIA_VELOCIDADE: return TextFormat("+%d%% de velocidade", nivel * 4);
+        case MELHORIA_REGEN:      return TextFormat("+%.1f de EP por segundo", 0.7f * (float)nivel);
+        default:                  return TextFormat("+%d reroll(s) grátis", nivel);
+    }
+}
 
 // ---------- Desafios educativos (Guardião selado) ----------
 // Verdadeiro ou falso, múltipla escolha e "ache a inconsistência" numa resposta de IA.
@@ -8858,7 +8919,7 @@ static int RogueUp(const JogadorRogue *j, TipoUpgrade u)
 
 static float RogueHpMax(const Biblioteca *b)
 {
-    float hp = (ROGUE_HP_MAX + MELHORIA_HP * (float)b->perm->melhorias[MELHORIA_VIDA] + UP_VIDA_NIVEL * (float)RogueUp(&b->j, UP_VIDA))
+    float hp = (ROGUE_HP_MAX + MELHORIA_HP * (float)PermNivel(b->perm, MELHORIA_VIDA) + UP_VIDA_NIVEL * (float)RogueUp(&b->j, UP_VIDA))
                * (1.0f + NUCLEO_HP * (float)RogueQtd(&b->j, ITEM_NUCLEO));
     if (b->j.penalidade & PEN_VIDA) hp *= PEN_VIDA_FATOR;
     return hp;
@@ -8866,14 +8927,14 @@ static float RogueHpMax(const Biblioteca *b)
 
 static float RogueEpMax(const Biblioteca *b)
 {
-    return ROGUE_EP_MAX + MELHORIA_EP * (float)b->perm->melhorias[MELHORIA_ENERGIA] + (b->j.seloAmplificado ? SIL_BH_EP_BONUS : 0.0f);
+    return ROGUE_EP_MAX + MELHORIA_EP * (float)PermNivel(b->perm, MELHORIA_ENERGIA) + (b->j.seloAmplificado ? SIL_BH_EP_BONUS : 0.0f);
 }
 
 // Multiplicador de dano de todas as armas (Processador Neural, a melhoria do Byteco e a build)
 static float RogueFatorDano(const Biblioteca *b)
 {
     const JogadorRogue *j = &b->j;
-    float f = 1.0f + BONUS_PROCESSADOR * (float)RogueQtd(j, ITEM_PROCESSADOR) + MELHORIA_DANO * (float)b->perm->melhorias[MELHORIA_ATAQUE]
+    float f = 1.0f + BONUS_PROCESSADOR * (float)RogueQtd(j, ITEM_PROCESSADOR) + MELHORIA_DANO * (float)PermNivel(b->perm, MELHORIA_ATAQUE)
             + UP_DANO_NIVEL * (float)RogueUp(j, UP_DANO);
 
     // Contra-Ataque Heurístico: logo depois de esquivar
@@ -8899,7 +8960,7 @@ static float RogueFatorDanoRecebido(const JogadorRogue *j)
 
 static float RogueVelocidadeJogador(const JogadorRogue *j)
 {
-    float f = 1.0f + ROTEAMENTO_VELOCIDADE * (float)RogueQtd(j, ITEM_ROTEAMENTO) + UP_VELOCIDADE_NIVEL * (float)RogueUp(j, UP_VELOCIDADE);
+    float f = 1.0f + ROTEAMENTO_VELOCIDADE * (float)RogueQtd(j, ITEM_ROTEAMENTO) + UP_VELOCIDADE_NIVEL * (float)RogueUp(j, UP_VELOCIDADE) + j->permVel;
     if (j->efeito[EFEITO_OVERCLOCK] > 0.0f) f += EFEITO_OVERCLOCK_VELOCIDADE;
     if (j->penalidade & PEN_LENTO) f *= PEN_LENTO_FATOR;
     return ROGUE_VELOCIDADE * f;
@@ -8936,7 +8997,7 @@ static float RogueDanoPulso(const JogadorRogue *j)
 
 static TipoArma RogueArmaAtual(const JogadorRogue *j)
 {
-    return j->usandoExtra ? j->armaExtra : ARMA_DISPARADOR;
+    return j->usandoExtra ? j->armaExtra : j->armaBase;
 }
 
 // Efeitos com tempo e contadores da arma: somem ao voltar ao átrio, ao morrer e ao começar outra tentativa
@@ -8964,6 +9025,7 @@ static void RogueLimparEfeitos(JogadorRogue *j)
 static void RogueLimparBuild(JogadorRogue *j)
 {
     memset(j->up, 0, sizeof(j->up));
+    j->rerolls = REROLL_GRATIS;
     j->ultimoUp = -1;
     j->penalidade = 0;
     j->abatesEscudo = 0;
@@ -8975,6 +9037,7 @@ static void RogueEsvaziarMochila(JogadorRogue *j)
     memset(j->itens, 0, sizeof(j->itens));
     j->seloInferencia = false;
     j->seloAmplificado = false;
+    j->armaBase = ARMA_DISPARADOR;
     j->armaExtra = ARMA_DISPARADOR;
     j->usandoExtra = false;
     RogueLimparEfeitos(j);
@@ -9038,7 +9101,7 @@ static TipoArma RogueSortearArma(Biblioteca *b, unsigned int excluir)
 
     for (int passada = 0; passada < 2 && n == 0; passada++)
         for (int a = ARMA_DISPARADOR + 1; a < NUM_ARMAS; a++) {
-            if (a == (int)b->j.armaExtra || (excluir & (1u << a))) continue;
+            if (a == (int)b->j.armaExtra || a == (int)b->j.armaBase || (excluir & (1u << a))) continue;
             if (passada == 0 && (b->armasOferecidas & (1u << a)))  continue;
             candidatos[n++] = a;
         }
@@ -9934,6 +9997,7 @@ static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
         naLoja |= 1u << b->estoqueArmas[i];
     }
     b->armasOferecidas = 0;
+    b->ofertaItem = GetRandomValue(0, NUM_ITENS_LOJA - 1);      // a oferta muda a cada volta ao átrio
 }
 
 // ---------- Reformulação: geração do mapa da tentativa ----------
@@ -10279,6 +10343,8 @@ static void RogueComecarMissao(Biblioteca *b)
     b->armasOferecidas = 0;
     RogueLimparEfeitos(&b->j);
     RogueLimparBuild(&b->j);
+    RogueSincronizarPerm(b);
+    b->j.rerolls += PermNivel(b->perm, MELHORIA_REROLL);          // Bolso Extra
     b->educativas = 0;
     b->abatidos = 0;
     b->elitesDerrotados = 0;
@@ -10321,6 +10387,7 @@ static void RogueIniciar(Biblioteca *b, ProgressoBiblioteca *perm)
     memset(b, 0, sizeof(*b));
 
     b->perm = perm;
+    RogueSincronizarPerm(b);
     b->estabilidadeLocal = ESTABILIDADE_MAX_LUCI;
     b->estabilidade = &b->estabilidadeLocal;
     b->proximaContradicao = CONTRADICAO_INTERVALO_MIN;
@@ -11071,6 +11138,8 @@ static void RogueDanoArea(Biblioteca *b, ProgressoCorredor *prog, Vector2 centro
 static void RogueAcertarParede(Biblioteca *b, ProgressoCorredor *prog, const Projetil *p);
 static void RogueAnel(Biblioteca *b, Vector2 pos, float raio, Color cor);
 
+static float RogueAdaptacaoChefe(const Biblioteca *b);
+
 static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e, float dano, Vector2 direcao)
 {
     const DefInimigo *def = &DEF_INIMIGOS[e->tipo];
@@ -11094,6 +11163,8 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
     if (e->queima > 0.0f && e->gelo > 0.0f && RogueUp(&b->j, UP_SIN_CHOQUE_TERMICO) > 0)
         fator *= 1.4f;
 
+    if (e->tipo == INIMIGO_SENTINELA || e->tipo == INIMIGO_RETRO)
+        fator /= RogueAdaptacaoChefe(b);
     e->hp -= dano * fator;
     e->flash = 0.1f;
     e->empurrao = Vector2Add(e->empurrao, Vector2Scale(direcao, 140.0f * def->empurrao));
@@ -11257,6 +11328,28 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
 }
 
 // O Alucinador só leva dano na fase 1 ou com o escudo aberto (fase 2)
+// ADAPTAÇÃO: com muitas melhorias, itens e níveis permanentes os chefes (menos a Janela, já equilibrada) resistem mais.
+// Cada nível de melhoria vale +3%, cada passivo +4%, cada nível permanente +3%. Vai de 1,0 até no máximo 2,0.
+#define ADAPT_POR_MELHORIA  0.03f
+#define ADAPT_POR_PASSIVO   0.04f
+#define ADAPT_POR_PERMANENTE 0.03f
+#define ADAPT_MAX           2.0f
+static float RogueAdaptacaoChefe(const Biblioteca *b)
+{
+    int melhorias = 0, passivos = 0, perm = 0;
+    for (int k = 0; k < NUM_UPGRADES; k++) melhorias += b->j.up[k];
+    for (int k = 0; k < NUM_ITENS; k++) if (ITENS[k].passivo) passivos += b->j.itens[k];
+    for (int m = 0; m < NUM_MELHORIAS; m++) perm += PermNivel(b->perm, m);
+    float f = 1.0f + ADAPT_POR_MELHORIA * (float)melhorias + ADAPT_POR_PASSIVO * (float)passivos + ADAPT_POR_PERMANENTE * (float)perm;
+    return fminf(f, ADAPT_MAX);
+}
+
+// Quanto mais adaptado, mais rápido ele ataca (metade do bônus de resistência, no máximo +30%)
+static float RogueRitmoChefe(const Biblioteca *b)
+{
+    return fminf(1.0f + 0.5f * (RogueAdaptacaoChefe(b) - 1.0f), 1.3f);
+}
+
 static void RogueFerirChefe(Biblioteca *b, float dano, Vector2 onde)
 {
     ChefeRogue *c = &b->chefe;
@@ -11269,7 +11362,7 @@ static void RogueFerirChefe(Biblioteca *b, float dano, Vector2 onde)
         return;
     }
 
-    c->hp -= dano;
+    c->hp -= dano / RogueAdaptacaoChefe(b);
     c->flash = 0.08f;
     RogueParticulas(b, onde, MAGENTA, 3, 120);
 }
@@ -11293,7 +11386,7 @@ static bool RogueFerirSilogista(Biblioteca *b, float dano, Vector2 onde)
         return false;
     }
 
-    s->hp -= dano;
+    s->hp -= dano / RogueAdaptacaoChefe(b);
     s->flash = 0.08f;
     RogueParticulas(b, onde, PURPLE, 3, 120);
     return true;
@@ -11463,6 +11556,17 @@ static void RogueCriarArea(Biblioteca *b, Vector2 pos, float raio, float atraso,
     for (int i = 0; i < MAX_AREAS; i++)
         if (!b->areas[i].ativo) {
             b->areas[i] = (AreaDano){ true, pos, raio, atraso, vida, vida, dps, 0.0f, danoInstantaneo, cor };
+            return;
+        }
+}
+
+#define SIGILO_ATRASO 0.6f
+// Sigilo de Luz: runa que se desenha no chão, e depois vira uma coluna de luz
+static void RogueCriarSigilo(Biblioteca *b, Vector2 pos, float raio, float dano, Color cor)
+{
+    for (int i = 0; i < MAX_AREAS; i++)
+        if (!b->areas[i].ativo) {
+            b->areas[i] = (AreaDano){ true, pos, raio, SIGILO_ATRASO, RAIO_RESIDUO_TEMPO, RAIO_RESIDUO_TEMPO, RAIO_RESIDUO_DPS, 0.0f, dano, cor, 1 };
             return;
         }
 }
@@ -11913,8 +12017,8 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
         RogueGolpeKatana(b, prog, a->dano * fator);
     }
     else if (arma == ARMA_RAIO) {
-        // Gasta EP: sem energia suficiente, não atira (o EP volta com o tempo, ao derrotar inimigos e com itens)
-        float custo = RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? 0.55f : 1.0f);
+        // SIGILO DE LUZ: gasta EP, escolhe o inimigo mais perto na direção da mira e desenha ali uma runa que vira coluna de luz
+        float custo = RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? RAIO_SUPER_FATOR : 1.0f);
         if (j->ep < custo) {
             j->cronoTiro = 0.45f;
             RogueTextoFlutuante(b, (Vector2){ j->pos.x, j->pos.y - 30 }, "SEM EP!", ORANGE);
@@ -11923,11 +12027,25 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
         }
         j->ep -= custo;
         bool lente = RogueUp(j, UP_ARMA_RAIO_LENTE) > 0;
-        Projetil *r = RogueTiroArma(b, arma, j->mira, a->dano * fator * (lente ? 1.4f : 1.0f));
-        if (r != NULL) {
-            r->perfura += 99;
-            if (lente) r->raio += 3.0f;
+        Vector2 dirM = Vector2Normalize(j->mira);
+        if (Vector2Length(dirM) < 0.1f) dirM = (Vector2){ 1, 0 };
+        int alvoI = -1;
+        float melhorD = 420.0f;
+        for (int k = 0; k < MAX_INIMIGOS; k++) {
+            const Inimigo *e = &b->ini[k];
+            if (!e->ativo || e->surgindo > 0.0f || e->selado || e->tipo == INIMIGO_ISCA) continue;
+            Vector2 para = Vector2Subtract(e->pos, j->pos);
+            float d = Vector2Length(para);
+            if (d > melhorD || d < 1.0f) continue;
+            if (Vector2DotProduct(dirM, Vector2Scale(para, 1.0f / d)) < 0.766f) continue;      // cone de 40 graus
+            melhorD = d;
+            alvoI = k;
         }
+        Vector2 alvo = (alvoI >= 0) ? b->ini[alvoI].pos : Vector2Add(j->pos, Vector2Scale(dirM, 210.0f));
+        Rectangle ar = ArenaRogue();
+        alvo.x = Clamp(alvo.x, ar.x + 24.0f, ar.x + ar.width - 24.0f);
+        alvo.y = Clamp(alvo.y, ar.y + 24.0f, ar.y + ar.height - 24.0f);
+        RogueCriarSigilo(b, alvo, lente ? 84.0f : 62.0f, a->dano * fator * (lente ? 1.4f : 1.0f), a->cor);
         RogueAnel(b, cano, 26.0f, a->cor);
         RogueParticulas(b, cano, a->cor, 8, 160);
         TocarSomTom(sfxTiro, 0.45f);
@@ -12272,7 +12390,7 @@ static void RogueChefeReposicionar(ChefeRogue *c)
 static void RogueChefeComecarPadrao(Biblioteca *b)
 {
     ChefeRogue *c = &b->chefe;
-    float ritmo = (c->fase == 2) ? 0.7f + 0.25f * (float)c->surto : 1.0f;     // fase 2: mais devagar; os surtos aceleram
+    float ritmo = ((c->fase == 2) ? 0.7f + 0.25f * (float)c->surto : 1.0f) * RogueRitmoChefe(b);     // fase 2: mais devagar; os surtos e a adaptação aceleram
 
     c->padrao = (PadraoChefe)c->proximoPadrao;
     c->cronoTiro = 0.3f;
@@ -12535,7 +12653,7 @@ static void RogueAtualizarChefe(Biblioteca *b, ProgressoCorredor *prog, float dt
     Vector2 paraJogador = Vector2Subtract(j->pos, c->pos);
     float dist = Vector2Length(paraJogador);
     Vector2 dir = (dist > 0.01f) ? Vector2Scale(paraJogador, 1.0f / dist) : (Vector2){ 0, 1 };
-    float ritmo = (c->fase == 2) ? 0.7f + 0.25f * (float)c->surto : 1.0f;
+    float ritmo = ((c->fase == 2) ? 0.7f + 0.25f * (float)c->surto : 1.0f) * RogueRitmoChefe(b);
 
     c->tempoPadrao -= dt;
     c->cronoTiro -= dt;
@@ -14120,7 +14238,7 @@ static bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde)
     if (l->estadoMelee == 2)
         dano *= 0.5f;                                       // investindo, ela é difícil de acertar
 
-    l->hp -= dano;
+    l->hp -= dano / RogueAdaptacaoChefe(b);
     l->flash = 0.08f;
     RogueParticulas(b, onde, (Color){ 0, 228, 255, 255 }, 3, 120);
     return true;
@@ -14981,7 +15099,7 @@ static void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float 
     if (j->invulneravel > 0.0f)   j->invulneravel -= dt;
     if (j->efeitoPulso > 0.0f)    j->efeitoPulso -= dt;
 
-    j->ep += ROGUE_EP_POR_SEGUNDO * dt;
+    j->ep += (ROGUE_EP_POR_SEGUNDO + j->permRegen) * dt;
     if (j->ep > RogueEpMax(b)) j->ep = RogueEpMax(b);
 
     // Bloco 3: PARRY (V ou botão direito, só na arena da Luci). A janela é curta e
@@ -16655,6 +16773,7 @@ static void RogueVoltarAoLobby(Biblioteca *b)
     if (b->temMochilaGuardada) {
         memcpy(b->j.itens, b->itensGuardados, sizeof(b->j.itens));
         b->j.armaExtra = b->armaGuardada;
+        b->j.armaBase = b->armaBaseGuardada;
         b->j.usandoExtra = b->usandoExtraGuardado;
         b->j.seloInferencia = b->seloGuardado;
         b->j.seloAmplificado = b->seloAmplificadoGuardado;
@@ -16740,6 +16859,7 @@ static void RogueIniciarConfronto(Biblioteca *b, int chefe)
     // 4. Personagem padrão: guarda a mochila do átrio e começa só com o Disparador
     memcpy(b->itensGuardados, b->j.itens, sizeof(b->itensGuardados));
     b->armaGuardada = b->j.armaExtra;
+    b->armaBaseGuardada = b->j.armaBase;
     b->usandoExtraGuardado = b->j.usandoExtra;
     b->seloGuardado = b->j.seloInferencia;
     b->seloAmplificadoGuardado = b->j.seloAmplificado;
@@ -17154,9 +17274,20 @@ static void RogueAtualizarAreas(Biblioteca *b, ProgressoCorredor *prog, float dt
         if (a->atraso > 0.0f) {
             a->atraso -= dt;
             if (a->atraso <= 0.0f && a->danoInstantaneo > 0.0f) {
+                int acertados = 0;
+                if (a->estilo == 1)
+                    for (int k = 0; k < MAX_INIMIGOS; k++) {
+                        const Inimigo *e = &b->ini[k];
+                        if (e->ativo && !e->selado && e->surgindo <= 0.0f && Vector2Distance(e->pos, a->pos) <= a->raio + e->raio) acertados++;
+                    }
                 b->golpeSecundario = true;
-                RogueDanoArea(b, prog, a->pos, a->raio, a->danoInstantaneo, 160.0f);
+                RogueDanoArea(b, prog, a->pos, a->raio, a->danoInstantaneo, (a->estilo == 1) ? 60.0f : 160.0f);
                 b->golpeSecundario = false;
+                if (a->estilo == 1 && acertados > 0) {      // a luz devolve energia: RAIO_EP_RETORNO por inimigo (máx. RAIO_EP_RETORNO_MAX)
+                    float volta = RAIO_EP_RETORNO * (float)((acertados > RAIO_EP_RETORNO_MAX) ? RAIO_EP_RETORNO_MAX : acertados);
+                    b->j.ep = fminf(RogueEpMax(b), b->j.ep + volta);
+                    RogueTextoFlutuante(b, (Vector2){ b->j.pos.x, b->j.pos.y - 30 }, TextFormat("+%.0f EP", volta), (Color){ 120, 200, 255, 255 });
+                }
                 RogueAnel(b, a->pos, a->raio, a->cor);
                 RogueParticulas(b, a->pos, a->cor, 14, 200);
                 TocarSomTom(sfxAcerto, 0.8f);
@@ -17195,7 +17326,7 @@ static bool RogueUpgradeDisponivel(const Biblioteca *b, int u)
     for (int k = 0; k < NUM_UPGRADES; k++)
         if ((d->requer & BIT_UP(k)) && b->j.up[k] == 0)
             return false;
-    if (d->arma >= 0 && d->arma != ARMA_DISPARADOR && (int)b->j.armaExtra != d->arma)
+    if (d->arma >= 0 && d->arma != ARMA_DISPARADOR && (int)b->j.armaExtra != d->arma && (int)b->j.armaBase != d->arma)
         return false;
     return true;
 }
@@ -17243,16 +17374,16 @@ static int RogueSortearUpgrade(const Biblioteca *b, ModoEscolha modo, unsigned l
 
 static void RogueGerarOpcoes(Biblioteca *b, ModoEscolha modo)
 {
-    unsigned long long usados = 0;
-    unsigned int itensUsados = 0;
+    unsigned long long usados = b->rerollUsados;        // o que o reroll já mostrou não volta
+    unsigned int itensUsados = b->rerollItens;
     b->numOpcoes = 0;
 
     // Arsenal: uma arma nova (duas, se ainda não houver arma extra) e aprimoramentos de disparo
     if (modo == ESCOLHA_ARMA) {
-        TipoArma a = RogueSortearArma(b, 0);
+        TipoArma a = RogueSortearArma(b, b->rerollArmas);
         if (a != ARMA_DISPARADOR) b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_ARMA, a };
         if (b->j.armaExtra == ARMA_DISPARADOR && a != ARMA_DISPARADOR) {
-            TipoArma a2 = RogueSortearArma(b, 1u << a);
+            TipoArma a2 = RogueSortearArma(b, (1u << a) | b->rerollArmas);
             if (a2 != ARMA_DISPARADOR && a2 != a) b->opcoes[b->numOpcoes++] = (OpcaoEscolha){ OPC_ARMA, a2 };
         }
     }
@@ -17290,6 +17421,9 @@ static void RogueGerarOpcoes(Biblioteca *b, ModoEscolha modo)
 
 static void RogueAbrirEscolha(Biblioteca *b, ModoEscolha modo, bool gratis)
 {
+    b->rerollUsados = 0;
+    b->rerollItens = 0;
+    b->rerollArmas = 0;
     RogueGerarOpcoes(b, modo);
     b->escolhaAberta = true;
     b->escolhaGratis = gratis;
@@ -17297,6 +17431,36 @@ static void RogueAbrirEscolha(Biblioteca *b, ModoEscolha modo, bool gratis)
     b->selecaoEscolha = 0;
     b->animEscolha = 0.0f;
     TocarSomTom(sfxAcerto, 1.3f);
+}
+
+// Armas: no máximo DUAS (a do tutorial, o Disparador, já conta como uma). Com as duas vagas cheias,
+// a arma nova abre a ESCOLHA de qual das duas substituir.
+static bool RogueTemArma(const JogadorRogue *j, TipoArma a)
+{
+    return j->armaBase == a || j->armaExtra == a;
+}
+
+static void RogueInstalarArma(Biblioteca *b, TipoArma arma, int vaga)
+{
+    JogadorRogue *j = &b->j;
+    if (vaga == 0) { j->armaBase = arma;  j->usandoExtra = false; }
+    else           { j->armaExtra = arma; j->usandoExtra = true;  }
+    j->trocaArma = 1.3f;
+    j->carga = 0.0f;
+}
+
+// true = a arma já foi instalada (havia vaga); false = abriu a escolha de qual arma substituir
+static bool RogueReceberArma(Biblioteca *b, TipoArma arma, int origem, int pedestal)
+{
+    if (b->j.armaExtra == ARMA_DISPARADOR) { RogueInstalarArma(b, arma, 1); return true; }
+
+    b->trocaArmaAberta = true;
+    b->armaNova = arma;
+    b->trocaOrigem = origem;
+    b->trocaPedestal = pedestal;
+    b->trocaSel = 0;
+    b->animTroca = 0.0f;
+    return false;
 }
 
 static void RogueAplicarOpcao(Biblioteca *b, OpcaoEscolha o)
@@ -17341,10 +17505,7 @@ static void RogueAplicarOpcao(Biblioteca *b, OpcaoEscolha o)
             break;
 
         case OPC_ARMA:
-            j->armaExtra = (TipoArma)o.id;           // substitui a arma secundária
-            j->usandoExtra = true;
-            j->trocaArma = 1.3f;
-            j->carga = 0.0f;
+            if (!RogueReceberArma(b, (TipoArma)o.id, 0, -1)) break;       // vagas cheias: o jogador escolhe qual trocar
             snprintf(texto, sizeof(texto), "Pegou: %s (TAB troca)", DEF_ARMAS[o.id].nome);
             RogueAviso(b, texto);
             RogueParticulas(b, j->pos, DEF_ARMAS[o.id].cor, 20, 180);
@@ -17369,7 +17530,39 @@ static Rectangle RogueCartaEscolha(int i, int n)
     return (Rectangle){ 400.0f - total / 2.0f + (float)i * (w + gap), 132.0f, w, h };
 }
 
-#define RET_RECUSAR_ESCOLHA ((Rectangle){ 310, 480, 180, 26 })
+#define RET_RECUSAR_ESCOLHA ((Rectangle){ 310, 488, 180, 26 })   // y: dica (438) -> REROLAR (454) -> RECUSAR (488), sem se tocarem
+#define RET_REROLAR_ESCOLHA ((Rectangle){ 290, 454, 220, 26 })
+
+// REROLAR: sorteia outras opções (o que já apareceu nesta escolha não volta). Grátis nas primeiras vezes; depois custa FC.
+static void RogueRerolarEscolha(Biblioteca *b)
+{
+    JogadorRogue *j = &b->j;
+    bool gratis = j->rerolls > 0;
+    if (!gratis && b->perm->fragmentos < REROLL_CUSTO_FC) {
+        RogueAviso(b, TextFormat("Reroll custa %d FC.", REROLL_CUSTO_FC));
+        TocarSom(sfxErro);
+        return;
+    }
+    if (gratis) j->rerolls--;
+    else        b->perm->fragmentos -= REROLL_CUSTO_FC;
+
+    for (int i = 0; i < b->numOpcoes; i++) {
+        OpcaoEscolha o = b->opcoes[i];
+        if (o.tipo == OPC_UPGRADE) b->rerollUsados |= BIT_UP(o.id);
+        else if (o.tipo == OPC_ITEM) b->rerollItens |= 1u << o.id;
+        else if (o.tipo == OPC_ARMA) b->rerollArmas |= 1u << o.id;
+    }
+    int antes = b->numOpcoes;
+    RogueGerarOpcoes(b, b->modoEscolha);
+    if (b->numOpcoes < antes || (b->numOpcoes == 1 && b->opcoes[0].tipo == OPC_FRAGMENTOS)) {   // acabaram as novidades: libera tudo de novo
+        b->rerollUsados = 0; b->rerollItens = 0; b->rerollArmas = 0;
+        RogueGerarOpcoes(b, b->modoEscolha);
+    }
+    b->selecaoEscolha = 0;
+    b->animEscolha = 0.2f;
+    TocarSomTom(sfxSelecao, 1.4f);
+    RogueAviso(b, gratis ? TextFormat("Novas opções! (%d grátis restantes)", j->rerolls) : TextFormat("Novas opções! (-%d FC)", REROLL_CUSTO_FC));
+}
 
 static void RogueAtualizarEscolha(Biblioteca *b)
 {
@@ -17391,6 +17584,11 @@ static void RogueAtualizarEscolha(Biblioteca *b)
 
     if (b->animEscolha < 0.35f)             // evita confirmar sem querer ao abrir
         return;
+
+    if (IsKeyPressed(KEY_R) || (CliqueMouse() && MouseEm(RET_REROLAR_ESCOLHA))) {
+        RogueRerolarEscolha(b);
+        return;
+    }
 
     if (IsKeyPressed(KEY_BACKSPACE) || (CliqueMouse() && MouseEm(RET_RECUSAR_ESCOLHA))) {
         b->perm->fragmentos += FC_RECUSAR_ESCOLHA;
@@ -21014,6 +21212,17 @@ static AlvoRogue RogueAlvoProximo(const Biblioteca *b, int *pedestal)
 }
 
 // Compra um item do Byteco. Devolve true se comprou.
+#define OFERTA_DESCONTO_PERC 30
+static int PrecoItemLoja(const Biblioteca *b, int item)
+{
+    int preco = ITENS[item].preco;
+    if (item == b->ofertaItem) {
+        preco = (preco * (100 - OFERTA_DESCONTO_PERC) + 99) / 100;      // arredonda para cima
+        if (preco < 1) preco = 1;
+    }
+    return preco;
+}
+
 static bool RogueComprar(Biblioteca *b, TipoItem item)
 {
     const DefItem *it = &ITENS[item];
@@ -21025,24 +21234,25 @@ static bool RogueComprar(Biblioteca *b, TipoItem item)
         return false;
     }
 
-    if (b->perm->fragmentos < it->preco) {
-        RogueAviso(b, "Fragmentos de Conhecimento insuficientes.");
+    int preco = PrecoItemLoja(b, (int)item);
+    if (b->perm->fragmentos < preco) {
+        RogueAviso(b, TextFormat("Faltam %d FC.", preco - b->perm->fragmentos));
         TocarSom(sfxErro);
         return false;
     }
 
-    b->perm->fragmentos -= it->preco;
+    b->perm->fragmentos -= preco;
     (*tenho)++;
-    RogueAviso(b, TextFormat("Comprou: %s", it->nome));
+    RogueAviso(b, TextFormat("Comprou: %s (agora tem %d)", it->nome, *tenho));
     TocarSomTom(sfxAcerto, 1.2f);
-    Telemetria("rogue_loja", it->nome, (float)it->preco, b->perm->fragmentos);
+    Telemetria("rogue_loja", it->nome, (float)preco, b->perm->fragmentos);
     return true;
 }
 
 // Melhoria permanente: fica para sempre (vai para o save)
 static bool RogueComprarMelhoria(Biblioteca *b, int m)
 {
-    int nivel = b->perm->melhorias[m];
+    int nivel = PermNivel(b->perm, m);
 
     if (nivel >= NIVEL_MAX_MELHORIA) {
         RogueAviso(b, "Essa melhoria já está no nível máximo.");
@@ -21057,15 +21267,17 @@ static bool RogueComprarMelhoria(Biblioteca *b, int m)
     }
 
     b->perm->fragmentos -= PRECO_MELHORIA[nivel];
-    b->perm->melhorias[m]++;
+    PermSubir(b->perm, m);
 
+    RogueSincronizarPerm(b);
+    if (m == MELHORIA_REROLL) b->j.rerolls++;
     // A vida e a energia novas já valem agora
     if (m == MELHORIA_VIDA)    b->j.hp += MELHORIA_HP;
     if (m == MELHORIA_ENERGIA) b->j.ep += MELHORIA_EP;
 
-    RogueAviso(b, TextFormat("%s: nível %d!", NOMES_MELHORIAS[m], b->perm->melhorias[m]));
+    RogueAviso(b, TextFormat("%s: nível %d!", NOMES_MELHORIAS[m], PermNivel(b->perm, m)));
     TocarSomTom(sfxAcerto, 1.3f);
-    Telemetria("rogue_melhoria", NOMES_MELHORIAS[m], (float)PRECO_MELHORIA[nivel], b->perm->melhorias[m]);
+    Telemetria("rogue_melhoria", NOMES_MELHORIAS[m], (float)PRECO_MELHORIA[nivel], PermNivel(b->perm, m));
     return true;
 }
 
@@ -21074,7 +21286,7 @@ static bool RogueComprarArma(Biblioteca *b, TipoArma arma)
 {
     const DefArma *a = &DEF_ARMAS[arma];
 
-    if (arma == ARMA_DISPARADOR || b->j.armaExtra == arma) {
+    if (arma == ARMA_DISPARADOR || RogueTemArma(&b->j, arma)) {
         RogueAviso(b, "Você já tem essa arma.");
         TocarSom(sfxErro);
         return false;
@@ -21086,14 +21298,79 @@ static bool RogueComprarArma(Biblioteca *b, TipoArma arma)
         return false;
     }
 
+    // Vagas cheias: o jogador escolhe qual arma trocar e só então paga (cancelar não custa nada)
+    if (b->j.armaExtra != ARMA_DISPARADOR) {
+        RogueReceberArma(b, arma, 1, -1);
+        return false;
+    }
+
     b->perm->fragmentos -= a->preco;
-    b->j.armaExtra = arma;
-    b->j.usandoExtra = true;
-    b->j.trocaArma = 1.3f;
+    RogueInstalarArma(b, arma, 1);
     RogueAviso(b, TextFormat("Comprou: %s (TAB troca)", a->nome));
     TocarSomTom(sfxAcerto, 1.2f);
     Telemetria("rogue_loja", a->nome, (float)a->preco, b->perm->fragmentos);
     return true;
+}
+
+// Troca de arma: as duas cartas (as armas que você carrega) e o botão de cancelar
+static Rectangle RogueCartaTroca(int i) { return (Rectangle){ 120.0f + 290.0f * (float)i, 262.0f, 270.0f, 190.0f }; }
+#define RET_CANCELAR_TROCA ((Rectangle){ 270, 512, 260, 30 })
+
+static void RogueFecharTroca(Biblioteca *b) { b->trocaArmaAberta = false; }
+
+static void RogueAtualizarTroca(Biblioteca *b)
+{
+    b->animTroca += GetFrameTime();
+
+    if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->trocaSel = 1 - b->trocaSel; TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_ONE))  { b->trocaSel = 0; TocarSom(sfxSelecao); }
+    if (IsKeyPressed(KEY_TWO))  { b->trocaSel = 1; TocarSom(sfxSelecao); }
+
+    bool clique = false;
+    Vector2 m = GetMousePosition();
+    for (int i = 0; i < 2; i++)
+        if (CheckCollisionPointRec(m, RogueCartaTroca(i))) {
+            if (Vector2Length(GetMouseDelta()) > 0.5f) b->trocaSel = i;
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { b->trocaSel = i; clique = true; }
+        }
+
+    if (b->animTroca < 0.3f) return;                // evita confirmar sem querer ao abrir
+
+    if (IsKeyPressed(KEY_BACKSPACE) || (CliqueMouse() && MouseEm(RET_CANCELAR_TROCA))) {
+        RogueFecharTroca(b);
+        RogueAviso(b, (b->trocaOrigem == 0) ? "Arma descartada." : "Você manteve as suas armas.");
+        TocarSom(sfxSelecao);
+        return;
+    }
+
+    if (clique || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+        JogadorRogue *j = &b->j;
+        int vaga = b->trocaSel;
+        TipoArma velha = (vaga == 0) ? j->armaBase : j->armaExtra;
+        const DefArma *nova = &DEF_ARMAS[b->armaNova];
+
+        if (b->trocaOrigem == 1) {                              // loja: paga agora
+            if (b->perm->fragmentos < nova->preco) {
+                RogueAviso(b, "Fragmentos de Conhecimento insuficientes.");
+                TocarSom(sfxErro);
+                RogueFecharTroca(b);
+                return;
+            }
+            b->perm->fragmentos -= nova->preco;
+            Telemetria("rogue_loja", nova->nome, (float)nova->preco, b->perm->fragmentos);
+        }
+        else if (b->trocaOrigem == 2) {                         // pedestal: leva a arma e a recompensa some
+            b->recompensaPega = true;
+            RogueParticulas(b, POS_PEDESTAIS[b->trocaPedestal], nova->cor, 20, 180);
+            Telemetria("rogue_recompensa", nova->nome, 0.0f, 1);
+        }
+
+        RogueInstalarArma(b, b->armaNova, vaga);
+        RogueAviso(b, TextFormat("Trocou %s por %s", DEF_ARMAS[velha].nome, nova->nome));
+        RogueParticulas(b, j->pos, nova->cor, 20, 180);
+        TocarSomTom(sfxAcerto, 1.2f);
+        RogueFecharTroca(b);
+    }
 }
 
 // Enciclopédia do átrio: W/S escolhe, E lê o texto completo, BACKSPACE/ESC sai
@@ -21144,12 +21421,12 @@ static void RogueAtualizarEnciclopedia(Biblioteca *b, SessaoDialogo *dlg)
 // Abas e linhas da loja (a mesma conta de DesenharLojaRogue), para o mouse
 static Rectangle RogueRetAbaLoja(int a)
 {
-    return (Rectangle){ 174.0f + a * 152.0f, 122, 146, 24 };
+    return (Rectangle){ 174.0f + a * 152.0f, 92, 146, 24 };
 }
 
 static Rectangle RogueRetLinhaLoja(int i)
 {
-    return (Rectangle){ 162, 156.0f + i * 46.0f, 476, 40 };
+    return (Rectangle){ 162, 126.0f + i * 46.0f, 476, 40 };
 }
 
 static void RogueAtualizarLoja(Biblioteca *b)
@@ -21234,10 +21511,8 @@ static void RogueInteragir(Biblioteca *b, SessaoDialogo *dlg, AlvoRogue alvo, in
         case ALVO_PEDESTAL: {
             TipoArma arma = b->armaPedestal[pedestal];
             if (arma != ARMA_DISPARADOR) {
-                b->j.armaExtra = arma;                  // substitui a arma extra que houver
-                b->j.usandoExtra = true;
-                b->j.trocaArma = 1.3f;
-                b->j.carga = 0.0f;
+                if (RogueTemArma(&b->j, arma)) { RogueAviso(b, "Você já tem essa arma."); break; }
+                if (!RogueReceberArma(b, arma, 2, pedestal)) break;     // vagas cheias: abre a escolha de qual trocar
                 b->recompensaPega = true;
                 RogueAviso(b, TextFormat("Pegou: %s (TAB troca)", DEF_ARMAS[arma].nome));
                 RogueParticulas(b, POS_PEDESTAIS[pedestal], DEF_ARMAS[arma].cor, 20, 180);
@@ -21578,6 +21853,11 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         else if (r == RES_SIM || r == RES_NAO)
             RogueRespostaConfirmacao(b, obj, r == RES_SIM);
 
+        return ROGUE_NADA;
+    }
+
+    if (b->trocaArmaAberta) {
+        RogueAtualizarTroca(b);
         return ROGUE_NADA;
     }
 
@@ -23008,20 +23288,44 @@ static void DesenharAlucinacaoInimigo(const Inimigo *e, float escala, float t)
     DrawText("?", (int)p.x - 3, (int)(p.y - s - 12), 10, Fade(WHITE, alfa));
 }
 
-// VERBOSO: um balão de fala que incha antes de soltar as balas
+// VERBOSO: uma boca gigante flutuante que não para de falar; abre bem antes de soltar as balas
 static void DesenharVerboso(const Inimigo *e, float escala, float t)
 {
     Color cor = DEF_INIMIGOS[INIMIGO_VERBOSO].cor;
-    float infla = (e->estado == 1) ? (1.0f - e->timer / 0.85f) * 0.35f : ((e->estado == 2) ? 0.35f : 0.0f);
-    float s = e->raio * escala * (1.0f + infla + sinf(t * 3.0f) * 0.03f);
+    float carga = (e->estado == 1) ? (1.0f - e->timer / 0.85f) : ((e->estado == 2) ? 1.0f : 0.0f);
+    float s = e->raio * escala * (1.0f + 0.25f * carga);
     Vector2 p = e->pos;
+    if (e->estado == 1) { p.x += (float)GetRandomValue(-1, 1); p.y += (float)GetRandomValue(-1, 1); }
 
-    DrawCircleV(p, s + 3, Fade(cor, 0.25f));
-    DrawCircleV(p, s, (Color){ 20, 40, 70, 255 });
+    // Corpo: bolha escura com brilho
+    DrawCircleV(p, s + 4, Fade(cor, 0.18f + 0.2f * carga));
+    DrawCircleV(p, s, (Color){ 24, 30, 60, 255 });
     DrawCircleLines((int)p.x, (int)p.y, s, cor);
-    DrawTriangle((Vector2){ p.x - s * 0.4f, p.y + s * 0.8f }, (Vector2){ p.x - s * 0.9f, p.y + s * 1.35f }, (Vector2){ p.x + s * 0.1f, p.y + s * 0.95f }, cor);   // o "rabinho" do balão
-    for (int k = -1; k <= 1; k++)                                          // as reticências
-        DrawCircleV((Vector2){ p.x + (float)k * s * 0.45f, p.y }, s * 0.14f + ((int)(t * 4.0f + (float)k) % 3 == 0 ? 1.5f : 0.0f), cor);
+
+    // Olhos pequenos e irritados em cima
+    for (int k = -1; k <= 1; k += 2) {
+        DrawCircleV((Vector2){ p.x + k * s * 0.42f, p.y - s * 0.45f }, s * 0.16f, WHITE);
+        DrawCircleV((Vector2){ p.x + k * s * 0.42f, p.y - s * 0.42f }, s * 0.07f, BLACK);
+        DrawLineEx((Vector2){ p.x + k * s * 0.62f, p.y - s * 0.72f }, (Vector2){ p.x + k * s * 0.22f, p.y - s * 0.58f }, 2, cor);
+    }
+
+    // Boca: fica falando (abre e fecha) e escancara ao carregar
+    float abre = 0.18f + 0.12f * fabsf(sinf(t * 9.0f + e->pos.x)) + 0.55f * carga;
+    float mw = s * 0.95f, mh = s * abre;
+    Rectangle boca = { p.x - mw / 2, p.y + s * 0.05f, mw, mh * 1.2f };
+    DrawEllipse((int)p.x, (int)(p.y + s * 0.05f + mh * 0.6f), mw / 2, mh * 0.6f + 1, (Color){ 120, 20, 50, 255 });
+    DrawEllipse((int)p.x, (int)(p.y + s * 0.05f + mh * 0.85f), mw * 0.28f, mh * 0.25f + 1, (Color){ 255, 110, 140, 255 });   // língua
+    for (int k = 0; k < 4; k++)                                                                                       // dentes de cima
+        DrawRectangle((int)(boca.x + mw * (0.12f + 0.22f * (float)k)), (int)(p.y + s * 0.05f), (int)(mw * 0.14f), 3, WHITE);
+
+    // Letrinhas saindo da boca ("blá")
+    if (e->estado == 0) {
+        for (int k = 0; k < 3; k++) {
+            float ph = fmodf(t * 1.3f + (float)k * 0.33f, 1.0f);
+            const char *letra = (k == 0) ? "b" : ((k == 1) ? "l" : "á");
+            DrawText(letra, (int)(p.x - 8 + 14 * (float)(k - 1) + sinf(t * 4.0f + (float)k) * 4.0f), (int)(p.y + s + 6 + ph * 18.0f), 10, Fade(cor, 1.0f - ph));
+        }
+    }
 }
 
 static void DesenharToken(const Inimigo *e, float t)
@@ -23375,11 +23679,17 @@ static void DesenharEnciclopediaRogue(const Biblioteca *b)
 }
 
 // Loja do Byteco por cima da sala: aba de itens (desta tentativa) e de melhorias (para sempre)
+// (definidas mais abaixo, junto da tela de troca de arma)
+static float DpsArma(TipoArma arma);
+static float AlcanceArma(TipoArma arma);
+static void DesenharBarraArma(const char *nome, float x, float y, float w, float valor, float maximo, const char *texto, Color cor, float ref);
+static void RogueMelhoriasDaArma(const JogadorRogue *j, TipoArma arma, char *saida, int tam);
+
 static void DesenharLojaRogue(const Biblioteca *b, float tempo)
 {
     DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.6f));
 
-    Rectangle painel = { 150, 70, 500, 440 };
+    Rectangle painel = { 150, 40, 500, 520 };
     DrawRectangleRec(painel, (Color){ 18, 15, 30, 255 });
     DrawRectangleLinesEx(painel, 4, GOLD);
 
@@ -23419,24 +23729,37 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
         if (b->abaLoja == 0) {
 
             const DefItem *it = &ITENS[i];
-            bool podePagar = b->perm->fragmentos >= it->preco;
+            int precoReal = PrecoItemLoja(b, i);
+            bool cheio = it->passivo && b->j.itens[i] >= it->maxPilha;
+            bool podePagar = !cheio && b->perm->fragmentos >= precoReal;
+            bool oferta = (i == b->ofertaItem);
 
             DesenharIconeItem((TipoItem)i, (Vector2){ painel.x + 60, (float)y + 16 }, 1.0f, tempo);
             DrawText(it->nome, (int)painel.x + 84, y, 16, marcado ? YELLOW : WHITE);
             DrawText(it->efeito, (int)painel.x + 84, y + 19, 10, LIGHTGRAY);
+            if (oferta && !cheio) {
+                DrawRectangle((int)painel.x + 94 + MeasureText(it->nome, 16), y + 2, 62, 14, Fade(RED, 0.8f + 0.2f * sinf(tempo * 6.0f)));
+                DrawText(TextFormat("-%d%% OFERTA", OFERTA_DESCONTO_PERC), (int)painel.x + 98 + MeasureText(it->nome, 16), y + 5, 8, WHITE);
+            }
 
-            const char *preco = TextFormat("%d FC", it->preco);
-            DrawText(preco, (int)(painel.x + painel.width) - 30 - MeasureText(preco, 16), y + 4, 16, podePagar ? (Color){ 0, 228, 255, 255 } : RED);
+            const char *preco = cheio ? "CHEIO" : TextFormat("%d FC", precoReal);
+            int px = (int)(painel.x + painel.width) - 30 - MeasureText(preco, 16);
+            DrawText(preco, px, y + 4, 16, cheio ? GOLD : (podePagar ? (Color){ 0, 228, 255, 255 } : RED));
+            if (oferta && !cheio) {
+                const char *antes = TextFormat("%d", it->preco);
+                DrawText(antes, px - MeasureText(antes, 10) - 6, y + 7, 10, GRAY);
+                DrawLine(px - MeasureText(antes, 10) - 6, y + 12, px - 6, y + 12, GRAY);
+            }
 
             if (b->j.itens[i] > 0)
-                DrawText(TextFormat("tem %d", b->j.itens[i]), (int)(painel.x + painel.width) - 92, y + 22, 10, GRAY);
+                DrawText(it->passivo ? TextFormat("tem %d/%d", b->j.itens[i], it->maxPilha) : TextFormat("tem %d", b->j.itens[i]), (int)(painel.x + painel.width) - 92, y + 22, 10, GRAY);
 
         } else if (b->abaLoja == 2) {
 
             // Armas desta volta ao átrio (a comprada vira a arma extra desta tentativa)
             TipoArma arma = b->estoqueArmas[i];
             const DefArma *a = &DEF_ARMAS[arma];
-            bool sua = (b->j.armaExtra == arma);
+            bool sua = RogueTemArma(&b->j, arma);
             bool podePagar = b->perm->fragmentos >= a->preco;
 
             DesenharIconeArma(arma, (Vector2){ painel.x + 60, (float)y + 16 }, 1.0f, tempo);
@@ -23450,7 +23773,7 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
 
         } else {
 
-            int nivel = b->perm->melhorias[i];
+            int nivel = PermNivel(b->perm, i);
             bool maximo = (nivel >= NIVEL_MAX_MELHORIA);
 
             DrawText(NOMES_MELHORIAS[i], (int)painel.x + 50, y, 16, marcado ? YELLOW : WHITE);
@@ -23467,6 +23790,74 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
             DrawText(preco, (int)(painel.x + painel.width) - 30 - MeasureText(preco, 16), y + 4, 16,
                      maximo ? GOLD : (podePagar ? (Color){ 0, 228, 255, 255 } : RED));
         }
+    }
+
+    // Detalhes do que está marcado (aba dos itens)
+    if (b->abaLoja == 0 && b->selecaoLoja < NUM_ITENS_LOJA) {
+        const DefItem *it = &ITENS[b->selecaoLoja];
+        Rectangle caixa = { painel.x + 16, painel.y + 90 + (float)(NUM_ITENS_LOJA + 1) * 46 + 2, painel.width - 32, 58 };
+        DrawRectangleRec(caixa, (Color){ 28, 24, 46, 255 });
+        DrawRectangleLinesEx(caixa, 1, Fade(GOLD, 0.6f));
+        DrawText(it->nome, (int)caixa.x + 8, (int)caixa.y + 6, 12, GOLD);
+        DrawText(it->passivo ? TextFormat("PASSIVO: vale enquanto estiver na mochila (máx. %d)", it->maxPilha)
+                             : (it->temporario ? "TEMPORÁRIO: vale na hora em que é pego" : "CONSUMÍVEL: use pela tecla indicada no efeito"),
+                 (int)caixa.x + 8, (int)caixa.y + 22, 10, LIGHTGRAY);
+        DrawText(TextFormat("Oferta do Byteco: %s (-%d%%) — muda a cada volta ao átrio.", ITENS[b->ofertaItem].nome, OFERTA_DESCONTO_PERC), (int)caixa.x + 8, (int)caixa.y + 38, 10, (Color){ 255, 120, 120, 255 });
+    }
+
+    if (b->abaLoja == 1 && b->selecaoLoja < NUM_MELHORIAS) {
+        int m = b->selecaoLoja, nv = PermNivel(b->perm, m);
+        Rectangle caixa = { painel.x + 16, painel.y + 90 + (float)(NUM_MELHORIAS + 1) * 46 + 2, painel.width - 32, 58 };
+        DrawRectangleRec(caixa, (Color){ 28, 24, 46, 255 });
+        DrawRectangleLinesEx(caixa, 1, Fade(GOLD, 0.6f));
+        DrawText(NOMES_MELHORIAS[m], (int)caixa.x + 8, (int)caixa.y + 6, 12, GOLD);
+        DrawText(TextFormat("AGORA: %s", (nv > 0) ? TextoEfeitoMelhoria(m, nv) : "nada ainda"), (int)caixa.x + 8, (int)caixa.y + 22, 10, LIGHTGRAY);
+        DrawText((nv >= NIVEL_MAX_MELHORIA) ? "NÍVEL MÁXIMO: vale para sempre, em todas as tentativas."
+                                            : TextFormat("PRÓXIMO NÍVEL: %s", TextoEfeitoMelhoria(m, nv + 1)),
+                 (int)caixa.x + 8, (int)caixa.y + 38, 10, (nv >= NIVEL_MAX_MELHORIA) ? GOLD : (Color){ 120, 255, 160, 255 });
+    }
+
+    // Detalhes da arma marcada: números, comparação com a que você está usando e o que vai acontecer ao comprar
+    if (b->abaLoja == 2 && b->selecaoLoja < ARMAS_NA_LOJA) {
+        TipoArma arma = b->estoqueArmas[b->selecaoLoja];
+        TipoArma atual = RogueArmaAtual(&b->j);
+        const DefArma *a = &DEF_ARMAS[arma];
+        Rectangle caixa = { painel.x + 16, painel.y + 90 + (float)(ARMAS_NA_LOJA + 1) * 46 + 2, painel.width - 32, 150 };
+        DrawRectangleRec(caixa, (Color){ 28, 24, 46, 255 });
+        DrawRectangleLinesEx(caixa, 1, Fade(a->cor, 0.8f));
+        DesenharIconeArma(arma, (Vector2){ caixa.x + 34, caixa.y + 44 }, 1.6f, tempo);
+        DrawText(a->nome, (int)caixa.x + 70, (int)caixa.y + 8, 14, a->cor);
+        DrawText(TextFormat("%s  -  %s", NOMES_RARIDADE[a->raridade], NOMES_ALCANCE[a->alcanceTipo]), (int)caixa.x + 70, (int)caixa.y + 26, 10, CORES_RARIDADE[a->raridade]);
+        char linhas[256];
+        QuebrarTexto(a->efeito, 190, 10, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)caixa.x + 12, (int)caixa.y + 76, 10, 12, LIGHTGRAY);
+
+        char txt[40];
+        float bx = caixa.x + 230, bw = caixa.width - 240;
+        DrawText(TextFormat("comparado com a sua: %s", DEF_ARMAS[atual].nome), (int)bx, (int)caixa.y + 8, 9, GRAY);
+        snprintf(txt, sizeof(txt), "%.0f", DpsArma(arma));
+        DesenharBarraArma("DANO/s",  bx, caixa.y + 28, bw, DpsArma(arma), 110.0f, txt, a->cor, DpsArma(atual));
+        snprintf(txt, sizeof(txt), "%.1f/s", 1.0f / a->intervalo);
+        DesenharBarraArma("CADÊNCIA", bx, caixa.y + 44, bw, 1.0f / a->intervalo, 6.0f, txt, a->cor, 1.0f / DEF_ARMAS[atual].intervalo);
+        DesenharBarraArma("ALCANCE", bx, caixa.y + 60, bw, AlcanceArma(arma), 1.0f, "", a->cor, AlcanceArma(atual));
+
+        char ups[200];
+        RogueMelhoriasDaArma(&b->j, arma, ups, (int)sizeof(ups));
+        float yExtra = caixa.y + 82;                              // a próxima linha começa depois do texto anterior
+        if (ups[0]) {
+            QuebrarTexto(TextFormat("Suas melhorias para ela voltam a valer: %s", ups), (int)bw, 9, linhas, (int)sizeof(linhas));
+            int nl = DesenharTextoLinhas(linhas, (int)bx, (int)yExtra, 9, 11, (Color){ 120, 255, 160, 255 });
+            yExtra += (float)(nl * 11 + 4);
+        }
+        if (arma == ARMA_RAIO) {
+            QuebrarTexto("Gasta EP a cada sigilo. Acertar devolve EP.", (int)bw, 9, linhas, (int)sizeof(linhas));
+            DesenharTextoLinhas(linhas, (int)bx, (int)yExtra, 9, 11, ORANGE);
+        }
+
+        const char *aviso = RogueTemArma(&b->j, arma) ? "Você já tem esta arma."
+                          : ((b->j.armaExtra != ARMA_DISPARADOR) ? "Vagas cheias: você escolhe qual arma trocar (pagando só ao confirmar)."
+                                                                 : "Vai para a sua 2ª vaga (TAB troca entre as duas).");
+        DrawText(aviso, (int)caixa.x + 12, (int)(caixa.y + caixa.height) - 18, 10, YELLOW);
     }
 
     const char *ajuda = "A/D aba    W/S ou MOUSE escolher    E / CLIQUE comprar    BACKSPACE sair";
@@ -24198,12 +24589,11 @@ static void DesenharIconeArma(TipoArma arma, Vector2 c, float e, float tempo)
             DrawLineEx((Vector2){ c.x - 6 * e, c.y + 5 * e }, (Vector2){ c.x + 12 * e, c.y - 13 * e }, 1, Fade(SKYBLUE, 0.6f + 0.4f * sinf(tempo * 5.0f)));
             break;
 
-        case ARMA_RAIO:             // cano com bobina e um raio em zigue-zague
-            DrawRectangle((int)(c.x - 12 * e), (int)(c.y - 3 * e), (int)(16 * e), (int)(6 * e), metal);
-            DrawCircleV((Vector2){ c.x - 4 * e, c.y }, 3 * e, cor);
-            DrawLineEx((Vector2){ c.x + 4 * e, c.y }, (Vector2){ c.x + 8 * e, c.y - 4 * e }, 1.5f, cor);
-            DrawLineEx((Vector2){ c.x + 8 * e, c.y - 4 * e }, (Vector2){ c.x + 9 * e, c.y + 4 * e }, 1.5f, cor);
-            DrawLineEx((Vector2){ c.x + 9 * e, c.y + 4 * e }, (Vector2){ c.x + 14 * e, c.y }, 1.5f, WHITE);
+        case ARMA_RAIO:             // cajado com cristal e um chip quadrado girando
+            DrawLineEx((Vector2){ c.x - 12 * e, c.y + 12 * e }, (Vector2){ c.x + 4 * e, c.y - 4 * e }, 3, (Color){ 90, 60, 120, 255 });
+            DrawCircleV((Vector2){ c.x + 7 * e, c.y - 7 * e }, 4.5f * e, cor);
+            DrawCircleV((Vector2){ c.x + 7 * e, c.y - 7 * e }, 2.0f * e, WHITE);
+            DrawPolyLinesEx((Vector2){ c.x + 7 * e, c.y - 7 * e }, 4, 9.0f * e, 45.0f + tempo * 50.0f, 1.5f, Fade(cor, 0.8f));
             break;
 
         case ARMA_PULSO_FW:         // hexágonos concêntricos
@@ -24333,12 +24723,18 @@ static void DesenharArmaNaMao(const Biblioteca *b, float tempo, bool naMao)
                     DrawCircleV(PTO(10, 0), 2.5f + sinf(tempo * 12.0f), GOLD);
                 break;
 
-            case ARMA_RAIO: {           // canhão com bobina; acende quando há EP para atirar
-                bool pronto = j->ep >= RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? 0.55f : 1.0f);
-                LIN(PTO(-2, 0), PTO(26, 0), 5, metal);
-                DrawCircleV(PTO(6, 0), 3.0f, pronto ? cor : (Color){ 90, 80, 40, 255 });
-                DrawCircleV(PTO(14, 0), 2.5f, pronto ? cor : (Color){ 90, 80, 40, 255 });
-                if (pronto) DrawCircleV(PTO(27, 0), 2.0f + 1.5f * sinf(tempo * 14.0f), Fade(WHITE, 0.8f));
+            case ARMA_RAIO: {           // cajado: cristal que brilha quando há EP e runas orbitando
+                bool pronto = j->ep >= RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? RAIO_SUPER_FATOR : 1.0f);
+                Color cc = pronto ? cor : (Color){ 90, 80, 40, 255 };
+                LIN(PTO(-4, 0), PTO(20, 0), 3, ((Color){ 90, 60, 120, 255 }));
+                DrawCircleV(PTO(24, 0), 4.5f + (pronto ? sinf(tempo * 8.0f) : 0.0f), cc);
+                if (pronto) {
+                    DrawCircleV(PTO(24, 0), 2.0f, WHITE);
+                    for (int k = 0; k < 3; k++) {
+                        float ang = tempo * 3.0f + (float)k * 2.0944f;
+                        DrawCircleV(Vector2Add(PTO(24, 0), (Vector2){ cosf(ang) * 10.0f, sinf(ang) * 10.0f }), 1.8f, Fade(cor, 0.9f));
+                    }
+                }
             } break;
 
             case ARMA_PULSO_FW:         // hexágonos girando na mão
@@ -24502,10 +24898,14 @@ static void DesenharHudArmas(const Biblioteca *b, float tempo)
     DrawRectangleRec(r, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
     DrawRectangleLinesEx(r, 1, Fade(DEF_ARMAS[arma].cor, 0.7f));
     DesenharIconeArma(arma, (Vector2){ r.x + 16, r.y + 11 }, 0.8f, tempo);
-    DrawText(DEF_ARMAS[arma].nome, (int)r.x + 34, (int)r.y + 6, 10, DEF_ARMAS[arma].cor);
+    {
+        int espaco = (int)r.width - 34 - ((j->armaExtra != ARMA_DISPARADOR) ? 52 : 6);     // sobra do nome até o ícone da outra arma
+        int tamNome = (MeasureText(DEF_ARMAS[arma].nome, 10) > espaco) ? 8 : 10;
+        DrawText(DEF_ARMAS[arma].nome, (int)r.x + 34, (int)r.y + 6 + (10 - tamNome) / 2, tamNome, DEF_ARMAS[arma].cor);
+    }
 
     if (j->armaExtra != ARMA_DISPARADOR) {
-        TipoArma outra = j->usandoExtra ? ARMA_DISPARADOR : j->armaExtra;
+        TipoArma outra = j->usandoExtra ? j->armaBase : j->armaExtra;
         DesenharIconeArma(outra, (Vector2){ r.x + r.width - 34, r.y + 11 }, 0.6f, tempo);
         DrawText("TAB", (int)(r.x + r.width) - 22, (int)r.y + 7, 8, GRAY);
     }
@@ -25349,12 +25749,70 @@ static void DesenharArmadilhas(const Biblioteca *b, float tempo)
     }
 }
 
+// Sigilo de Luz (CIRCUITO): trilha que se fecha em volta do alvo, chip quadrado girando, nós piscando nos 4 eixos,
+// coluna de luz no impacto e, depois, uma placa de circuito que apaga aos poucos
+static void DesenharNosCircuito(Vector2 p, float rInterno, float rExterno, float t, Color c, float alfa)
+{
+    for (int i = 0; i < 4; i++) {
+        float ang = (float)i * 1.5708f;
+        Vector2 d = { cosf(ang), sinf(ang) };
+        Vector2 ini = { p.x + d.x * rInterno, p.y + d.y * rInterno };
+        Vector2 fim = { p.x + d.x * rExterno, p.y + d.y * rExterno };
+        DrawLineEx(ini, fim, 2, Fade(c, alfa * 0.8f));
+        bool aceso = (((int)(t * 8.0f) + i) % 3) != 0;                      // os nós piscam em sequência
+        DrawRectangle((int)fim.x - 3, (int)fim.y - 3, 6, 6, aceso ? Fade(WHITE, alfa) : Fade(c, alfa * 0.6f));
+        // pequena derivação lateral da trilha (parece uma trilha de placa)
+        Vector2 meio = { p.x + d.x * (rInterno + rExterno) * 0.5f, p.y + d.y * (rInterno + rExterno) * 0.5f };
+        Vector2 lado = { -d.y * 5.0f, d.x * 5.0f };
+        DrawLineEx(meio, Vector2Add(meio, lado), 1, Fade(c, alfa * 0.6f));
+    }
+}
+
+static void DesenharSigilo(const AreaDano *a)
+{
+    float t = (float)GetTime();
+    Vector2 p = a->pos;
+    Color c = a->cor;
+
+    if (a->atraso > 0.0f) {
+        float k = 1.0f - a->atraso / SIGILO_ATRASO;           // 0 -> 1
+        float r = a->raio * (0.55f + 0.45f * k);
+        float alfa = 0.5f + 0.4f * k;
+        DrawRing(p, r - 2.0f, r, -90.0f, -90.0f + 360.0f * k, 48, Fade(c, alfa + 0.1f));   // a trilha externa se fecha
+        DrawCircleLines((int)p.x, (int)p.y, r * 0.62f, Fade(c, 0.4f));
+        DesenharNosCircuito(p, r * 0.62f, r, t, c, alfa);
+        DrawPolyLinesEx(p, 4, r * 0.34f, 45.0f + t * 120.0f, 2, Fade(c, alfa));            // chip girando...
+        DrawPolyLinesEx(p, 4, r * 0.20f, 45.0f - t * 180.0f, 2, Fade(WHITE, alfa * 0.8f)); // ...e o núcleo contra-girando
+        DrawCircleLines((int)p.x, (int)p.y, a->raio * (1.6f - 0.6f * k), Fade(WHITE, 0.6f * (1.0f - k)));
+        DrawPoly(p, 4, a->raio * 0.12f * k, 45.0f, Fade(c, 0.7f));
+        return;
+    }
+
+    float depois = a->vidaMax - a->vida;                       // tempo desde o impacto
+    if (depois < 0.35f) {
+        float k = 1.0f - depois / 0.35f;
+        BeginBlendMode(BLEND_ADDITIVE);
+        float larg = a->raio * (0.5f + 0.5f * k);
+        DrawRectangleGradientV((int)(p.x - larg), (int)(p.y - 420), (int)(larg * 2.0f), 420, Fade(c, 0.0f), Fade(c, 0.55f * k));
+        DrawRectangle((int)(p.x - larg * 0.35f), (int)(p.y - 420), (int)(larg * 0.7f), 420, Fade(WHITE, 0.5f * k));
+        DrawCircleV(p, a->raio * (1.1f - 0.3f * k), Fade(c, 0.4f * k));
+        EndBlendMode();
+    }
+    float f = a->vida / a->vidaMax;                            // brilho residual que apaga
+    DrawCircleV(p, a->raio, Fade(c, 0.14f * f));
+    DrawCircleLines((int)p.x, (int)p.y, a->raio, Fade(c, 0.6f * f));
+    DrawCircleLines((int)p.x, (int)p.y, a->raio * 0.62f, Fade(c, 0.35f * f));
+    DesenharNosCircuito(p, a->raio * 0.62f, a->raio * 0.9f, t, c, 0.7f * f);
+    DrawPolyLinesEx(p, 4, a->raio * 0.34f, 45.0f + t * 40.0f, 2, Fade(c, 0.6f * f));
+}
+
 static void DesenharAreas(const Biblioteca *b)
 {
     for (int i = 0; i < MAX_AREAS; i++) {
         const AreaDano *a = &b->areas[i];
         if (!a->ativo) continue;
 
+        if (a->estilo == 1) { DesenharSigilo(a); continue; }
         if (a->atraso > 0.0f) {
             DrawCircleLines((int)a->pos.x, (int)a->pos.y, a->raio, Fade(a->cor, 0.7f));
             DrawCircleV(a->pos, a->raio * 0.3f, Fade(a->cor, 0.4f));
@@ -25590,7 +26048,7 @@ static void DesenharMapaGrande(const Biblioteca *b, float tempo)
     DrawText("SUA BUILD", x, y, 16, GOLD);
     y += 22;
     DesenharIconeArma(RogueArmaAtual(&b->j), (Vector2){ (float)x + 8, (float)y + 6 }, 0.7f, tempo);
-    DrawText((b->j.armaExtra != ARMA_DISPARADOR) ? DEF_ARMAS[b->j.armaExtra].nome : "Só o Disparador", x + 20, y + 1, 10, WHITE);
+    DrawText((b->j.armaExtra != ARMA_DISPARADOR) ? TextFormat("%s + %s", DEF_ARMAS[b->j.armaBase].nome, DEF_ARMAS[b->j.armaExtra].nome) : DEF_ARMAS[b->j.armaBase].nome, x + 20, y + 1, 10, WHITE);
     y += 18;
 
     int linhas = 0;
@@ -25670,9 +26128,145 @@ static void DesenharIconeUpgrade(const Biblioteca *b, OpcaoEscolha o, Vector2 c,
 }
 
 // A tela "escolha 1 de 3": cartas com nome, raridade, categoria, nível, efeito e pré-requisitos
+// Números para comparar armas na tela: dano por segundo (aproximado), cadência e alcance (0..1)
+static float DpsArma(TipoArma arma)
+{
+    const DefArma *a = &DEF_ARMAS[arma];
+    float n = (a->projeteis > 1) ? (float)a->projeteis : 1.0f;
+    switch (arma) {
+        case ARMA_VETOR:     return (12.0f + 48.0f * 0.8f) / (a->intervalo + 1.2f * 0.8f);   // carrega 80%
+        case ARMA_ROTEADOR:  return a->dano * 1.2f / a->intervalo;
+        case ARMA_ORBE:      return (a->dano + 22.0f) / a->intervalo;                        // tiro + implosão
+        case ARMA_PULSO_FW:  return a->dano * 1.7f / a->intervalo;                           // pulso + eco
+        case ARMA_RAIO: {                    // média de 20 s: o EP (reserva + regeneração + o que volta dos acertos) limita os sigilos
+            float porSigilo = a->dano + RAIO_RESIDUO_DPS * RAIO_RESIDUO_TEMPO * 0.6f;     // impacto + parte da luz residual
+            float liquido = RAIO_CUSTO_EP - RAIO_EP_RETORNO * 0.85f;                       // gasto médio por sigilo (85% de acertos)
+            float sigilos = fminf(20.0f / a->intervalo, (ROGUE_EP_MAX + ROGUE_EP_POR_SEGUNDO * 20.0f) / liquido);
+            return sigilos * porSigilo * 0.85f / 20.0f;
+        }
+        default:             return a->dano * n / a->intervalo;
+    }
+}
+
+static float AlcanceArma(TipoArma arma)
+{
+    int t = DEF_ARMAS[arma].alcanceTipo;
+    return (t == 0) ? 1.0f : ((t == 1) ? 0.66f : 0.33f);
+}
+
+// Uma barra com nome e valor; "ref" (>= 0) mostra a diferença para a arma de comparação
+static void DesenharBarraArma(const char *nome, float x, float y, float w, float valor, float maximo, const char *texto, Color cor, float ref)
+{
+    DrawText(nome, (int)x, (int)y, 9, GRAY);
+    Rectangle fundo = { x + 62, y + 1, w - 62 - 52, 8 };
+    DrawRectangleRec(fundo, (Color){ 40, 36, 60, 255 });
+    DrawRectangleRec((Rectangle){ fundo.x, fundo.y, fundo.width * Clamp(valor / maximo, 0.0f, 1.0f), fundo.height }, cor);
+    DrawText(texto, (int)(fundo.x + fundo.width) + 6, (int)y, 9, WHITE);
+    if (ref >= 0.0f) {
+        float dif = valor - ref;
+        const char *t = (fabsf(dif) < 0.5f) ? "=" : TextFormat("%+.0f", dif);
+        DrawText(t, (int)(x + w) - MeasureText(t, 9), (int)y, 9, (dif > 0.5f) ? GREEN : ((dif < -0.5f) ? RED : GRAY));
+    }
+}
+
+// As melhorias que você já tem para uma arma (somem do efeito se você a trocar)
+static void RogueMelhoriasDaArma(const JogadorRogue *j, TipoArma arma, char *saida, int tam)
+{
+    saida[0] = '\0';
+    int n = 0;
+    for (int k = 0; k < NUM_UPGRADES; k++) {
+        if (UPGRADES[k].arma != (int)arma || arma == ARMA_DISPARADOR || j->up[k] <= 0) continue;
+        int len = (int)strlen(saida);
+        snprintf(saida + len, (size_t)(tam - len), "%s%s", (n > 0) ? ", " : "", UPGRADES[k].nome);
+        n++;
+    }
+}
+
+// Troca de arma: a arma nova em cima e as duas armas que você carrega para escolher qual sai
+static void DesenharTrocaArma(const Biblioteca *b, float tempo)
+{
+    const DefArma *nova = &DEF_ARMAS[b->armaNova];
+    float dpsNova = DpsArma(b->armaNova);
+    char linhas[256], texto[48];
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.82f));
+
+    const char *titulo = "QUAL ARMA VOCÊ QUER TROCAR?";
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 24) / 2, 30, 24, GOLD);
+
+    // ---- A arma nova (em cima)
+    Rectangle pn = { 120, 70, 560, 130 };
+    DrawRectangleRec(pn, (Color){ 20, 16, 34, 255 });
+    DrawRectangleLinesEx(pn, 3, nova->cor);
+    DrawRectangle((int)pn.x, (int)pn.y, (int)pn.width, 18, Fade(nova->cor, 0.25f));
+    DrawText("ARMA NOVA", (int)pn.x + 8, (int)pn.y + 4, 10, nova->cor);
+    DrawText(NOMES_RARIDADE[nova->raridade], (int)(pn.x + pn.width) - 8 - MeasureText(NOMES_RARIDADE[nova->raridade], 10), (int)pn.y + 4, 10, CORES_RARIDADE[nova->raridade]);
+    DrawCircleV((Vector2){ pn.x + 50, pn.y + 78 }, 32, Fade(nova->cor, 0.15f));
+    DesenharIconeArma(b->armaNova, (Vector2){ pn.x + 50, pn.y + 78 }, 2.0f, tempo);
+    DrawText(nova->nome, (int)pn.x + 100, (int)pn.y + 28, 18, nova->cor);
+    QuebrarTexto(nova->efeito, 230, 11, linhas, (int)sizeof(linhas));
+    DesenharTextoLinhas(linhas, (int)pn.x + 100, (int)pn.y + 54, 11, 14, WHITE);
+    snprintf(texto, sizeof(texto), "%.0f", dpsNova);
+    DesenharBarraArma("DANO/s",  pn.x + 350, pn.y + 40, 200, dpsNova, 110.0f, texto, nova->cor, -1.0f);
+    snprintf(texto, sizeof(texto), "%.1f/s", 1.0f / nova->intervalo);
+    DesenharBarraArma("CADÊNCIA", pn.x + 350, pn.y + 58, 200, 1.0f / nova->intervalo, 6.0f, texto, nova->cor, -1.0f);
+    DesenharBarraArma("ALCANCE", pn.x + 350, pn.y + 76, 200, AlcanceArma(b->armaNova), 1.0f, NOMES_ALCANCE[nova->alcanceTipo] + 0, nova->cor, -1.0f);
+    if (b->armaNova == ARMA_RAIO)
+    {
+        QuebrarTexto("Gasta EP a cada sigilo (sem EP, não atira). Acertar devolve EP.", 200, 9, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)pn.x + 350, (int)pn.y + 98, 9, 11, ORANGE);
+    }
+
+    DrawText("v  ESCOLHA QUAL DAS SUAS ARMAS SAI  v", LARGURA_TELA / 2 - MeasureText("v  ESCOLHA QUAL DAS SUAS ARMAS SAI  v", 12) / 2, 218, 12, GOLD);
+    DrawText("Os números verdes/vermelhos mostram como a arma NOVA fica em relação a cada uma.", LARGURA_TELA / 2 - MeasureText("Os números verdes/vermelhos mostram como a arma NOVA fica em relação a cada uma.", 10) / 2, 238, 10, GRAY);
+
+    // ---- As duas armas que você carrega
+    for (int i = 0; i < 2; i++) {
+        TipoArma velha = (i == 0) ? b->j.armaBase : b->j.armaExtra;
+        const DefArma *v = &DEF_ARMAS[velha];
+        Rectangle r = RogueCartaTroca(i);
+        bool sel = (b->trocaSel == i);
+        if (sel) DrawRectangleRec((Rectangle){ r.x - 5, r.y - 5, r.width + 10, r.height + 10 }, Fade(RED, 0.2f + 0.1f * sinf(tempo * 6.0f)));
+        DrawRectangleRec(r, (Color){ 20, 16, 34, 255 });
+        DrawRectangleLinesEx(r, sel ? 3.0f : 1.0f, sel ? RED : Fade(v->cor, 0.7f));
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, 18, Fade(sel ? RED : v->cor, 0.25f));
+        DrawText(TextFormat("[%d]  %s", i + 1, (i == 0) ? "ARMA 1 (INICIAL)" : "ARMA 2"), (int)r.x + 8, (int)r.y + 4, 10, sel ? RED : v->cor);
+        if (sel) DrawText("SAI", (int)(r.x + r.width) - 8 - MeasureText("SAI", 10), (int)r.y + 4, 10, RED);
+
+        DrawCircleV((Vector2){ r.x + 34, r.y + 52 }, 24, Fade(v->cor, 0.15f));
+        DesenharIconeArma(velha, (Vector2){ r.x + 34, r.y + 52 }, 1.5f, tempo);
+        DrawText(v->nome, (int)r.x + 66, (int)r.y + 26, 14, v->cor);
+        QuebrarTexto(v->efeito, (int)r.width - 76, 10, linhas, (int)sizeof(linhas));
+        DesenharTextoLinhas(linhas, (int)r.x + 66, (int)r.y + 46, 10, 12, LIGHTGRAY);
+
+        float dps = DpsArma(velha);
+        snprintf(texto, sizeof(texto), "%.0f", dpsNova);
+        DesenharBarraArma("DANO/s",  r.x + 10, r.y + 92,  r.width - 20, dpsNova, 110.0f, texto, nova->cor, dps);
+        snprintf(texto, sizeof(texto), "%.1f/s", 1.0f / nova->intervalo);
+        DesenharBarraArma("CADÊNCIA", r.x + 10, r.y + 108, r.width - 20, 1.0f / nova->intervalo, 6.0f, texto, nova->cor, 1.0f / v->intervalo);
+        DesenharBarraArma("ALCANCE", r.x + 10, r.y + 124, r.width - 20, AlcanceArma(b->armaNova), 1.0f, "", nova->cor, AlcanceArma(velha));
+
+        char ups[200];
+        RogueMelhoriasDaArma(&b->j, velha, ups, (int)sizeof(ups));
+        if (ups[0]) {
+            QuebrarTexto(TextFormat("PERDE o efeito de: %s", ups), (int)r.width - 20, 9, linhas, (int)sizeof(linhas));
+            DesenharTextoLinhas(linhas, (int)r.x + 10, (int)r.y + 144, 9, 11, ORANGE);
+        } else {
+            DrawText("Sem melhorias nesta arma: nada se perde.", (int)r.x + 10, (int)r.y + 150, 9, GRAY);
+        }
+        if (sel) DrawText("ENTER / CLIQUE: TROCAR ESTA", (int)(r.x + r.width / 2) - MeasureText("ENTER / CLIQUE: TROCAR ESTA", 10) / 2, (int)r.y + (int)r.height - 16, 10, YELLOW);
+    }
+
+    DrawText("A/D ou 1/2 escolhe   ENTER troca", LARGURA_TELA / 2 - MeasureText("A/D ou 1/2 escolhe   ENTER troca", 12) / 2, 484, 12, GRAY);
+    Rectangle c = RET_CANCELAR_TROCA;
+    DrawRectangleRec(c, Fade(BLACK, 0.6f));
+    DrawRectangleLinesEx(c, 1, MouseEm(c) ? WHITE : GRAY);
+    const char *rotulo = (b->trocaOrigem == 0) ? "DESCARTAR A ARMA NOVA (BACKSPACE)" : "MANTER AS MINHAS (BACKSPACE)";
+    DrawText(rotulo, (int)(c.x + c.width / 2) - MeasureText(rotulo, 10) / 2, (int)c.y + 10, 10, WHITE);
+}
+
 static void DesenharEscolha(const Biblioteca *b, float tempo)
 {
-    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.72f));
+    DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.88f));
 
     const char *titulo = (b->modoEscolha == ESCOLHA_RARA) ? "MELHORIA RARA: ESCOLHA UMA"
                        : (b->modoEscolha == ESCOLHA_ARMA) ? "ARSENAL: ESCOLHA UMA" : "ESCOLHA UMA MELHORIA";
@@ -25720,9 +26314,9 @@ static void DesenharEscolha(const Biblioteca *b, float tempo)
         } else if (o.tipo == OPC_ARMA) {
             nome = DEF_ARMAS[o.id].nome; efeito = DEF_ARMAS[o.id].efeito; rar = DEF_ARMAS[o.id].raridade;
             categoria = "ARMA"; corCat = DEF_ARMAS[o.id].cor;
-            snprintf(nivel, sizeof(nivel), "%s", NOMES_ALCANCE[DEF_ARMAS[o.id].alcanceTipo]);
-            if (b->j.armaExtra != ARMA_DISPARADOR) snprintf(requisito, sizeof(requisito), "SUBSTITUI: %s", DEF_ARMAS[b->j.armaExtra].nome);
-            else                                   snprintf(requisito, sizeof(requisito), "Vira a sua arma extra (TAB)");
+            snprintf(nivel, sizeof(nivel), "%s  ~%.0f dano/s", NOMES_ALCANCE[DEF_ARMAS[o.id].alcanceTipo], DpsArma((TipoArma)o.id));
+            if (b->j.armaExtra != ARMA_DISPARADOR) snprintf(requisito, sizeof(requisito), "VOCÊ ESCOLHE QUAL ARMA TROCAR");
+            else                                   snprintf(requisito, sizeof(requisito), "Vira a sua 2ª arma (TAB troca)");
         } else {
             nome = "RESERVA DE CONHECIMENTO"; efeito = "Não há melhorias novas para você agora: leve Fragmentos de Conhecimento.";
             rar = RARIDADE_COMUM; categoria = "FRAGMENTOS"; corCat = (Color){ 0, 228, 255, 255 };
@@ -25771,9 +26365,11 @@ static void DesenharEscolha(const Biblioteca *b, float tempo)
     }
 
     const char *ajuda = TextFormat("A/D, 1-3 ou mouse: escolher     E / clique: confirmar     BACKSPACE: recusar (+%d FC)", FC_RECUSAR_ESCOLHA);
-    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 462, 10, GRAY);
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 438, 10, GRAY);      // logo abaixo das cartas (terminam em y=432)
 
     // Recusar também com o mouse (o mesmo que BACKSPACE)
+    DesenharBotaoMenu(RET_REROLAR_ESCOLHA, (b->j.rerolls > 0) ? TextFormat("REROLAR [R]  (%d GRÁTIS)", b->j.rerolls) : TextFormat("REROLAR [R]  (%d FC)", REROLL_CUSTO_FC), 12,
+                      (b->j.rerolls > 0 || b->perm->fragmentos >= REROLL_CUSTO_FC) ? SKYBLUE : GRAY, false);
     DesenharBotaoMenu(RET_RECUSAR_ESCOLHA, TextFormat("RECUSAR (+%d FC)", FC_RECUSAR_ESCOLHA), 12, GOLD, false);
 }
 
@@ -28184,6 +28780,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 
     if (b->escolhaAberta)
         DesenharEscolha(b, tempo);
+
+    if (b->trocaArmaAberta)
+        DesenharTrocaArma(b, tempo);
 
     if (b->mapaAberto)
         DesenharMapaGrande(b, tempo);

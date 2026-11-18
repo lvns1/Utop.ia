@@ -751,18 +751,23 @@ static const Dialogo dialogoChefeVolta = {
 #define TELEMETRIA_ATIVA     1
 #define ARQUIVO_TELEMETRIA   "utopia_teste.csv"
 
+static FILE *telemetriaArq = NULL;
+
 static void Telemetria(const char *evento, const char *detalhe, float valor, int quantidade)
 {
 #if TELEMETRIA_ATIVA
-    FILE *f = fopen(ARQUIVO_TELEMETRIA, "a");
+    // O arquivo fica aberto durante o jogo (abrir e fechar a cada evento travava o jogo em alguns PCs)
+    if (telemetriaArq == NULL) {
+        telemetriaArq = fopen(ARQUIVO_TELEMETRIA, "a");
+        if (telemetriaArq == NULL)
+            return;
+        FILE *f = telemetriaArq;
 
-    if (f == NULL)
-        return;
-
-    // Arquivo novo: escreve o cabeçalho
-    fseek(f, 0, SEEK_END);
-    if (ftell(f) == 0)
-        fprintf(f, "tempo_jogo_s;evento;detalhe;valor;quantidade\n");
+        // Arquivo novo: escreve o cabeçalho
+        fseek(f, 0, SEEK_END);
+        if (ftell(f) == 0)
+            fprintf(f, "tempo_jogo_s;evento;detalhe;valor;quantidade\n");
+    }
 
     // Tira ";" e quebras de linha do detalhe para não bagunçar as colunas
     char limpo[64];
@@ -773,55 +778,1317 @@ static void Telemetria(const char *evento, const char *detalhe, float valor, int
 
     limpo[n] = '\0';
 
+    FILE *f = telemetriaArq;
     fprintf(f, "%.1f;%s;%s;%.1f;%d\n", GetTime(), evento, limpo, valor, quantidade);
-    fclose(f);
+
+    // Só descarrega no disco em eventos raros (sala nova, missão, batalha, ranking); o resto fica no buffer
+    if (strncmp(evento, "rogue_sala", 10) == 0 || strncmp(evento, "rogue_missao", 12) == 0 ||
+        strncmp(evento, "batalha", 7) == 0 || strncmp(evento, "ranking", 7) == 0)
+        fflush(f);
 #else
     (void)evento; (void)detalhe; (void)valor; (void)quantidade;
 #endif
 }
 
+static void TelemetriaFechar(void)
+{
+    if (telemetriaArq != NULL) { fclose(telemetriaArq); telemetriaArq = NULL; }
+}
+
+// Passo de tempo do jogo: limitado a 1/30 s para um engasgo (arrastar a janela, disco) não virar teleporte
+static float DtJogo(void)
+{
+    return fminf(GetFrameTime(), 1.0f / 30.0f);
+}
+
 // =============================================================
-// SONS (gerados por código, sem precisar de arquivos de áudio)
+// SONS E MÚSICA
+//   SFX: gerados por código (reformulados para mais impacto)
+//   BGM: carregados de resources/audio/*.ogg (stream contínuo)
+//
+//   Faixas esperadas:
+//     bgm_menu.ogg      → Menu principal + Intro
+//     bgm_sala.ogg      → Sala inicial (Luci)
+//     bgm_corredor.ogg  → Corredor do Histórico (Bloco 1)
+//     bgm_batalha.ogg   → Batalha dos monitores
+//     bgm_mestre.ogg    → ALUCINAÇÃO MESTRE (boss do Bloco 1)
+//     bgm_biblioteca.ogg→ Biblioteca dos Ecos (Bloco 2 + Bloco 3)
+//     bgm_gameover.ogg  → Game over / derrota
+//   Se algum arquivo não existir, o jogo continua sem música nessa tela.
 // =============================================================
 
 static Sound sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao, sfxTiro;
-static Sound sfxAvisoParry, sfxParryPerfeito, sfxEstatica, sfxDedutivo;     // Bloco 3 (reformulação)
+static Sound sfxAvisoParry, sfxParryPerfeito, sfxEstatica, sfxDedutivo;
 static bool audioPronto = false;
 
-// Gera um bipe que desliza de uma frequência para outra (forma 0 = suave, 1 = quadrada)
+// --- BGM (stream) ---
+static Music bgmMenu      = {0};
+static Music bgmSala      = {0};
+static Music bgmCorredor  = {0};
+static Music bgmBatalha   = {0};
+static Music bgmMestre    = {0};
+static Music bgmBiblioteca= {0};
+static Music bgmGameover  = {0};
+static Music bgmAtrio     = {0};   // átrio da Biblioteca (hub entre as missões)
+static Music bgmLuci      = {0};   // arena final da Luci (mapa3)
+static Music *bgmAtual    = NULL;   // ponteiro para a música em reprodução
+static int    bgmTelaId   = -99;    // id interno da tela atual (evita reiniciar a mesma faixa)
+static float  bgmVolume   = 0.70f;  // 0.0 – 1.0
+
+// Carrega música de arquivo; se não existir devolve zero-init (stream.buffer == NULL)
+static Music CarregarBGM(const char *caminho)
+{
+    if (!FileExists(caminho)) return (Music){0};
+    Music m = LoadMusicStream(caminho);
+    SetMusicVolume(m, bgmVolume);
+    return m;
+}
+
+// Troca a BGM atual. id é um número interno para evitar reiniciar a mesma faixa.
+static void TrocarBGM(Music *nova, int id)
+{
+    if (bgmTelaId == id) return;              // já está tocando esta
+    if (bgmAtual && bgmAtual->stream.buffer)
+        StopMusicStream(*bgmAtual);
+    bgmAtual  = nova;
+    bgmTelaId = id;
+    if (bgmAtual && bgmAtual->stream.buffer) {
+        SetMusicVolume(*bgmAtual, bgmVolume);
+        PlayMusicStream(*bgmAtual);
+    }
+}
+
+// Deve ser chamado UMA vez por frame no loop principal (mantém o buffer preenchido)
+static void AtualizarBGM(void)
+{
+    if (!audioPronto) return;
+    if (bgmAtual && bgmAtual->stream.buffer)
+        UpdateMusicStream(*bgmAtual);
+}
+
+// =============================================================
+// GERADORES DE SFX — DESIGN GUIADO PELA ESTÉTICA DO JOGO
+//
+//  UtopIA é um RPG-roguelite ambientado DENTRO de uma IA corrompida.
+//  Referências de design de som:
+//    • Undertale  — bullet-hell, caixa de diálogo, alma de coração
+//    • Chiptune / Game Boy DMG — onda quadrada + pulse, 8-bit crunch
+//    • Glitch / Corrupção digital — ruído modulado, bit-crush, freq instável
+//    • Tensão crescente (alucinação) — Luci degenerando a cada erro
+//
+//  Linguagem sonora adotada:
+//    ACERTO  → jingle chiptune curto, ascendente, "dado validado"
+//    ERRO    → crash grave com glitch — "corrupção detectada"
+//    DANO    → buzz descendente + ruído branco seco — "packet perdido"
+//    PEGAR   → dois pings ascendentes rápidos — "dado recebido"
+//    SELEÇÃO → blip ultra-curto, 1-bit — "cursor digital"
+//    TIRO    → zap de onda quadrada descendente — "pulso de dados"
+//    PARRY AVISO  → chirp glitchado ascendente — "alerta de sistema"
+//    PARRY PERFEITO → crash+ring com bit-crush — "contradição refutada"
+//    ESTÁTICA → ruído modulado por LFO — "Luci alucinando"
+//    DEDUTIVO → laser de onda quadrada com harmônico — "argumento disparado"
+// =============================================================
+
+// --- Primitivas de síntese ---
+
+// Bit-crush: quantiza a amplitude para simular resolução reduzida (1-bit a 15-bit)
+static float BitCrush(float sample, int bits)
+{
+    float levels = (float)(1 << bits);
+    return floorf(sample * levels + 0.5f) / levels;
+}
+
+// Onda quadrada com duty cycle ajustável (duty = 0.0–1.0)
+// duty 0.5 = onda quadrada clássica; 0.125 = pulse estreito (Game Boy canal 2)
+static float PulseWave(float fase, float duty)
+{
+    float f = fmodf(fase / (2.0f * PI), 1.0f);
+    if (f < 0.0f) f += 1.0f;
+    return (f < duty) ? 1.0f : -1.0f;
+}
+
+// Gera um som completo com controle total de síntese.
+// freqMod: se > 0, aplica vibrato (oscilação de freq em Hz)
+// duty:    duty cycle da onda quadrada (0.5 = quadrada, 0.125 = pulse)
+// bitCrush: 0 = sem, > 0 = número de bits (4 = Game Boy, 8 = NES)
 static Sound GerarSom(float freqInicio, float freqFim, float duracao, float volume, int forma)
 {
-    const int taxa = 22050;
+    const int taxa = 44100;
     unsigned int quadros = (unsigned int)(duracao * taxa);
     short *amostras = (short *)malloc(quadros * sizeof(short));
     float fase = 0.0f;
 
     for (unsigned int i = 0; i < quadros; i++) {
-
-        float t = (float)i / (float)quadros;
+        float t    = (float)i / (float)quadros;
         float freq = freqInicio + (freqFim - freqInicio) * t;
-        float envelope = (t < 0.1f) ? t / 0.1f : (1.0f - t);   // ataque rápido, some aos poucos
+        fase += 2.0f * PI * freq / (float)taxa;
 
-        fase += 2.0f * PI * freq / taxa;
-
-        // forma: 0 = senoide, 1 = quadrada, 2 = ruído (estática), 3 = metálico (parciais desafinados + estalo)
         float ruido = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
-        float onda;
-        if (forma == 0)      onda = sinf(fase);
-        else if (forma == 1) onda = (sinf(fase) >= 0.0f ? 0.6f : -0.6f);
-        else if (forma == 2) onda = ruido * 0.8f;
-        else {
-            onda = 0.5f * sinf(fase) + 0.35f * sinf(fase * 2.76f) + 0.25f * sinf(fase * 5.4f) + ((t < 0.06f) ? ruido * 0.7f : 0.0f);
-            envelope = (t < 0.01f) ? t / 0.01f : (1.0f - t) * (1.0f - t);      // batida seca
+        float env, onda;
+
+        if (forma == 0) {
+            // Senoide suave — para notas de diálogo/Luci
+            env  = (t < 0.08f) ? t / 0.08f : (1.0f - t);
+            onda = sinf(fase);
+        } else if (forma == 1) {
+            // Onda quadrada clássica (chiptune) — a mais usada
+            env  = (t < 0.04f) ? t / 0.04f : (1.0f - t);
+            onda = PulseWave(fase, 0.5f);
+        } else if (forma == 2) {
+            // Ruído branco modulado (LFO de amplitude a 8 Hz — Luci corrompendo)
+            float lfo = 0.5f + 0.5f * sinf(2.0f * PI * 8.0f * t);
+            env  = (t < 0.05f) ? t / 0.05f : ((t > 0.85f) ? (1.0f - t) / 0.15f : 1.0f);
+            onda = ruido * lfo;
+        } else if (forma == 3) {
+            // Pulse estreito (Game Boy canal 2) — som mais "nasal" e digital
+            env  = (t < 0.03f) ? t / 0.03f : (1.0f - t) * (1.0f - t);
+            onda = PulseWave(fase, 0.125f);
+        } else {
+            // Metálico glitchado: parciais + ruído inicial + bit-crush leve
+            env  = (t < 0.01f) ? t / 0.01f : (1.0f - t) * (1.0f - t);
+            onda = 0.5f * sinf(fase) + 0.3f * sinf(fase * 2.76f) + 0.2f * sinf(fase * 5.4f);
+            if (t < 0.05f) onda += ruido * 0.5f;
+            onda = BitCrush(onda, 6);   // 6-bit crush — crash "pixelado"
         }
-        amostras[i] = (short)(onda * envelope * volume * 32000.0f);
+
+        amostras[i] = (short)(onda * env * volume * 30000.0f);
     }
 
-    Wave w = { quadros, taxa, 16, 1, amostras };
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, amostras };
     Sound som = LoadSoundFromWave(w);
-
     free(amostras);
     return som;
+}
+
+// Jingle de N notas em onda quadrada (chiptune — a voz do acerto no UtopIA)
+// As notas formam um acorde perfeito maior (tônica → terça → quinta)
+static Sound GerarJingleChiptune(float freqBase, int notas, float duracaoNota, float volume)
+{
+    const int taxa = 44100;
+    // Intervalos: uníssono, terça maior (5/4), quinta justa (3/2)
+    static const float intervalos[] = { 1.0f, 1.25f, 1.5f };
+    unsigned int qn = (unsigned int)(duracaoNota * taxa);
+    unsigned int total = qn * (unsigned int)notas;
+    short *am = (short *)malloc(total * sizeof(short));
+
+    for (int n = 0; n < notas && n < 3; n++) {
+        float freq = freqBase * intervalos[n];
+        float fase = 0.0f;
+        for (unsigned int i = 0; i < qn; i++) {
+            float t   = (float)i / (float)qn;
+            // Envelope: ataque instantâneo, decaimento suave
+            float env = (t < 0.02f) ? 1.0f : (1.0f - t) * (1.0f - t);
+            fase += 2.0f * PI * freq / (float)taxa;
+            float onda = PulseWave(fase, 0.5f);
+            // Bit-crush 8-bit: som de console retro
+            onda = BitCrush(onda, 8);
+            am[n * qn + i] = (short)(onda * env * volume * 30000.0f);
+        }
+    }
+
+    Wave w = { total, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Som de crash glitchado: ruído inicial + tônica descendente (erro/dano)
+// Combina estourado "digital" com queda de frequência — "dado corrompido"
+static Sound GerarCrashGlitch(float freqInicio, float freqFim, float duracao, float volume)
+{
+    const int taxa = 44100;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *am = (short *)malloc(quadros * sizeof(short));
+    float fase = 0.0f;
+
+    for (unsigned int i = 0; i < quadros; i++) {
+        float t    = (float)i / (float)quadros;
+        float freq = freqInicio + (freqFim - freqInicio) * (t * t);   // queda curva — mais rápida no início
+
+        // Freq oscila levemente (instabilidade — alucinação)
+        float instab = 1.0f + 0.04f * sinf(2.0f * PI * 60.0f * t);
+        freq *= instab;
+
+        fase += 2.0f * PI * freq / (float)taxa;
+
+        float ruido = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+
+        // Componente de onda quadrada
+        float onda = PulseWave(fase, 0.5f);
+
+        // Burst de ruído no início (< 8% da duração) — "glitch de entrada"
+        if (t < 0.08f) onda = onda * 0.4f + ruido * 0.6f;
+
+        // Bit-crush mais agressivo (5-bit) — som "quebrado"
+        onda = BitCrush(onda, 5);
+
+        // Envelope: pico instantâneo, decaimento quadrático
+        float env = (1.0f - t) * (1.0f - t);
+
+        am[i] = (short)(onda * env * volume * 30000.0f);
+    }
+
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Dois pings ascendentes rápidos (coletar dado / verdade confirmada)
+static Sound GerarPingDuplo(float freq1, float freq2, float duracaoCada, float volume)
+{
+    const int taxa = 44100;
+    unsigned int qn    = (unsigned int)(duracaoCada * taxa);
+    unsigned int total = qn * 2;
+    short *am = (short *)malloc(total * sizeof(short));
+
+    float freqs[2] = { freq1, freq2 };
+    for (int p = 0; p < 2; p++) {
+        float fase = 0.0f;
+        for (unsigned int i = 0; i < qn; i++) {
+            float t   = (float)i / (float)qn;
+            float env = (t < 0.05f) ? t / 0.05f : (1.0f - t) * (1.0f - t);
+            fase += 2.0f * PI * freqs[p] / (float)taxa;
+            // Pulse estreito (0.25) — som mais "digital" do que senoide
+            float onda = PulseWave(fase, 0.25f);
+            am[p * qn + i] = (short)(onda * env * volume * 30000.0f);
+        }
+    }
+
+    Wave w = { total, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Chirp glitchado ascendente (alerta / aviso de parry)
+// A frequência sobe por saltos discretos — imitando o LFO de portamento do Game Boy
+static Sound GerarChirpAlerta(float freqBase, float freqAlvo, float duracao, float volume)
+{
+    const int taxa = 44100;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *am = (short *)malloc(quadros * sizeof(short));
+
+    // Divide em 8 "degraus" discretos de frequência (como o hardware chiptune)
+    int degraus = 8;
+    float fase  = 0.0f;
+
+    for (unsigned int i = 0; i < quadros; i++) {
+        float t = (float)i / (float)quadros;
+
+        // Frequência em degraus (quantização de pitch — som de portamento 8-bit)
+        int d    = (int)(t * degraus);
+        float ft = (float)d / (float)degraus;
+        float freq = freqBase + (freqAlvo - freqBase) * ft;
+
+        // Instabilidade fina: micro-glitch a cada degrau
+        float glitch = 1.0f + 0.08f * ((float)(rand() % 3 - 1));
+        if (i % (unsigned int)(taxa / 60) == 0) freq *= glitch;
+
+        fase += 2.0f * PI * freq / (float)taxa;
+
+        float env = (t < 0.05f) ? t / 0.05f : (t > 0.75f) ? (1.0f - t) / 0.25f : 1.0f;
+        float onda = PulseWave(fase, 0.5f);
+
+        am[i] = (short)(onda * env * volume * 30000.0f);
+    }
+
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Crash de parry perfeito: impacto grave + ring ascendente
+// "A alucinação foi refutada" — som de peso + resolução
+static Sound GerarParryPerfeito(float volume)
+{
+    const int taxa = 44100;
+    float duracao  = 0.55f;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *am = (short *)malloc(quadros * sizeof(short));
+
+    float faseImpacto = 0.0f;
+    float faseRing    = 0.0f;
+
+    for (unsigned int i = 0; i < quadros; i++) {
+        float t = (float)i / (float)quadros;
+
+        float ruido = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+
+        // 1) Impacto grave descendente (0–15% da duração): frequência cai rápido
+        float freqImpacto = 200.0f * expf(-t * 25.0f);
+        faseImpacto += 2.0f * PI * freqImpacto / (float)taxa;
+        float impacto  = PulseWave(faseImpacto, 0.5f);
+        float envImpacto = (t < 0.02f) ? 1.0f : expf(-t * 18.0f);
+        // Bit-crush 5-bit no impacto
+        impacto = BitCrush(impacto, 5) * envImpacto;
+
+        // 2) Ring ascendente (começa logo após): pitch sobe depois do impacto
+        float freqRing = 400.0f + 800.0f * t;
+        faseRing += 2.0f * PI * freqRing / (float)taxa;
+        float ring    = sinf(faseRing);
+        float envRing = (t < 0.05f) ? 0.0f : (t - 0.05f) / 0.15f * expf(-(t - 0.05f) * 6.0f);
+
+        // 3) Burst de ruído no impacto inicial
+        float burst = (t < 0.04f) ? ruido * (1.0f - t / 0.04f) : 0.0f;
+
+        float onda = impacto * 0.5f + ring * 0.35f + burst * 0.15f;
+        am[i] = (short)(onda * volume * 30000.0f);
+    }
+
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Ruído de estática com LFO de amplitude (Luci alucinando)
+// A amplitude oscila irregularmente — soa como sinal digital degradado
+static Sound GerarEstaticaLuci(float volume)
+{
+    const int taxa = 44100;
+    float duracao  = 0.85f;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *am = (short *)malloc(quadros * sizeof(short));
+
+    for (unsigned int i = 0; i < quadros; i++) {
+        float t = (float)i / (float)quadros;
+
+        // LFO duplo: o sinal "respira" de forma irregular (Luci instável)
+        float lfo1 = 0.5f + 0.5f * sinf(2.0f * PI * 7.3f  * t);
+        float lfo2 = 0.5f + 0.5f * sinf(2.0f * PI * 13.7f * t);
+        float lfo  = lfo1 * lfo2;   // produto cria batimento caótico
+
+        float ruido = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+
+        // Crackles periódicos (pops digitais — corrupção de dados)
+        float crackle = 0.0f;
+        if (rand() % (taxa / 60) == 0)   // ~60 crackles por segundo
+            crackle = ((float)rand() / (float)RAND_MAX - 0.5f) * 2.0f;
+
+        float env = (t < 0.06f) ? t / 0.06f : ((t > 0.80f) ? (1.0f - t) / 0.20f : 1.0f);
+
+        float onda = ruido * lfo * 0.7f + crackle * 0.3f;
+        am[i] = (short)(onda * env * volume * 30000.0f);
+    }
+
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// Disparo Dedutivo: laser de onda quadrada + harmônico (argumento lógico disparado)
+static Sound GerarDisparoDedutivo(float volume)
+{
+    const int taxa = 44100;
+    float duracao  = 0.22f;
+    unsigned int quadros = (unsigned int)(duracao * taxa);
+    short *am = (short *)malloc(quadros * sizeof(short));
+
+    float fase1 = 0.0f, fase2 = 0.0f;
+
+    for (unsigned int i = 0; i < quadros; i++) {
+        float t = (float)i / (float)quadros;
+
+        // Frequência principal: sobe rápido depois estabiliza
+        float freq1 = 300.0f + 1200.0f * (1.0f - expf(-t * 15.0f));
+        // Harmônico: quinta acima (x1.5), defasado — dá "corpo" ao laser
+        float freq2 = freq1 * 1.5f;
+
+        fase1 += 2.0f * PI * freq1 / (float)taxa;
+        fase2 += 2.0f * PI * freq2 / (float)taxa;
+
+        // Pulse estreito (0.125) — nasal, penetrante — como no Game Boy
+        float onda1 = PulseWave(fase1, 0.125f);
+        float onda2 = PulseWave(fase2, 0.5f) * 0.4f;
+
+        // Bit-crush 7-bit: som digital mas sem ser grosseiro
+        float onda = BitCrush(onda1 * 0.6f + onda2, 7);
+
+        // Envelope: ataque instantâneo, decaimento rápido (tiro = impacto curto)
+        float env = (t < 0.02f) ? 1.0f : expf(-t * 10.0f);
+
+        am[i] = (short)(onda * env * volume * 30000.0f);
+    }
+
+    Wave w = { quadros, (unsigned int)taxa, 16, 1, am };
+    Sound som = LoadSoundFromWave(w);
+    free(am);
+    return som;
+}
+
+// =============================================================
+// SONS 2.0 — VARIAÇÕES, ARMAS E AMBIENTES DOS MAPAS
+//
+//  Por que: com um único Sound por efeito, o mesmo tiro soava igual
+//  centenas de vezes por missão. Agora:
+//    • cada efeito tem 3 VARIAÇÕES geradas com parâmetros um pouco
+//      diferentes, sorteadas sem repetir a anterior, + leve variação de
+//      tom a cada disparo e 3 vozes (aliases) para os sons se sobreporem
+//      em vez de se cortarem;
+//    • cada ARMA tem a sua assinatura, tirada do desenho e da cor dela;
+//    • cada MAPA tem um ambiente em loop (sob a música), tirado da arte:
+//        mapa1 (sala da Luci)  pedra azul + telas ciano + trilhas de circuito
+//                              → zumbido de servidor, gotas na pedra, telas
+//        mapa2 (corredor)      corredor longo de terminais
+//                              → relés, chiado de CRT, conversa de dados, eco longo
+//        Biblioteca dos Ecos   salas fundas → vento de caverna e ecos distantes
+//        mapa3 (arena da Luci) pedra roxa, névoa, placas expostas
+//                              → drone grave em batimento, falhas de sinal, pulsação
+//  Tudo continua gerado por código (nenhum arquivo novo).
+// =============================================================
+
+#define TAXA_SOM        44100
+#define MAX_VAR_SOM     3
+#define VOZES_EXTRA     2          // aliases por variação (3 sons iguais podem tocar juntos)
+
+typedef struct {
+    Sound v[MAX_VAR_SOM];
+    Sound alias[MAX_VAR_SOM][VOZES_EXTRA];
+    int n;                         // variações carregadas
+    int ultima;                    // última variação tocada (não repete em seguida)
+    int voz;                       // próxima voz (0 = original, 1.. = alias)
+    float jitter;                  // variação de tom por disparo (0.04 = ±4%)
+} GrupoSom;
+
+// --- gerador pseudoaleatório próprio (as variações saem iguais em toda máquina) ---
+static unsigned int g_sinteseSemente = 0x1234567u;
+static float SinRnd(void)          // -1 .. 1
+{
+    g_sinteseSemente ^= g_sinteseSemente << 13;
+    g_sinteseSemente ^= g_sinteseSemente >> 17;
+    g_sinteseSemente ^= g_sinteseSemente << 5;
+    return (float)(g_sinteseSemente & 0xFFFFFF) / (float)0x7FFFFF - 1.0f;
+}
+static float SinRndU(void) { return 0.5f + 0.5f * SinRnd(); }      // 0 .. 1
+
+// --- buffer de síntese em float ---
+typedef struct { float *x; int n; } BufSom;
+
+static BufSom BufNovo(float segundos)
+{
+    BufSom b;
+    b.n = (int)(segundos * TAXA_SOM);
+    if (b.n < 1) b.n = 1;
+    b.x = (float *)calloc((size_t)b.n, sizeof(float));
+    return b;
+}
+
+// Filtro de estado variável (Chamberlin): passa-baixa, passa-banda e passa-alta de uma vez
+typedef struct { float lp, bp; } Svf;
+static float SvfPasso(Svf *f, float in, float corte, float q, int saida)    // saida: 0 = LP, 1 = BP, 2 = HP
+{
+    if (corte > TAXA_SOM * 0.22f) corte = TAXA_SOM * 0.22f;
+    if (corte < 10.0f) corte = 10.0f;
+    float k = 2.0f * sinf(PI * corte / (float)TAXA_SOM);
+    float hp = in - f->lp - q * f->bp;
+    f->bp += k * hp;
+    f->lp += k * f->bp;
+    return (saida == 0) ? f->lp : ((saida == 1) ? f->bp : hp);
+}
+
+// Reverb de Schroeder (4 pentes + 2 passa-tudo): "pedra" do calabouço digital.
+// tamanho 0.5 = sala pequena, 1.0 = salão, 1.6 = corredor/caverna. O buffer precisa ter cauda livre no fim.
+static void ReverbPedra(BufSom *b, float mistura, float tamanho, float amortece)
+{
+    static const int baseComb[4] = { 1116, 1188, 1277, 1356 };
+    static const int baseAll[2]  = { 556, 441 };
+    int lc[4], la[2];
+    float *pc[4], *pa[2];
+    int ic[4] = { 0 }, ia[2] = { 0 };
+    float filt[4] = { 0 };
+    for (int k = 0; k < 4; k++) { lc[k] = (int)(baseComb[k] * tamanho); pc[k] = (float *)calloc((size_t)lc[k], sizeof(float)); }
+    for (int k = 0; k < 2; k++) { la[k] = (int)(baseAll[k] * tamanho);  pa[k] = (float *)calloc((size_t)la[k], sizeof(float)); }
+    float fb = 0.70f + 0.12f * fminf(tamanho, 1.5f) / 1.5f;
+
+    for (int i = 0; i < b->n; i++) {
+        float in = b->x[i] * 0.25f, s = 0.0f;
+        for (int k = 0; k < 4; k++) {
+            float y = pc[k][ic[k]];
+            filt[k] = y * (1.0f - amortece) + filt[k] * amortece;
+            pc[k][ic[k]] = in + filt[k] * fb;
+            if (++ic[k] >= lc[k]) ic[k] = 0;
+            s += y;
+        }
+        for (int k = 0; k < 2; k++) {
+            float y = pa[k][ia[k]];
+            float o = -s + y;
+            pa[k][ia[k]] = s + y * 0.5f;
+            if (++ia[k] >= la[k]) ia[k] = 0;
+            s = o;
+        }
+        b->x[i] = b->x[i] * (1.0f - mistura * 0.5f) + s * mistura;
+    }
+    for (int k = 0; k < 4; k++) free(pc[k]);
+    for (int k = 0; k < 2; k++) free(pa[k]);
+}
+
+// Tira o DC, faz fades de 2 ms / 8 ms (sem clique), normaliza o pico e satura de leve
+static void BufFinalizar(BufSom *b, float pico)
+{
+    float dc = 0.0f, m = 0.0f;
+    for (int i = 0; i < b->n; i++) { dc = dc * 0.995f + b->x[i] * 0.005f; b->x[i] -= dc; }
+    int fi = TAXA_SOM / 500, fo = TAXA_SOM / 125;
+    for (int i = 0; i < fi && i < b->n; i++) b->x[i] *= (float)i / (float)fi;
+    for (int i = 0; i < fo && i < b->n; i++) b->x[b->n - 1 - i] *= (float)i / (float)fo;
+    for (int i = 0; i < b->n; i++) m = fmaxf(m, fabsf(b->x[i]));
+    if (m < 1e-6f) return;
+    float g = pico / m;
+    for (int i = 0; i < b->n; i++) b->x[i] = tanhf(b->x[i] * g * 1.15f) / tanhf(1.15f);
+}
+
+static short *BufParaPcm(const BufSom *b)
+{
+    short *pcm = (short *)malloc((size_t)b->n * sizeof(short));
+    for (int i = 0; i < b->n; i++) {
+        float v = Clamp(b->x[i], -1.0f, 1.0f);
+        pcm[i] = (short)(v * 32000.0f);
+    }
+    return pcm;
+}
+
+static Sound BufParaSom(BufSom *b, float pico)
+{
+    BufFinalizar(b, pico);
+    short *pcm = BufParaPcm(b);
+    Wave w = { (unsigned int)b->n, TAXA_SOM, 16, 1, pcm };
+    Sound s = LoadSoundFromWave(w);
+    free(pcm);
+    free(b->x);
+    b->x = NULL;
+    return s;
+}
+
+// Envelopes e osciladores pequenos
+static float EnvAD(float t, float ataque, float queda)     // t em segundos; queda exponencial (constante de tempo)
+{
+    if (t < ataque) return t / ataque;
+    return expf(-(t - ataque) / queda);
+}
+static float OscPulso(float fase, float duty) { float f = fase - floorf(fase); return (f < duty) ? 1.0f : -1.0f; }
+static float OscSerra(float fase)             { float f = fase - floorf(fase); return 2.0f * f - 1.0f; }
+static float OscTri(float fase)               { float f = fase - floorf(fase); return 4.0f * fabsf(f - 0.5f) - 1.0f; }
+static float Esmagar(float v, int bits)       { float l = (float)(1 << bits); return floorf(v * l + 0.5f) / l; }
+
+// =============================================================
+// RECEITAS DAS ARMAS (v = 0..2 é a variação; muda tom, timbre e ruído)
+// =============================================================
+
+// DISPARADOR DE DADOS (azul, tiro reto e rápido): "pew" de pulso estreito + clique digital, sala pequena
+static Sound ReceitaDisparador(int v)
+{
+    BufSom b = BufNovo(0.16f);
+    float f0 = 1350.0f * (1.0f + 0.07f * (float)(v - 1)), duty = 0.22f + 0.05f * (float)v, fase = 0.0f;
+    Svf lp = { 0 }, hp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float f = 420.0f + (f0 - 420.0f) * expf(-t / 0.022f);
+        fase += f / TAXA_SOM;
+        float s = OscPulso(fase, duty) * EnvAD(t, 0.001f, 0.030f);
+        float clique = SvfPasso(&hp, SinRnd(), 3500.0f, 1.0f, 2) * expf(-t / 0.004f);
+        b.x[i] = SvfPasso(&lp, s * 0.7f + clique * 0.5f, 5200.0f, 0.9f, 0);
+    }
+    ReverbPedra(&b, 0.10f, 0.5f, 0.45f);
+    return BufParaSom(&b, 0.55f);
+}
+
+// VETOR DE COMPILAÇÃO (branco-azulado, tiro carregado que atravessa): estalo seco + "rasgo" descendente + grave
+static Sound ReceitaVetor(int v)
+{
+    BufSom b = BufNovo(0.55f);
+    float fa = 0.0f, fs = 0.0f, f0 = 2400.0f + 200.0f * (float)v;
+    Svf hp = { 0 }, bp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float estalo = SvfPasso(&hp, SinRnd(), 2200.0f, 0.8f, 2) * expf(-t / 0.008f);
+        float f = 160.0f + (f0 - 160.0f) * expf(-t / 0.06f);
+        fa += f / TAXA_SOM;
+        float rasgo = (OscSerra(fa) * 0.6f + OscPulso(fa * 1.005f, 0.5f) * 0.4f) * EnvAD(t, 0.002f, 0.09f);
+        rasgo = SvfPasso(&bp, rasgo, 900.0f + f * 0.8f, 0.5f, 0);
+        fs += (55.0f + 40.0f * expf(-t / 0.05f)) / TAXA_SOM;
+        float sub = sinf(2.0f * PI * fs) * EnvAD(t, 0.002f, 0.10f);
+        b.x[i] = estalo * 0.7f + rasgo * 0.55f + sub * 0.6f;
+    }
+    ReverbPedra(&b, 0.22f, 1.0f, 0.35f);
+    return BufParaSom(&b, 0.80f);
+}
+
+// Vetor com carga cheia: sino cristalino curto (avisa que o tiro perfeito está pronto)
+static Sound ReceitaVetorCarga(int v)
+{
+    BufSom b = BufNovo(0.45f);
+    float f = 1568.0f * (1.0f + 0.02f * (float)v);
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float s = sinf(2.0f * PI * f * t) * EnvAD(t, 0.002f, 0.12f)
+                + 0.5f * sinf(2.0f * PI * f * 1.5f * t) * EnvAD(t, 0.002f, 0.07f)
+                + 0.25f * sinf(2.0f * PI * f * 2.76f * t) * EnvAD(t, 0.001f, 0.03f);
+        b.x[i] = s;
+    }
+    ReverbPedra(&b, 0.30f, 0.8f, 0.30f);
+    return BufParaSom(&b, 0.40f);
+}
+
+// ROTEADOR DE PACOTES (laranja, pacote teleguiado): "modem" FSK — dois tons alternando, esmagado em 6 bits
+static Sound ReceitaRoteador(int v)
+{
+    BufSom b = BufNovo(0.22f);
+    float fase = 0.0f, ta = 1100.0f + 80.0f * (float)v, tb = 1900.0f + 120.0f * (float)v;
+    float passo = 0.014f + 0.002f * (float)v;
+    Svf lp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float f = (((int)(t / passo)) % 2 == 0) ? ta : tb;
+        f *= 1.0f + 0.6f * t;                                   // sobe: o pacote "procura" o alvo
+        fase += f / TAXA_SOM;
+        float s = Esmagar(OscPulso(fase, 0.5f) * 0.6f + OscTri(fase * 0.5f) * 0.4f, 6);
+        b.x[i] = SvfPasso(&lp, s, 4200.0f, 1.0f, 0) * EnvAD(t, 0.002f, 0.060f);
+    }
+    ReverbPedra(&b, 0.12f, 0.6f, 0.4f);
+    return BufParaSom(&b, 0.42f);
+}
+
+// FLUXO CONTÍNUO (amarelo, metralhadora que esquenta): tique curto, serra + chiado elétrico.
+// O tom sobe com o calor (quem chama passa o tom).
+static Sound ReceitaFluxo(int v)
+{
+    BufSom b = BufNovo(0.07f);
+    float fase = 0.0f, f0 = 210.0f + 25.0f * (float)v;
+    Svf bp = { 0 }, lp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fase += (f0 * (1.0f + 1.5f * expf(-t / 0.006f))) / TAXA_SOM;
+        float corpo = SvfPasso(&lp, OscSerra(fase), 2600.0f, 0.7f, 0);
+        float chiado = SvfPasso(&bp, SinRnd(), 3200.0f + 400.0f * (float)v, 0.35f, 1);
+        b.x[i] = (corpo * 0.6f + chiado * 0.8f) * EnvAD(t, 0.0008f, 0.014f);
+    }
+    return BufParaSom(&b, 0.36f);
+}
+
+// ORBE DE BUFFER (roxo, esfera lenta): "bloop" com vibrato e FM, grave e molhado
+static Sound ReceitaOrbe(int v)
+{
+    BufSom b = BufNovo(0.55f);
+    float fc = 0.0f, fm = 0.0f, base = 300.0f - 18.0f * (float)v;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float f = (base * expf(-t / 0.25f) + 120.0f) * (1.0f + 0.05f * sinf(2.0f * PI * 16.0f * t));
+        fm += (f * 2.0f) / TAXA_SOM;
+        fc += f / TAXA_SOM;
+        float s = sinf(2.0f * PI * fc + 1.6f * expf(-t / 0.08f) * sinf(2.0f * PI * fm));
+        b.x[i] = s * EnvAD(t, 0.012f, 0.13f);
+    }
+    ReverbPedra(&b, 0.32f, 1.1f, 0.3f);
+    return BufParaSom(&b, 0.55f);
+}
+
+// Implosão do Orbe: sucção crescente (ruído subindo) e estouro grave
+static Sound ReceitaOrbeImplosao(int v)
+{
+    BufSom b = BufNovo(1.0f);
+    float fs = 0.0f, puxa = 0.22f + 0.03f * (float)v;
+    Svf bp = { 0 }, lp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float k = fminf(t / puxa, 1.0f);
+        float suc = (t < puxa) ? SvfPasso(&bp, SinRnd(), 300.0f + 2600.0f * k * k, 0.4f, 1) * k * k : 0.0f;
+        float tb = t - puxa, boom = 0.0f;
+        if (tb >= 0.0f) {
+            fs += (45.0f + 110.0f * expf(-tb / 0.04f)) / TAXA_SOM;
+            boom = sinf(2.0f * PI * fs) * EnvAD(tb, 0.002f, 0.18f)
+                 + SvfPasso(&lp, SinRnd(), 900.0f * expf(-tb / 0.08f) + 120.0f, 0.6f, 0) * EnvAD(tb, 0.001f, 0.10f) * 1.4f;
+        }
+        b.x[i] = suc * 0.6f + boom * 0.9f;
+    }
+    ReverbPedra(&b, 0.35f, 1.3f, 0.35f);
+    return BufParaSom(&b, 0.82f);
+}
+
+// FRAGMENTADORA (rosa, cone com coice): estouro de ruído com filtro fechando + soco grave + crocância
+static Sound ReceitaFragmentadora(int v)
+{
+    BufSom b = BufNovo(0.45f);
+    float fs = 0.0f;
+    Svf lp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float ruido = SvfPasso(&lp, SinRnd(), 600.0f + 6500.0f * expf(-t / (0.035f + 0.008f * (float)v)), 0.7f, 0);
+        fs += (48.0f + 70.0f * expf(-t / 0.025f)) / TAXA_SOM;
+        float soco = sinf(2.0f * PI * fs) * EnvAD(t, 0.001f, 0.07f);
+        float s = ruido * EnvAD(t, 0.0008f, 0.06f) * 1.2f + soco * 0.9f;
+        b.x[i] = Esmagar(s, 7);
+    }
+    ReverbPedra(&b, 0.16f, 0.8f, 0.45f);
+    return BufParaSom(&b, 0.78f);
+}
+
+// Cartucho dourado: o mesmo estouro + anel metálico inarmônico
+static Sound ReceitaFragDourado(int v)
+{
+    BufSom b = BufNovo(0.7f);
+    float fs = 0.0f, fr = 880.0f + 40.0f * (float)v;
+    Svf lp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float ruido = SvfPasso(&lp, SinRnd(), 800.0f + 7000.0f * expf(-t / 0.05f), 0.7f, 0) * EnvAD(t, 0.0008f, 0.07f);
+        fs += (45.0f + 80.0f * expf(-t / 0.03f)) / TAXA_SOM;
+        float soco = sinf(2.0f * PI * fs) * EnvAD(t, 0.001f, 0.09f);
+        float anel = (sinf(2.0f * PI * fr * t) + 0.6f * sinf(2.0f * PI * fr * 2.76f * t) + 0.35f * sinf(2.0f * PI * fr * 5.40f * t))
+                   * EnvAD(t, 0.002f, 0.16f);
+        b.x[i] = ruido * 1.1f + soco + anel * 0.35f;
+    }
+    ReverbPedra(&b, 0.25f, 1.0f, 0.35f);
+    return BufParaSom(&b, 0.85f);
+}
+
+// PULSO DE FIREWALL (verde, onda em volta): "whoomp" grave + varredura de ruído que abre para fora
+static Sound ReceitaPulsoFW(int v)
+{
+    BufSom b = BufNovo(0.8f);
+    float fs = 0.0f;
+    Svf bp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fs += (52.0f + 75.0f * expf(-t / 0.06f)) / TAXA_SOM;
+        float grave = sinf(2.0f * PI * fs) * EnvAD(t, 0.004f, 0.14f);
+        float k = fminf(t / 0.30f, 1.0f);
+        float onda = SvfPasso(&bp, SinRnd(), 260.0f + (2400.0f + 300.0f * (float)v) * k, 0.5f, 1) * sinf(PI * k) * (1.0f - 0.4f * k);
+        float zumbido = OscTri(t * (98.0f + 6.0f * (float)v)) * EnvAD(t, 0.01f, 0.10f) * 0.2f;
+        b.x[i] = grave * 0.9f + onda * 0.8f + zumbido;
+    }
+    ReverbPedra(&b, 0.28f, 1.2f, 0.35f);
+    return BufParaSom(&b, 0.72f);
+}
+
+// KATANA DE BYTES: whoosh grave + corte seco + choque de metal (a versão escolhida nos testes,
+// "katana_3_whoosh_corte_e_metal": a mesma semente, então sai idêntica ao arquivo aprovado).
+// O whoosh é só ruído de banda larga (filtro estreito vira assovio).
+static float KatWhoosh(Svf *lp, Svf *hp, float t, float dur, float pico, float baixo)
+{
+    float k = fminf(t / dur, 1.0f);
+    float env = (t < dur) ? ((k < 0.6f) ? powf(k / 0.6f, 2.0f) : powf(1.0f - (k - 0.6f) / 0.4f, 1.5f)) : 0.0f;
+    float c = baixo + (pico - baixo) * ((k < 0.6f) ? k / 0.6f : 1.0f - (k - 0.6f) / 0.4f);
+    float n = SvfPasso(lp, SinRnd(), c, 1.3f, 0);
+    return SvfPasso(hp, n, c * 0.25f, 1.3f, 2) * env;
+}
+
+static Sound ReceitaKatana(int v)
+{
+    g_sinteseSemente = 191u + (unsigned int)v * 131u + 2u;
+    BufSom b = BufNovo(0.9f);
+    Svf l1 = { 0 }, h1 = { 0 }, l2 = { 0 }, h2 = { 0 }, tk = { 0 }, cr = { 0 };
+    float d = 0.22f + 0.02f * (float)v, fs = 0.0f, golpe = d * 0.6f, fm = 210.0f + 15.0f * (float)v;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM, tb = t - golpe;
+        float s = KatWhoosh(&l1, &h1, t, d, 1100.0f + 100.0f * (float)v, 180.0f) * 1.4f
+                + KatWhoosh(&l2, &h2, t, d * 0.8f, 2600.0f, 600.0f) * 0.35f;
+        float tshk = (tb > 0.0f) ? SvfPasso(&tk, SinRnd(), 1800.0f, 0.9f, 2) * EnvAD(tb, 0.0005f, 0.022f) : 0.0f;   // o corte
+        float soco = 0.0f;
+        if (tb >= 0.0f) {
+            fs += (55.0f + 90.0f * expf(-tb / 0.02f)) / TAXA_SOM;
+            soco = sinf(2.0f * PI * fs) * EnvAD(tb, 0.001f, 0.07f);                                       // o corpo
+        }
+        s += tshk * 1.1f + soco * 1.2f;
+        float crunch = (tb > 0.0f) ? SvfPasso(&cr, SinRnd(), 1500.0f * expf(-tb / 0.03f) + 150.0f, 1.0f, 0) * EnvAD(tb, 0.0005f, 0.05f) : 0.0f;
+        s += crunch;
+        if (tb >= 0.0f)
+            s += (sinf(2.0f * PI * fm * tb) + 0.8f * sinf(2.0f * PI * fm * 2.76f * tb) * expf(-tb / 0.10f)
+                + 0.5f * sinf(2.0f * PI * fm * 5.40f * tb) * expf(-tb / 0.05f) + 0.4f * sinf(2.0f * PI * fm * 1.012f * tb))
+                * EnvAD(tb, 0.001f, 0.20f) * 0.35f;                                                     // choque de metal
+        b.x[i] = tanhf(s * 1.4f);
+    }
+    ReverbPedra(&b, 0.18f, 1.1f, 0.45f);
+    return BufParaSom(&b, 0.85f);
+}
+
+// AVISO DE PARRY (pesado, combina com o parry): a lâmina inimiga sendo erguida —
+// batida grave curta + raspão de metal que sobe (banda larga, sem assovio) + "ting" grave de bigorna no ápice
+static Sound ReceitaAvisoParry(int v)
+{
+    BufSom b = BufNovo(0.55f);
+    Svf lp = { 0 }, hp = { 0 };
+    float fs = 0.0f, sobe = 0.20f + 0.02f * (float)v, f = 296.0f + 12.0f * (float)v;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fs += (60.0f + 70.0f * expf(-t / 0.02f)) / TAXA_SOM;
+        float batida = sinf(2.0f * PI * fs) * EnvAD(t, 0.001f, 0.05f);
+        float k = fminf(t / sobe, 1.0f);
+        float c = 500.0f + 2200.0f * k * k;
+        float raspa = SvfPasso(&hp, SvfPasso(&lp, SinRnd(), c, 1.1f, 0), c * 0.35f, 1.1f, 2) * ((t < sobe) ? k * k : 0.0f);
+        float tt = t - sobe, ting = 0.0f;
+        if (tt > 0.0f)
+            ting = (sinf(2.0f * PI * f * tt) + 0.7f * sinf(2.0f * PI * f * 2.32f * tt) * expf(-tt / 0.08f) + 0.4f * sinf(2.0f * PI * f * 4.25f * tt) * expf(-tt / 0.04f))
+                 * EnvAD(tt, 0.001f, 0.12f);
+        b.x[i] = batida * 0.8f + raspa * 0.9f + ting * 0.45f;
+    }
+    ReverbPedra(&b, 0.22f, 1.1f, 0.4f);
+    return BufParaSom(&b, 0.70f);
+}
+
+// PARRY PERFEITO (pesado): o golpe inimigo bate num escudo de metal e é devolvido.
+//   bigorna grave (parciais inarmônicas ~150 Hz) + soco sub-grave saturado + estalo de impacto
+//   + faíscas curtas + a "resposta": um brilho que sobe no fim (a contradição refutada)
+static Sound ReceitaParry(int v)
+{
+    BufSom b = BufNovo(1.4f);
+    Svf hp = { 0 }, lp = { 0 }, fa = { 0 };
+    float fs = 0.0f, f = 148.0f + 8.0f * (float)v, fb = 0.0f;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fs += (38.0f + 110.0f * expf(-t / 0.025f)) / TAXA_SOM;
+        float sub = tanhf(2.0f * sinf(2.0f * PI * fs) * EnvAD(t, 0.001f, 0.16f));
+        float estalo = SvfPasso(&hp, SinRnd(), 1200.0f, 0.8f, 2) * EnvAD(t, 0.0003f, 0.012f)
+                     + SvfPasso(&lp, SinRnd(), 3000.0f * expf(-t / 0.04f) + 250.0f, 0.8f, 0) * EnvAD(t, 0.0005f, 0.06f);
+        float bigorna = (sinf(2.0f * PI * f * t) + 0.9f * sinf(2.0f * PI * f * 2.32f * t) * expf(-t / 0.35f)
+                       + 0.7f * sinf(2.0f * PI * f * 4.25f * t) * expf(-t / 0.18f) + 0.45f * sinf(2.0f * PI * f * 6.63f * t) * expf(-t / 0.08f)
+                       + 0.6f * sinf(2.0f * PI * f * 1.007f * t)) * EnvAD(t, 0.001f, 0.45f);
+        float faisca = (t < 0.25f && SinRndU() > 0.995f) ? SinRnd() : 0.0f;
+        faisca = SvfPasso(&fa, faisca, 5000.0f, 1.0f, 2) * 3.0f;
+        float tr = t - 0.12f, resposta = 0.0f;
+        if (tr > 0.0f) {
+            fb += (300.0f + 500.0f * fminf(tr / 0.3f, 1.0f)) / TAXA_SOM;
+            resposta = (sinf(2.0f * PI * fb) + 0.4f * sinf(2.0f * PI * fb * 1.5f)) * EnvAD(tr, 0.05f, 0.18f) * 0.15f;
+        }
+        b.x[i] = sub * 1.0f + estalo * 0.9f + bigorna * 0.32f + faisca + resposta;
+    }
+    ReverbPedra(&b, 0.30f, 1.4f, 0.35f);
+    return BufParaSom(&b, 0.92f);
+}
+
+// RAIO DE PROCESSAMENTO (circuito dourado): o circuito "se desenha" — 4 bipes subindo em pentatônica
+static Sound ReceitaRaioCircuito(int v)
+{
+    static const float notas[3][4] = { { 1.0f, 1.125f, 1.5f, 2.0f }, { 1.0f, 1.333f, 1.5f, 2.25f }, { 1.0f, 1.2f, 1.6f, 2.0f } };
+    BufSom b = BufNovo(0.32f);
+    float base = 880.0f, passo = 0.032f, fase = 0.0f;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        int n = (int)(t / passo);
+        if (n > 3) n = 3;
+        float tn = t - (float)n * passo;
+        fase += base * notas[v][n] / TAXA_SOM;
+        float s = Esmagar(OscPulso(fase, 0.25f) * 0.5f + sinf(2.0f * PI * fase) * 0.5f, 6) * EnvAD(tn, 0.001f, (n == 3) ? 0.08f : 0.018f);
+        b.x[i] = s;
+    }
+    ReverbPedra(&b, 0.20f, 0.7f, 0.4f);
+    return BufParaSom(&b, 0.36f);
+}
+
+// MORTE DE INIMIGO: a alucinação se desfaz em dados — soco grave + "esfarelar" de ruído esmagado
+// (sem nota aguda: o som antigo, dois pings agudos, soava como um assovio)
+static Sound ReceitaMorteInimigo(int v)
+{
+    BufSom b = BufNovo(0.30f);
+    float fs = 0.0f;
+    Svf lp = { 0 }, bp = { 0 };
+    int segura = 0;
+    float amostra = 0.0f;
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fs += (42.0f + 75.0f * expf(-t / 0.03f)) / TAXA_SOM;
+        float soco = sinf(2.0f * PI * fs) * EnvAD(t, 0.001f, 0.06f);
+        // ruído com "sample and hold": a taxa cai com o tempo (o dado vai perdendo resolução)
+        if (--segura <= 0) { amostra = SinRnd(); segura = 1 + (int)(t * (60.0f + 15.0f * (float)v)); }
+        float farelo = SvfPasso(&lp, amostra, 400.0f + 3200.0f * expf(-t / 0.07f), 0.7f, 0) * EnvAD(t, 0.001f, 0.08f);
+        float grao = (SinRndU() > 0.992f - 0.002f * (float)v) ? SvfPasso(&bp, SinRnd(), 1800.0f, 0.6f, 1) * expf(-t / 0.12f) : 0.0f;
+        b.x[i] = Esmagar(soco * 0.85f + farelo * 0.9f + grao * 1.5f, 6);
+    }
+    ReverbPedra(&b, 0.14f, 0.8f, 0.5f);
+    return BufParaSom(&b, 0.55f);
+}
+
+// Coluna de luz (o sigilo detona): um LASER ENORME CAI DO CÉU.
+//   1) o raio descendo: varredura FM de agudo para grave (0,25 s)
+//   2) o impacto: sub-grave saturado (soco no chão) + estrondo de trovão que vai fechando
+//   3) a coluna parada: zumbido grave de laser, duas serras desafinadas, que some em ~0,7 s
+static Sound ReceitaRaioColuna(int v)
+{
+    BufSom b = BufNovo(1.9f);
+    float queda = 0.24f + 0.02f * (float)v;
+    float fl = 0.0f, fm = 0.0f, fs = 0.0f, fz1 = 0.0f, fz2 = 0.0f, tremor = 1.0f;
+    Svf lpT = { 0 }, lpZ = { 0 }, hpL = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float s = 0.0f;
+        // 1) descida do raio
+        if (t < queda + 0.05f) {
+            float k = fminf(t / queda, 1.0f);
+            float f = 140.0f + 2600.0f * powf(1.0f - k, 2.2f);
+            fl += f / TAXA_SOM;
+            fm += f * 1.5f / TAXA_SOM;
+            float laser = sinf(2.0f * PI * fl + 2.5f * sinf(2.0f * PI * fm)) * (0.25f + 0.75f * k);
+            float corte = (t > queda) ? 1.0f - (t - queda) / 0.05f : 1.0f;
+            s += SvfPasso(&hpL, laser, 120.0f, 0.7f, 2) * 0.55f * corte;
+        }
+        // 2) impacto
+        float ti = t - queda;
+        if (ti >= 0.0f) {
+            fs += (30.0f + 70.0f * expf(-ti / 0.05f)) / TAXA_SOM;
+            float sub = sinf(2.0f * PI * fs) * EnvAD(ti, 0.002f, 0.32f);
+            sub = tanhf(sub * 2.2f);                                       // saturado: aparece até em alto-falante pequeno
+            if ((i % 300) == 0) tremor = 0.55f + 0.45f * SinRndU();   // o trovão "rola"
+            float trovao = SvfPasso(&lpT, SinRnd(), 180.0f + 3800.0f * expf(-ti / 0.12f), 0.5f, 0) * EnvAD(ti, 0.001f, 0.38f) * tremor;
+            // 3) a coluna de luz zumbindo
+            fz1 += (55.0f + 2.0f * (float)v) / TAXA_SOM;
+            fz2 += (55.6f + 2.0f * (float)v) / TAXA_SOM;
+            float zum = SvfPasso(&lpZ, OscSerra(fz1) + OscSerra(fz2) + 0.5f * OscSerra(fz1 * 2.0f), 900.0f * expf(-ti / 0.5f) + 200.0f, 0.6f, 0)
+                      * EnvAD(ti, 0.03f, 0.35f);
+            s += sub * 0.95f + trovao * 1.1f + zum * 0.35f;
+        }
+        b.x[i] = s;
+    }
+    ReverbPedra(&b, 0.30f, 1.6f, 0.35f);
+    return BufParaSom(&b, 0.95f);
+}
+
+// RAIO CLÁSSICO (ciano, raio que atravessa tudo): "zap" de FM descendente + estalos elétricos
+static Sound ReceitaRaioClassico(int v)
+{
+    BufSom b = BufNovo(0.35f);
+    float fc = 0.0f, fm = 0.0f;
+    Svf hp = { 0 };
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float f = 520.0f + (1900.0f + 150.0f * (float)v) * expf(-t / 0.05f);
+        fc += f / TAXA_SOM;
+        fm += (f * (1.41f + 0.1f * (float)v)) / TAXA_SOM;
+        float zap = sinf(2.0f * PI * fc + 3.0f * expf(-t / 0.07f) * sinf(2.0f * PI * fm));
+        float estalo = (SinRndU() > 0.985f) ? SinRnd() : 0.0f;
+        estalo = SvfPasso(&hp, estalo, 4000.0f, 1.0f, 2);
+        b.x[i] = (zap * 0.7f + estalo * 1.2f) * EnvAD(t, 0.001f, 0.08f);
+    }
+    ReverbPedra(&b, 0.18f, 0.9f, 0.4f);
+    return BufParaSom(&b, 0.62f);
+}
+
+// =============================================================
+// AMBIENTES DOS MAPAS (loops de 8 s, sem emenda, tocados como Music da memória)
+// =============================================================
+typedef enum { AMB_NENHUM = -1, AMB_SALA, AMB_CORREDOR, AMB_BIBLIOTECA, AMB_LUCI, NUM_AMBIENTES } TipoAmbiente;
+
+#define AMB_SEGUNDOS    8.0f
+#define AMB_CAUDA       1.5f        // gerado a mais e cruzado com o começo (o loop não "pula")
+
+// Gotinha na pedra: tom curto que sobe (as rachaduras do mapa1)
+static void AmbGota(BufSom *b, int ini, float f)
+{
+    for (int i = 0; i < TAXA_SOM / 12 && ini + i < b->n; i++) {
+        float t = (float)i / TAXA_SOM;
+        b->x[ini + i] += sinf(2.0f * PI * (f + f * 1.2f * t / 0.08f) * t) * EnvAD(t, 0.001f, 0.012f) * 0.35f;
+    }
+}
+
+// Bipe de dados: blip de pulso (as telas ciano e os terminais)
+static void AmbBipe(BufSom *b, int ini, float f, float dur, float vol)
+{
+    float fase = 0.0f;
+    for (int i = 0; i < (int)(dur * TAXA_SOM) && ini + i < b->n; i++) {
+        float t = (float)i / TAXA_SOM;
+        fase += f / TAXA_SOM;
+        b->x[ini + i] += OscPulso(fase, 0.25f) * EnvAD(t, 0.001f, dur * 0.4f) * vol;
+    }
+}
+
+// Clique de relé: ruído curtíssimo filtrado
+static void AmbRele(BufSom *b, int ini, float vol)
+{
+    Svf bp = { 0 };
+    for (int i = 0; i < TAXA_SOM / 80 && ini + i < b->n; i++) {
+        float t = (float)i / TAXA_SOM;
+        b->x[ini + i] += SvfPasso(&bp, SinRnd(), 2400.0f, 0.4f, 1) * EnvAD(t, 0.0003f, 0.002f) * vol;
+    }
+}
+
+static BufSom GerarAmbiente(TipoAmbiente tipo)
+{
+    BufSom b = BufNovo(AMB_SEGUNDOS + AMB_CAUDA);
+    Svf ar = { 0 }, ar2 = { 0 };
+    g_sinteseSemente = 0xA11CEu + (unsigned int)tipo * 7919u;
+    // Para o loop fechar, os osciladores usam frequências com número inteiro de ciclos em 8 s
+    for (int i = 0; i < b.n; i++) {
+        float t = (float)i / TAXA_SOM;
+        float s = 0.0f;
+        if (tipo == AMB_SALA) {
+            // Servidor ligado atrás da pedra: zumbido de 60 Hz com harmônicos + ar frio
+            s += 0.22f * sinf(2.0f * PI * 60.0f * t) + 0.10f * sinf(2.0f * PI * 120.0f * t) + 0.05f * sinf(2.0f * PI * 180.0f * t);
+            s *= 0.85f + 0.15f * sinf(2.0f * PI * 0.25f * t);
+            s += SvfPasso(&ar, SinRnd(), 380.0f, 0.9f, 0) * 0.35f;
+            s += 0.012f * sinf(2.0f * PI * 7875.0f * t);                // chiado fininho das telas ciano
+        } else if (tipo == AMB_CORREDOR) {
+            // Corredor de terminais: 50 Hz mais seco, ventoinhas, chiado de CRT
+            s += 0.18f * sinf(2.0f * PI * 50.0f * t) + 0.09f * sinf(2.0f * PI * 100.0f * t);
+            s += SvfPasso(&ar, SinRnd(), 900.0f + 200.0f * sinf(2.0f * PI * 0.5f * t), 0.6f, 1) * 0.22f;     // ventoinha
+            s += 0.016f * sinf(2.0f * PI * 7875.0f * t) * (0.7f + 0.3f * sinf(2.0f * PI * 3.0f * t));
+        } else if (tipo == AMB_BIBLIOTECA) {
+            // Salas fundas: vento de caverna (banda que respira) + nota grave muito baixa
+            float corte = 260.0f + 180.0f * sinf(2.0f * PI * 0.125f * t) + 90.0f * sinf(2.0f * PI * 0.375f * t);
+            s += SvfPasso(&ar, SinRnd(), corte, 0.25f, 1) * 0.9f;
+            s += SvfPasso(&ar2, SinRnd(), 140.0f, 0.8f, 0) * 0.5f;
+            s += 0.10f * sinf(2.0f * PI * 55.0f * t) * (0.6f + 0.4f * sinf(2.0f * PI * 0.125f * t));
+        } else {
+            // Arena da Luci: drone em batimento (41,25 / 41,75 Hz → bate 2x a cada segundo), névoa roxa, pulso cardíaco
+            s += 0.20f * sinf(2.0f * PI * 41.25f * t) + 0.20f * sinf(2.0f * PI * 41.75f * t) + 0.10f * sinf(2.0f * PI * 82.5f * t);
+            float corte = 500.0f + 300.0f * sinf(2.0f * PI * 0.25f * t);
+            s += SvfPasso(&ar, SinRnd(), corte, 0.35f, 1) * 0.35f * (0.6f + 0.4f * sinf(2.0f * PI * 0.125f * t));
+            float tb = fmodf(t, 1.0f);                                     // pulsação: tum-tum a cada 1 s
+            float p1 = sinf(2.0f * PI * 48.0f * tb) * EnvAD(tb, 0.004f, 0.06f);
+            float tb2 = tb - 0.22f;
+            float p2 = (tb2 > 0.0f) ? sinf(2.0f * PI * 44.0f * tb2) * EnvAD(tb2, 0.004f, 0.05f) * 0.7f : 0.0f;
+            s += (p1 + p2) * 0.35f;
+        }
+        b.x[i] = s;
+    }
+
+    // Eventos espalhados (com a semente fixa, sempre os mesmos no loop)
+    int eventos = (tipo == AMB_SALA) ? 5 : ((tipo == AMB_CORREDOR) ? 26 : ((tipo == AMB_BIBLIOTECA) ? 4 : 7));
+    for (int e = 0; e < eventos; e++) {
+        int ini = (int)(SinRndU() * (AMB_SEGUNDOS - 0.3f) * TAXA_SOM);
+        if (tipo == AMB_SALA) {
+            if (e < 3) AmbGota(&b, ini, 1100.0f + 500.0f * SinRndU());
+            else       AmbBipe(&b, ini, 1760.0f + 440.0f * (float)(e % 2), 0.05f, 0.05f);
+        } else if (tipo == AMB_CORREDOR) {
+            if (e % 3 == 0) {                                              // "conversa" de dados de um terminal: 3 a 5 bipes
+                int nb = 3 + (int)(SinRndU() * 3.0f);
+                for (int k = 0; k < nb; k++)
+                    AmbBipe(&b, ini + k * (int)(0.045f * TAXA_SOM), 1200.0f + 200.0f * (float)((int)(SinRndU() * 6.0f)), 0.03f, 0.04f);
+            } else AmbRele(&b, ini, 0.25f + 0.2f * SinRndU());
+        } else if (tipo == AMB_BIBLIOTECA) {
+            // Eco distante: um sino suave que vai se perder no reverb longo
+            float f = (e % 2 == 0) ? 659.25f : 987.77f;
+            for (int i = 0; i < TAXA_SOM && ini + i < b.n; i++) {
+                float t = (float)i / TAXA_SOM;
+                b.x[ini + i] += (sinf(2.0f * PI * f * t) + 0.3f * sinf(2.0f * PI * f * 2.0f * t)) * EnvAD(t, 0.01f, 0.25f) * 0.06f;
+            }
+        } else {
+            // Falha de sinal: fragmento esmagado e picotado (a Luci corrompida)
+            Svf bp = { 0 };
+            float f = 300.0f + 900.0f * SinRndU();
+            for (int i = 0; i < TAXA_SOM / 7 && ini + i < b.n; i++) {
+                float t = (float)i / TAXA_SOM;
+                float picote = (((int)(t * 60.0f)) % 2 == 0) ? 1.0f : 0.0f;
+                float g = Esmagar(OscPulso(t * f, 0.5f) * 0.5f + SvfPasso(&bp, SinRnd(), f * 2.0f, 0.5f, 1), 3);
+                b.x[ini + i] += g * picote * EnvAD(t, 0.005f, 0.05f) * 0.07f;
+            }
+        }
+    }
+
+    float tam = (tipo == AMB_CORREDOR) ? 1.6f : ((tipo == AMB_BIBLIOTECA) ? 1.9f : ((tipo == AMB_LUCI) ? 1.4f : 1.1f));
+    ReverbPedra(&b, (tipo == AMB_BIBLIOTECA) ? 0.55f : 0.35f, tam, 0.3f);
+
+    // Fecha o loop: a cauda (1,5 s) cruza com o começo em potência constante
+    int n = (int)(AMB_SEGUNDOS * TAXA_SOM), cauda = b.n - n;
+    for (int i = 0; i < cauda; i++) {
+        float k = (float)i / (float)cauda;
+        b.x[i] = b.x[i] * sinf(0.5f * PI * k) + b.x[n + i] * cosf(0.5f * PI * k);
+    }
+    b.n = n;
+
+    // Normaliza sem fade (fade criaria um buraco a cada volta do loop)
+    float m = 0.0f, dc = 0.0f;
+    for (int i = 0; i < b.n; i++) dc += b.x[i];
+    dc /= (float)b.n;
+    for (int i = 0; i < b.n; i++) { b.x[i] -= dc; m = fmaxf(m, fabsf(b.x[i])); }
+    if (m > 1e-6f) for (int i = 0; i < b.n; i++) b.x[i] *= 0.5f / m;
+    return b;
+}
+
+// O ambiente vira um .wav na memória e toca como Music (loop sem falha; o buffer fica vivo até o fim)
+static unsigned char *g_ambWav[NUM_AMBIENTES];
+static Music g_amb[NUM_AMBIENTES];
+static int g_ambAtual = AMB_NENHUM;
+static float g_ambVolume = 0.0f;      // sobe e desce suave na troca
+static float ambVolume = 0.0f;        // ambiente sintético DESLIGADO: a trilha de cada lugar já faz esse papel (suba para reativar)
+
+static unsigned char *WavNaMemoria(const BufSom *b, int *tamanho)
+{
+    int dados = b->n * 2;
+    unsigned char *w = (unsigned char *)malloc((size_t)(44 + dados));
+    unsigned int v32;
+    unsigned short v16;
+    memcpy(w, "RIFF", 4);  v32 = (unsigned int)(36 + dados); memcpy(w + 4, &v32, 4);
+    memcpy(w + 8, "WAVEfmt ", 8);
+    v32 = 16;           memcpy(w + 16, &v32, 4);
+    v16 = 1;            memcpy(w + 20, &v16, 2);           // PCM
+    v16 = 1;            memcpy(w + 22, &v16, 2);           // mono
+    v32 = TAXA_SOM;     memcpy(w + 24, &v32, 4);
+    v32 = TAXA_SOM * 2; memcpy(w + 28, &v32, 4);
+    v16 = 2;            memcpy(w + 32, &v16, 2);
+    v16 = 16;           memcpy(w + 34, &v16, 2);
+    memcpy(w + 36, "data", 4); v32 = (unsigned int)dados; memcpy(w + 40, &v32, 4);
+    short *pcm = BufParaPcm(b);
+    memcpy(w + 44, pcm, (size_t)dados);
+    free(pcm);
+    *tamanho = 44 + dados;
+    return w;
+}
+
+static void CarregarAmbientes(void)
+{
+    if (ambVolume <= 0.0f) return;           // desligado: nem gera
+    for (int a = 0; a < NUM_AMBIENTES; a++) {
+        BufSom b = GerarAmbiente((TipoAmbiente)a);
+        int tam = 0;
+        g_ambWav[a] = WavNaMemoria(&b, &tam);
+        free(b.x);
+        g_amb[a] = LoadMusicStreamFromMemory(".wav", g_ambWav[a], tam);
+        g_amb[a].looping = true;
+    }
+}
+
+// Chamado a cada quadro com o ambiente da tela atual (AMB_NENHUM = silêncio). Troca com fade.
+static void AtualizarAmbiente(int desejado, float dt)
+{
+    if (!audioPronto) return;
+    if (desejado != g_ambAtual) {
+        g_ambVolume -= dt * 1.5f;                                   // some em ~0,3 s
+        if (g_ambVolume <= 0.0f || g_ambAtual == AMB_NENHUM) {
+            if (g_ambAtual != AMB_NENHUM && g_amb[g_ambAtual].stream.buffer) StopMusicStream(g_amb[g_ambAtual]);
+            g_ambAtual = desejado;
+            g_ambVolume = 0.0f;
+            if (g_ambAtual != AMB_NENHUM && g_amb[g_ambAtual].stream.buffer) PlayMusicStream(g_amb[g_ambAtual]);
+        }
+    } else if (g_ambVolume < 1.0f) {
+        g_ambVolume = fminf(1.0f, g_ambVolume + dt * 0.5f);          // entra em ~2 s (valores negativos = silêncio por um tempo)
+    }
+    if (g_ambAtual != AMB_NENHUM && g_amb[g_ambAtual].stream.buffer) {
+        SetMusicVolume(g_amb[g_ambAtual], fmaxf(g_ambVolume, 0.0f) * ambVolume);
+        UpdateMusicStream(g_amb[g_ambAtual]);
+    }
+}
+
+static void PausarAmbiente(bool pausar)
+{
+    if (!audioPronto || g_ambAtual == AMB_NENHUM || !g_amb[g_ambAtual].stream.buffer) return;
+    if (pausar) PauseMusicStream(g_amb[g_ambAtual]);
+    else        ResumeMusicStream(g_amb[g_ambAtual]);
+}
+
+// =============================================================
+// GRUPOS: carregar, tocar e descarregar
+// =============================================================
+typedef Sound (*ReceitaSom)(int variacao);
+
+static void GrupoCarregar(GrupoSom *g, ReceitaSom receita, int n, float jitter)
+{
+    memset(g, 0, sizeof(*g));
+    g->n = (n > MAX_VAR_SOM) ? MAX_VAR_SOM : n;
+    g->jitter = jitter;
+    g->ultima = -1;
+    static unsigned int id = 0;
+    id++;
+    for (int k = 0; k < g->n; k++) {
+        g_sinteseSemente = 0x9E3779B9u ^ ((unsigned int)k * 2654435761u) ^ (id * 40503u);
+        g->v[k] = receita(k);
+        for (int a = 0; a < VOZES_EXTRA; a++) g->alias[k][a] = LoadSoundAlias(g->v[k]);
+    }
+}
+
+// Variações dos SFX antigos: o mesmo gerador com parâmetros levemente diferentes
+static void GrupoDeSons(GrupoSom *g, Sound s0, Sound s1, Sound s2, float jitter)
+{
+    memset(g, 0, sizeof(*g));
+    g->v[0] = s0; g->v[1] = s1; g->v[2] = s2;
+    g->n = 3;
+    g->jitter = jitter;
+    g->ultima = -1;
+    for (int k = 0; k < g->n; k++)
+        for (int a = 0; a < VOZES_EXTRA; a++) g->alias[k][a] = LoadSoundAlias(g->v[k]);
+}
+
+static void TocarGrupo(GrupoSom *g, float tom, float volume)
+{
+    if (!audioPronto || g->n <= 0) return;
+    int k = (g->n > 1) ? GetRandomValue(0, g->n - 1) : 0;
+    if (g->n > 1 && k == g->ultima) k = (k + 1) % g->n;          // nunca a mesma duas vezes seguidas
+    g->ultima = k;
+    g->voz = (g->voz + 1) % (VOZES_EXTRA + 1);
+    Sound s = (g->voz == 0) ? g->v[k] : g->alias[k][g->voz - 1];
+    float j = 1.0f + g->jitter * ((float)GetRandomValue(-100, 100) / 100.0f);
+    SetSoundPitch(s, tom * j);
+    SetSoundVolume(s, volume);
+    PlaySound(s);
+}
+
+static void GrupoParar(GrupoSom *g)
+{
+    for (int k = 0; k < g->n; k++) {
+        StopSound(g->v[k]);
+        for (int a = 0; a < VOZES_EXTRA; a++) StopSound(g->alias[k][a]);
+    }
+}
+
+static void GrupoDescarregar(GrupoSom *g)
+{
+    for (int k = 0; k < g->n; k++) {
+        for (int a = 0; a < VOZES_EXTRA; a++) UnloadSoundAlias(g->alias[k][a]);
+        UnloadSound(g->v[k]);
+    }
+    g->n = 0;
+}
+
+// --- Bancos ---
+// Ordem igual a TipoArma (o enum é declarado mais abaixo no arquivo)
+#define NUM_SONS_ARMA 10
+static GrupoSom gArma[NUM_SONS_ARMA];
+static GrupoSom gVetorCarga, gOrbeImplosao, gFragDourado, gRaioColuna, gMorteInimigo;
+// Variações dos SFX gerais (os sfx* antigos apontam para a variação 0 de cada um)
+static GrupoSom gAcerto, gErro, gDano, gPegar, gSelecao, gTiro, gAvisoParry, gParry, gEstatica, gDedutivo;
+
+static GrupoSom *const GRUPOS_GERAIS[] = { &gAcerto, &gErro, &gDano, &gPegar, &gSelecao, &gTiro, &gAvisoParry, &gParry, &gEstatica, &gDedutivo };
+#define NUM_GRUPOS_GERAIS ((int)(sizeof(GRUPOS_GERAIS) / sizeof(GRUPOS_GERAIS[0])))
+
+static void CarregarSonsNovos(void)
+{
+    static const ReceitaSom armas[NUM_SONS_ARMA] = {
+        ReceitaDisparador, ReceitaVetor, ReceitaRoteador, ReceitaFluxo, ReceitaOrbe,
+        ReceitaFragmentadora, ReceitaPulsoFW, ReceitaKatana, ReceitaRaioCircuito, ReceitaRaioClassico
+    };
+    static const float jit[NUM_SONS_ARMA] = { 0.05f, 0.03f, 0.04f, 0.06f, 0.04f, 0.05f, 0.03f, 0.06f, 0.0f, 0.04f };
+    for (int a = 0; a < NUM_SONS_ARMA; a++)
+        GrupoCarregar(&gArma[a], armas[a], 3, jit[a]);
+    GrupoCarregar(&gVetorCarga,   ReceitaVetorCarga,   2, 0.0f);
+    GrupoCarregar(&gOrbeImplosao, ReceitaOrbeImplosao, 2, 0.04f);
+    GrupoCarregar(&gFragDourado,  ReceitaFragDourado,  2, 0.03f);
+    GrupoCarregar(&gRaioColuna,   ReceitaRaioColuna,   3, 0.03f);
+    GrupoCarregar(&gMorteInimigo, ReceitaMorteInimigo, 3, 0.05f);
+    CarregarAmbientes();
+}
+
+// Tiro da arma (tom: 1 = normal; o Fluxo passa o calor, o eco do Pulso passa um tom acima)
+static float g_tomPulsoFW = 1.0f;     // o eco do Pulso de Firewall toca um pouco mais agudo e mais baixo
+static void TocarSomArma(int arma, float tom)
+{
+    if (arma < 0 || arma >= NUM_SONS_ARMA) return;
+    TocarGrupo(&gArma[arma], tom, 1.0f);
+}
+
+static void DescarregarSonsNovos(void)
+{
+    for (int a = 0; a < NUM_SONS_ARMA; a++) GrupoDescarregar(&gArma[a]);
+    GrupoDescarregar(&gVetorCarga);
+    GrupoDescarregar(&gOrbeImplosao);
+    GrupoDescarregar(&gFragDourado);
+    GrupoDescarregar(&gRaioColuna);
+    GrupoDescarregar(&gMorteInimigo);
+    for (int a = 0; a < NUM_AMBIENTES; a++) {
+        if (g_amb[a].stream.buffer) UnloadMusicStream(g_amb[a]);
+        free(g_ambWav[a]);
+        g_ambWav[a] = NULL;
+    }
+}
+
+static void PararSonsNovos(void)
+{
+    for (int a = 0; a < NUM_SONS_ARMA; a++) GrupoParar(&gArma[a]);
+    GrupoParar(&gVetorCarga);
+    GrupoParar(&gOrbeImplosao);
+    GrupoParar(&gFragDourado);
+    GrupoParar(&gRaioColuna);
+    GrupoParar(&gMorteInimigo);
+    for (int k = 0; k < NUM_GRUPOS_GERAIS; k++) GrupoParar(GRUPOS_GERAIS[k]);
+    g_ambVolume = -3.0f;                 // o ambiente "congela" junto e volta sozinho, devagar, ~6 s depois
 }
 
 static void IniciarSons(void)
@@ -832,36 +2099,115 @@ static void IniciarSons(void)
     if (!audioPronto)
         return;
 
-    sfxAcerto  = GerarSom(520.0f, 1040.0f, 0.18f, 0.35f, 0);
-    sfxErro    = GerarSom(220.0f, 110.0f, 0.30f, 0.30f, 1);
-    sfxDano    = GerarSom(160.0f, 90.0f, 0.12f, 0.35f, 1);
-    sfxPegar   = GerarSom(880.0f, 1320.0f, 0.10f, 0.25f, 0);
-    sfxSelecao = GerarSom(660.0f, 660.0f, 0.04f, 0.15f, 1);
-    sfxTiro    = GerarSom(1200.0f, 500.0f, 0.06f, 0.10f, 1);   // Disparador de Dados (Bloco 2)
+    // ---------------------------------------------------------------
+    // SFX — DESIGN BASEADO NA ESTÉTICA DO JOGO
+    // ---------------------------------------------------------------
 
-    // Bloco 3 (reformulação): aviso do golpe, parry, estática e a marca do Disparo Dedutivo
-    sfxAvisoParry    = GerarSom(1900.0f, 2500.0f, 0.12f, 0.22f, 1);
-    sfxParryPerfeito = GerarSom(220.0f, 110.0f, 0.45f, 0.55f, 3);
-    sfxEstatica      = GerarSom(0.0f, 0.0f, 0.9f, 0.22f, 2);
-    sfxDedutivo      = GerarSom(900.0f, 1350.0f, 0.18f, 0.25f, 3);
+    // ACERTO: jingle chiptune de 3 notas (C5–E5–G5) em onda quadrada 8-bit
+    // → "Dado validado" — alegre, claro, retro. Tom de console dos anos 80.
+    sfxAcerto  = GerarJingleChiptune(523.25f, 3, 0.072f, 0.40f);
+
+    // ERRO: crash descendente com glitch (onda quadrada + ruído + bit-crush 5-bit)
+    // → "Corrupção detectada" — grave, impactante, digital. A alucinação cresce.
+    sfxErro    = GerarCrashGlitch(260.0f, 65.0f, 0.40f, 0.38f);
+
+    // DANO (levar bala): buzz descendente + burst de ruído — "packet corrompido"
+    // Som curto e seco como no Undertale. Ondas quadradas, sem sutileza.
+    sfxDano    = GerarCrashGlitch(320.0f, 100.0f, 0.12f, 0.42f);
+
+    // PEGAR (verdade/item): dois pings ascendentes em pulse estreito (0.25)
+    // → "Dado recebido" — confirma, agrada, curto. F#5 → A#5.
+    sfxPegar   = GerarPingDuplo(740.0f, 932.0f, 0.055f, 0.32f);
+
+    // SELEÇÃO DE MENU: blip ultra-curto de onda quadrada (1-bit feel)
+    // → Cursor digital — seco, preciso, instantâneo.
+    sfxSelecao = GerarSom(440.0f, 440.0f, 0.025f, 0.14f, 1);
+
+    // TIRO (Disparador de Dados — Bloco 2): zap de pulse descendente
+    // → Pulso de dados enviado — nasal, digital, sem eco.
+    sfxTiro    = GerarSom(900.0f, 220.0f, 0.065f, 0.18f, 3);
+
+    // --- BLOCO 3 / BATALHA AVANÇADA ---
+
+    // AVISO DE PARRY: chirp em 8 degraus ascendentes (portamento glitchado)
+    // → "Alerta de sistema" — como um beep de erro de hardware, urgente.
+    sfxAvisoParry    = GerarChirpAlerta(440.0f, 1760.0f, 0.11f, 0.22f);
+
+    // PARRY PERFEITO: impacto grave bit-crushed + ring ascendente
+    // → "Contradição refutada" — peso do impacto + resolução tonal.
+    sfxParryPerfeito = GerarParryPerfeito(0.65f);
+
+    // ESTÁTICA (Luci alucinando): ruído modulado por LFO duplo + crackles
+    // → "Sinal degradado" — a Luci está corrompida, instável, mentindo.
+    sfxEstatica      = GerarEstaticaLuci(0.22f);
+
+    // DISPARO DEDUTIVO: laser em pulse 0.125 com harmônico de quinta
+    // → "Argumento disparado" — penetrante, lógico, cirúrgico.
+    sfxDedutivo      = GerarDisparoDedutivo(0.32f);
+
+    // --- VARIAÇÕES: o mesmo desenho com parâmetros um pouco diferentes (a variação 0 é o som original) ---
+    // O tom continua sendo escolhido por quem chama (combos etc.); o jitter é pequeno nos sons "musicais".
+    GrupoDeSons(&gAcerto, sfxAcerto, GerarJingleChiptune(523.25f, 3, 0.064f, 0.38f), GerarJingleChiptune(523.25f, 3, 0.080f, 0.40f), 0.008f);
+    GrupoDeSons(&gErro,   sfxErro,   GerarCrashGlitch(240.0f, 60.0f, 0.42f, 0.38f), GerarCrashGlitch(285.0f, 72.0f, 0.37f, 0.36f), 0.04f);
+    GrupoDeSons(&gDano,   sfxDano,   GerarCrashGlitch(295.0f, 90.0f, 0.13f, 0.42f), GerarCrashGlitch(345.0f, 115.0f, 0.11f, 0.40f), 0.07f);
+    GrupoDeSons(&gPegar,  sfxPegar,  GerarPingDuplo(740.0f, 932.0f, 0.048f, 0.30f), GerarPingDuplo(740.0f, 988.0f, 0.060f, 0.30f), 0.015f);
+    GrupoDeSons(&gSelecao, sfxSelecao, GerarSom(440.0f, 452.0f, 0.022f, 0.13f, 1), GerarSom(446.0f, 436.0f, 0.028f, 0.13f, 1), 0.03f);
+    GrupoDeSons(&gTiro,   sfxTiro,   GerarSom(960.0f, 240.0f, 0.060f, 0.17f, 3), GerarSom(850.0f, 200.0f, 0.072f, 0.18f, 3), 0.06f);
+    // AVISO DE PARRY: trocado por um aviso metálico pesado (ReceitaAvisoParry)
+    UnloadSound(sfxAvisoParry);
+    GrupoCarregar(&gAvisoParry, ReceitaAvisoParry, 3, 0.02f);
+    sfxAvisoParry = gAvisoParry.v[0];
+    // PARRY: trocado por um choque de metal pesado (ReceitaParry)
+    UnloadSound(sfxParryPerfeito);
+    GrupoCarregar(&gParry, ReceitaParry, 3, 0.03f);
+    sfxParryPerfeito = gParry.v[0];
+    GrupoDeSons(&gEstatica, sfxEstatica, GerarEstaticaLuci(0.21f), GerarEstaticaLuci(0.23f), 0.05f);
+    GrupoDeSons(&gDedutivo, sfxDedutivo, GerarDisparoDedutivo(0.30f), GerarDisparoDedutivo(0.33f), 0.05f);
+
+    // --- ARMAS e AMBIENTES DOS MAPAS (Sons 2.0) ---
+    CarregarSonsNovos();
+
+    // --- Carregar BGM ---
+    bgmMenu       = CarregarBGM("resources/audio/bgm_menu.ogg");
+    bgmSala       = CarregarBGM("resources/audio/bgm_sala.ogg");
+    bgmCorredor   = CarregarBGM("resources/audio/bgm_corredor.ogg");
+    bgmBatalha    = CarregarBGM("resources/audio/bgm_batalha.ogg");
+    bgmMestre     = CarregarBGM("resources/audio/bgm_mestre.ogg");
+    bgmBiblioteca = CarregarBGM("resources/audio/bgm_biblioteca.ogg");
+    bgmGameover   = CarregarBGM("resources/audio/bgm_gameover.ogg");
+    bgmAtrio      = CarregarBGM("resources/audio/bgm_atrio.ogg");
+    bgmLuci       = CarregarBGM("resources/audio/bgm_luci.ogg");
 }
 
-// Para todos os sons de uma vez (a 1ª queda da Luci "congela" o áudio)
+// Para todos os SFX de uma vez (a 1ª queda da Luci "congela" o áudio)
 static void PararSons(void)
 {
     if (!audioPronto)
         return;
 
-    Sound todos[] = { sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao, sfxTiro, sfxAvisoParry, sfxParryPerfeito, sfxDedutivo };
+    Sound todos[] = { sfxAcerto, sfxErro, sfxDano, sfxPegar, sfxSelecao, sfxTiro,
+                      sfxAvisoParry, sfxParryPerfeito, sfxDedutivo };
     for (int i = 0; i < (int)(sizeof(todos) / sizeof(todos[0])); i++)
         StopSound(todos[i]);
+    PararSonsNovos();                   // variações, armas e o ambiente do mapa
+
+    // Para a música também
+    if (bgmAtual && bgmAtual->stream.buffer)
+        PauseMusicStream(*bgmAtual);
 }
 
-// tom: 1 = normal, 2 = uma oitava acima (os combos usam para o acerto ficar mais agudo)
+// tom: 1 = normal, 2 = uma oitava acima (combos usam para o acerto ficar mais agudo)
 static void TocarSomTom(Sound s, float tom)
 {
     if (!audioPronto)
         return;
+
+    // Sons 2.0: se o som tem variações, toca uma delas (sem repetir a anterior, em outra voz)
+    for (int k = 0; k < NUM_GRUPOS_GERAIS; k++)
+        if (GRUPOS_GERAIS[k]->n > 0 && GRUPOS_GERAIS[k]->v[0].stream.buffer == s.stream.buffer) {
+            TocarGrupo(GRUPOS_GERAIS[k], tom, 1.0f);
+            return;
+        }
 
     SetSoundPitch(s, tom);
     PlaySound(s);
@@ -877,16 +2223,24 @@ static void EncerrarSons(void)
     if (!audioPronto)
         return;
 
-    UnloadSound(sfxAcerto);
-    UnloadSound(sfxErro);
-    UnloadSound(sfxDano);
-    UnloadSound(sfxPegar);
-    UnloadSound(sfxSelecao);
-    UnloadSound(sfxTiro);
-    UnloadSound(sfxAvisoParry);
-    UnloadSound(sfxParryPerfeito);
-    UnloadSound(sfxEstatica);
-    UnloadSound(sfxDedutivo);
+    // Para BGM antes de descarregar
+    if (bgmAtual && bgmAtual->stream.buffer)
+        StopMusicStream(*bgmAtual);
+
+    if (bgmMenu.stream.buffer)       UnloadMusicStream(bgmMenu);
+    if (bgmSala.stream.buffer)       UnloadMusicStream(bgmSala);
+    if (bgmCorredor.stream.buffer)   UnloadMusicStream(bgmCorredor);
+    if (bgmBatalha.stream.buffer)    UnloadMusicStream(bgmBatalha);
+    if (bgmMestre.stream.buffer)     UnloadMusicStream(bgmMestre);
+    if (bgmBiblioteca.stream.buffer) UnloadMusicStream(bgmBiblioteca);
+    if (bgmGameover.stream.buffer)   UnloadMusicStream(bgmGameover);
+    if (bgmAtrio.stream.buffer)      UnloadMusicStream(bgmAtrio);
+    if (bgmLuci.stream.buffer)       UnloadMusicStream(bgmLuci);
+
+    // Sons 2.0: cada grupo descarrega as vozes e as variações (a variação 0 é o sfx* antigo)
+    for (int k = 0; k < NUM_GRUPOS_GERAIS; k++)
+        GrupoDescarregar(GRUPOS_GERAIS[k]);
+    DescarregarSonsNovos();
     CloseAudioDevice();
 }
 
@@ -896,7 +2250,7 @@ static void EncerrarSons(void)
 
 // Copia "texto" para "saida" inserindo '\n' nos espaços para que
 // nenhuma linha passe de "larguraMax" pixels (DrawText não quebra linha sozinho).
-static void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, int tamSaida)
+static void QuebrarTextoCalcular(const char *texto, int larguraMax, int tamFonte, char *saida, int tamSaida)
 {
     int pos = 0;
     int inicioLinha = 0;
@@ -927,6 +2281,51 @@ static void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *
     }
 
     saida[pos] = '\0';
+}
+
+// Versão com cache: as telas de escolha, loja e troca chamam isto todo frame com o mesmo texto,
+// e medir caractere por caractere é caro. Guarda os últimos resultados (texto + largura + tamanho).
+#define CACHE_QUEBRA_N      48
+#define CACHE_QUEBRA_TEXTO  400
+#define CACHE_QUEBRA_SAIDA  800
+typedef struct {
+    bool usado;
+    int larg, tam;
+    char origem[CACHE_QUEBRA_TEXTO];
+    char resultado[CACHE_QUEBRA_SAIDA];
+} EntradaQuebra;
+
+static void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, int tamSaida)
+{
+    static EntradaQuebra cache[CACHE_QUEBRA_N];
+    static int proximo = 0;
+    size_t tamTexto = strlen(texto);
+
+    if (tamTexto >= CACHE_QUEBRA_TEXTO) {
+        QuebrarTextoCalcular(texto, larguraMax, tamFonte, saida, tamSaida);
+        return;
+    }
+
+    for (int i = 0; i < CACHE_QUEBRA_N; i++) {
+        const EntradaQuebra *e = &cache[i];
+        if (e->usado && e->larg == larguraMax && e->tam == tamFonte && strcmp(e->origem, texto) == 0 &&
+            strlen(e->resultado) < (size_t)tamSaida) {
+            strcpy(saida, e->resultado);
+            return;
+        }
+    }
+
+    QuebrarTextoCalcular(texto, larguraMax, tamFonte, saida, tamSaida);
+
+    if (strlen(saida) < CACHE_QUEBRA_SAIDA) {
+        EntradaQuebra *e = &cache[proximo];
+        proximo = (proximo + 1) % CACHE_QUEBRA_N;
+        e->usado = true;
+        e->larg = larguraMax;
+        e->tam = tamFonte;
+        strcpy(e->origem, texto);
+        strcpy(e->resultado, saida);
+    }
 }
 
 // Desenha um texto com várias linhas (separadas por '\n') e devolve quantas linhas desenhou.
@@ -1107,7 +2506,7 @@ static Direcao MoverJogador(Vector2 *pos, Direcao direcaoAtual)
 
     // Normaliza para a diagonal não ficar mais rápida
     direcao = Vector2Normalize(direcao);
-    *pos = Vector2Add(*pos, Vector2Scale(direcao, VELOCIDADE_JOGADOR * GetFrameTime()));
+    *pos = Vector2Add(*pos, Vector2Scale(direcao, VELOCIDADE_JOGADOR * DtJogo()));
 
     return nova;
 }
@@ -1944,7 +3343,7 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
     if (d->visiveis < (float)total) {
 
-        d->visiveis += VELOCIDADE_TEXTO * GetFrameTime();
+        d->visiveis += VELOCIDADE_TEXTO * DtJogo();
 
         if (d->visiveis > (float)total)
             d->visiveis = (float)total;
@@ -2027,7 +3426,7 @@ static ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
                 break;
             }
 
-            d->tempoRestante -= GetFrameTime();
+            d->tempoRestante -= DtJogo();
 
             if (d->tempoRestante <= 0.0f) {
 
@@ -2653,7 +4052,7 @@ static void BatalhaCriarBala(Batalha *b, Rectangle c)
 //   W A S D / SETAS        : move o coração
 static bool BatalhaAtualizar(Batalha *b)
 {
-    float dt = GetFrameTime();
+    float dt = DtJogo();
 
     if (b->tremor > 0.0f) b->tremor -= dt;
     if (b->fase != FASE_DESVIO) b->tremor = 0.0f;
@@ -3619,7 +5018,7 @@ static const char *COLAS_MONITORES[TOTAL_MONITORES] = {
 //   concordar com alucinação ou contestar um fato = ela se cura e você perde vida
 // Cada fonte gasta 1 de estabilidade. Instável, a Luci pode trazer uma FONTE FALSA
 // (confiante e sem citar nada). Acertar sem pedir fonte devolve estabilidade.
-#define NUM_AFIRMACOES             10
+#define NUM_AFIRMACOES             29
 #define DANO_CONTESTAR_COM_FONTE   34.0f    // 3 golpes com fonte levam ao VERIFICAR
 #define DANO_CONTESTAR_SEM_FONTE   12.0f
 #define CURA_ERRO_DEBATE           10.0f
@@ -3648,6 +5047,45 @@ static const RodadaEscolha AFIRMACOES_CHEFE[NUM_AFIRMACOES] = {
       "Correlação não é causa: aparecer junto não prova nada." },
     { "\"A IA escolhe a palavra mais provável, não a verdadeira.\"", OPCOES_DEBATE, 2, 0,
       "Fato real: é assim que os modelos de linguagem funcionam." },
+    // ---- novas afirmações ----
+    { "\"Nós só usamos 10% do cérebro. Os outros 90% ficam desligados.\"", OPCOES_DEBATE, 2, 1,
+      "Mito popular: usamos o cérebro inteiro, só que não tudo ao mesmo tempo." },
+    { "\"O mel bem guardado praticamente não estraga.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: pouca água e muita acidez impedem que os micróbios cresçam." },
+    { "\"O Instituto Nacional de Verificação Digital certificou: toda resposta de IA com link está correta.\"", OPCOES_DEBATE, 2, 1,
+      "Instituto inventado: alucinação extrínseca. E um link também pode ser inventado." },
+    { "\"Botanicamente, a banana é uma baga.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: pelas regras da botânica, a banana é uma baga." },
+    { "\"Um raio nunca cai duas vezes no mesmo lugar.\"", OPCOES_DEBATE, 2, 1,
+      "Mito: prédios altos e antenas são atingidos várias vezes por ano." },
+    { "\"Você me disse que seu aniversário é em março, então já passou faz tempo!\"", OPCOES_DEBATE, 2, 1,
+      "Contradiz o que você contou: alucinação intrínseca." },
+    { "\"A luz do Sol leva cerca de 8 minutos para chegar até a Terra.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: são mais ou menos 8 minutos e 20 segundos." },
+    { "\"Einstein foi reprovado em matemática quando era criança.\"", OPCOES_DEBATE, 2, 1,
+      "Mito famoso: ele ia muito bem em matemática desde cedo." },
+    { "\"Duas pessoas quaisquer têm cerca de 99,9% do DNA igual.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: as diferenças entre humanos são minúsculas." },
+    { "\"A Universidade Federal de Bits provou que dormir com o celular ao lado melhora a memória.\"", OPCOES_DEBATE, 2, 1,
+      "Universidade inventada: alucinação extrínseca." },
+    { "\"A língua tem uma zona só para o doce, outra só para o amargo, e assim por diante.\"", OPCOES_DEBATE, 2, 1,
+      "Mito antigo: todos os sabores são sentidos em várias partes da língua." },
+    { "\"Os tubarões existem há mais tempo do que as árvores.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: os tubarões são mais antigos que as primeiras árvores." },
+    { "\"No arquivo que você enviou, o total da planilha é R$ 500.\"", OPCOES_DEBATE, 2, 1,
+      "Contradiz o arquivo que você deu: alucinação intrínseca." },
+    { "\"A Amazônia não fica só no Brasil: ela se espalha por vários países.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: a floresta passa por nove países." },
+    { "\"Se muita gente compartilha uma notícia, é porque ela é verdadeira.\"", OPCOES_DEBATE, 2, 1,
+      "Popularidade não é prova: boatos também se espalham rápido." },
+    { "\"Uma IA treinada até um certo ano pode não saber o que aconteceu depois.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: o conhecimento dela tem uma data de corte." },
+    { "\"Os cães só enxergam em preto e branco.\"", OPCOES_DEBATE, 2, 1,
+      "Mito: eles veem cores, só que menos do que nós (azul e amarelo, sobretudo)." },
+    { "\"A IA sempre consulta a internet em tempo real antes de responder.\"", OPCOES_DEBATE, 2, 1,
+      "Falso: sem uma ferramenta de busca, ela responde só com o que aprendeu." },
+    { "\"Mesmo uma IA muito segura de si pode estar errada.\"", OPCOES_DEBATE, 2, 0,
+      "Fato real: o tom confiante não prova que a resposta está certa." },
 };
 
 // O que a Luci encontra quando o jogador pede a fonte (mesma ordem das afirmações)
@@ -3662,6 +5100,25 @@ static const char *FONTES_CHEFE[NUM_AFIRMACOES] = {
     "Conferi o texto que você mandou: ele diz que a reunião é às 10h.",
     "Nos dados: chuva e pipoca aparecem juntas, mas nada mostra que uma causa a outra.",
     "Na base confiável: verdade. Os modelos de linguagem preveem a palavra mais provável.",
+    "Na base confiável: é um mito. Imagens do cérebro mostram atividade nele todo.",
+    "Na base confiável: é verdade, mel bem guardado dura séculos.",
+    "Procurei na base confiável: esse instituto não existe. E um link também pode ser inventado.",
+    "Na base confiável: verdade. Pelas regras da botânica, banana é baga.",
+    "Na base confiável: é um mito. O Cristo Redentor, por exemplo, leva várias descargas por ano.",
+    "Conferi o histórico da conversa: você disse que seu aniversário é em DEZEMBRO.",
+    "Na base confiável: verdade, cerca de 8 minutos e 20 segundos.",
+    "Na base confiável: mito. Ele tirou notas altas em matemática desde pequeno.",
+    "Na base confiável: verdade. A diferença entre duas pessoas é de cerca de 0,1%.",
+    "Procurei na base confiável: essa universidade não existe.",
+    "Na base confiável: mito. Todos os sabores são percebidos em toda a língua.",
+    "Na base confiável: verdade. Tubarões têm uns 450 milhões de anos; as primeiras árvores, menos.",
+    "Conferi o arquivo que você mandou: o total é R$ 800.",
+    "Na base confiável: verdade. A Amazônia se estende por nove países.",
+    "Nos dados: boatos também são muito compartilhados. Compartilhar não prova que é verdade.",
+    "Na base confiável: verdade. É o que se chama de data de corte do treinamento.",
+    "Na base confiável: mito. Cães veem cores, mas menos do que nós.",
+    "Na base confiável: falso. Sem uma ferramenta de busca ligada, ela só usa o que aprendeu.",
+    "Na base confiável: verdade. O tom seguro não garante acerto.",
 };
 
 // Fonte falsa (Luci instável): confiante, sem citar nada, e manda fazer o contrário
@@ -4336,7 +5793,7 @@ static Rectangle B2RetOpcao(const BatalhaB2 *b, int i)
 
 static bool BatalhaB2Atualizar(BatalhaB2 *b)
 {
-    float dt = GetFrameTime();
+    float dt = DtJogo();
 
     bool teclaConfirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_Z);
     bool clique = CliqueMouse();
@@ -5606,7 +7063,7 @@ static void DesenharFalaLuciHUD(const char *bruto, bool recado, bool sistema)
         tempoFala = 0.0f;
         TocarSomTom(sfxSelecao, sistema ? 0.8f : (recado ? 1.8f : 1.4f));
     }
-    tempoFala += GetFrameTime();
+    tempoFala += DtJogo();
 
     int corte = BytesAteLetras(texto, (int)(tempoFala * 90.0f));
     bool digitando = texto[corte] != '\0';
@@ -5752,6 +7209,8 @@ static void DesenharGlitchAmbiente(int nivel, float tempo)
 // Pulso de Integridade
 #define PULSO_CUSTO_EP           35.0f
 #define RAIO_CUSTO_EP            11.0f    // Raio de Processamento: cada disparo gasta EP (a "mana" do Thomas)
+#define RAIOC_CUSTO_EP           16.0f    // Raio Clássico (versão antiga do Raio de Processamento): gasto de EP por tiro
+#define RAIOC_SUPER_FATOR        0.55f
 #define RAIO_SUPER_FATOR         0.65f    // Supercondutor: o sigilo gasta 35% menos EP
 #define RAIO_EP_RETORNO          4.0f     // EP devolvido por inimigo atingido pela coluna de luz...
 #define RAIO_EP_RETORNO_MAX      3        // ...contando no máximo 3 inimigos por sigilo
@@ -6340,7 +7799,7 @@ static const DefItem ITENS[NUM_ITENS] = {
 
 // ---------- Armas ----------
 typedef enum {
-    ARMA_DISPARADOR, ARMA_VETOR, ARMA_ROTEADOR, ARMA_FLUXO, ARMA_ORBE, ARMA_FRAGMENTADORA, ARMA_PULSO_FW, ARMA_KATANA, ARMA_RAIO, NUM_ARMAS
+    ARMA_DISPARADOR, ARMA_VETOR, ARMA_ROTEADOR, ARMA_FLUXO, ARMA_ORBE, ARMA_FRAGMENTADORA, ARMA_PULSO_FW, ARMA_KATANA, ARMA_RAIO, ARMA_RAIO_CLASSICO, NUM_ARMAS
 } TipoArma;
 
 static const char *NOMES_ALCANCE[] = { "LONGO ALCANCE", "MÉDIO ALCANCE", "CURTO ALCANCE" };
@@ -6382,8 +7841,12 @@ static const DefArma DEF_ARMAS[NUM_ARMAS] = {
     { "KATANA DE BYTES",     "Golpe em arco, corpo a corpo. Corta as balas.",  2, 24.0f, 0.42f, 0.28f, 480.0f, 8.0f, 300.0f, 0, 120.0f,
       RARIDADE_RARA, 13, { 235, 240, 255, 255 } },
     { "RAIO DE PROCESSAMENTO", "Gasta EP: um circuito se desenha no inimigo e vira uma coluna de luz. Acertar devolve EP.",   0, 42.0f, 0.55f, 0.40f, 1100.0f, 7.0f, 0.0f, 1, 0.0f,
-      RARIDADE_RARA, 16, { 255, 230, 80, 255 } },
+      RARIDADE_RARA, 18, { 255, 230, 80, 255 } },
+    { "RAIO CLÁSSICO", "Gasta EP a cada tiro: raio que atravessa tudo.",   0, 55.0f, 0.60f, 0.45f, 1100.0f, 7.0f, 0.0f, 1, 0.0f,
+      RARIDADE_RARA, 16, { 120, 225, 255, 255 } },
 };
+typedef char ChecaSonsArmas[(NUM_SONS_ARMA == NUM_ARMAS) ? 1 : -1];   // um som por arma (Sons 2.0): ao criar arma nova, crie a receita
+
 
 // =============================================================
 // REFORMULAÇÃO DO BLOCO 2: BUILD (melhorias escolhidas 1 de 3)
@@ -6410,7 +7873,7 @@ typedef enum {
     UP_ARMA_VETOR_LENTE, UP_ARMA_VETOR_ESTAMPIDO, UP_ARMA_ROT_BROADCAST, UP_ARMA_ROT_EXPRESSA,
     UP_ARMA_FLUXO_OVERCLOCK, UP_ARMA_FLUXO_VALVULA, UP_ARMA_ORBE_BURACO, UP_ARMA_ORBE_SUPERNOVA,
     UP_ARMA_FRAG_POLVORA, UP_ARMA_FRAG_QUICANTE, UP_ARMA_PULSO_ECO, UP_ARMA_PULSO_REPARO,
-    UP_ARMA_RAIO_SUPER, UP_ARMA_RAIO_LENTE,
+    UP_ARMA_RAIO_SUPER, UP_ARMA_RAIO_LENTE, UP_ARMA_RAIOC_SUPER, UP_ARMA_RAIOC_LENTE,
     UP_ARMA_KATANA_AFIADA, UP_ARMA_KATANA_ARCO, UP_ARMA_KATANA_RAPIDA, UP_ARMA_KATANA_ONDA, UP_ARMA_KATANA_REFLEXO,
     // Katana: elementos da natureza (cada um com o seu "porquê" digital)
     UP_ARMA_KATANA_FOGO, UP_ARMA_KATANA_GELO, UP_ARMA_KATANA_RAIO, UP_ARMA_KATANA_VENTO, UP_ARMA_KATANA_AGUA,
@@ -6449,7 +7912,7 @@ static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
     { "TOKENS SALTITANTES",      "Seus disparos ricocheteiam para +1 inimigo por nível.",            CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
     { "ATENÇÃO MULTICABEÇA",     "Seus disparos atravessam +1 inimigo por nível.",                   CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
     { "SAÍDA GENERATIVA",        "Cada acerto explode em área (35% do dano). Nível 2: raio maior.",  CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
-    { "AMOSTRAGEM MÚLTIPLA",     "+1 projétil extra em leque por nível (60% do dano).",              CAT_DISPARO,    RARIDADE_RARA,    2, 0, -1 },
+    { "AMOSTRAGEM MÚLTIPLA",     "+1 projétil extra em leque por nível (45% do dano). O nível 2 exige Atenção Multicabeça.",              CAT_DISPARO,    RARIDADE_RARA,    2, 0, -1 },
     { "RESÍDUO DE DADOS",        "Acertos deixam uma poça de dados que fere quem pisa (1,5 s).",     CAT_DISPARO,    RARIDADE_INCOMUM, 1, 0, -1 },
     { "CONTRA-ATAQUE HEURÍSTICO","Depois de esquivar: +40% de dano por 1,5 s (+30% por nível).",     CAT_DISPARO,    RARIDADE_INCOMUM, 2, 0, -1 },
 
@@ -6486,6 +7949,8 @@ static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
     { "CAMPO DE REPARO",         "Pulso de Firewall: cada pulso recupera 0,6 de vida (backup em nuvem).", CAT_APRIMORAMENTO, RARIDADE_COMUM, 1, 0, ARMA_PULSO_FW },
     { "SUPERCONDUTOR",           "Raio de Processamento: cada sigilo gasta 35% menos EP.",           CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_RAIO },
     { "LENTE DE PLASMA",         "Raio de Processamento: +40% de dano e um sigilo bem maior.",       CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_RAIO },
+    { "SUPERCONDUTOR CLÁSSICO",  "Raio Clássico: cada disparo gasta 45% menos EP.",                   CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_RAIO_CLASSICO },
+    { "LENTE DE PLASMA CLÁSSICA","Raio Clássico: +40% de dano e um feixe mais grosso.",               CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_RAIO_CLASSICO },
     { "LÂMINA AFIADA",           "Katana de Bytes: +25% de dano por nível.",                         CAT_APRIMORAMENTO, RARIDADE_COMUM,   2, 0, ARMA_KATANA },
     { "ARCO AMPLIADO",           "Katana de Bytes: +35% de alcance e um arco 45% maior.",            CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_KATANA },
     { "TÊMPERA RÁPIDA",          "Katana de Bytes: golpeia 20% mais rápido.",                        CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_KATANA },
@@ -6516,7 +7981,7 @@ static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
 #define UP_EXPLOSAO_DANO         0.35f
 #define UP_EXPLOSAO_RAIO         42.0f    // +14 por nível acima do 1
 #define UP_EXPLOSAO_RECARGA      0.12f    // explosões seguidas não acontecem no mesmo instante
-#define UP_RAJADA_DANO           0.60f
+#define UP_RAJADA_DANO           0.45f
 #define UP_RASTRO_RAIO           30.0f
 #define UP_RASTRO_DPS            12.0f
 #define UP_RASTRO_RECARGA        0.35f
@@ -6673,6 +8138,7 @@ static const char *NOMES_AFIXOS[NUM_AFIXOS] = { "", "PULSO", "DIVISÃO", "ORBITA
 #define DIFICULDADE_VIDA_PROF    0.10f    // eram 0.07, 0.04 e 0.05 (versão mais desafiadora)
 #define DIFICULDADE_RITMO_PROF   0.06f
 #define DIFICULDADE_DANO_PROF    0.08f
+#define DIFICULDADE_CURVA        0.08f    // eq' = eq * (1 + 0,08*eq): camada 7 pesa ~56% a mais que na escala linear
 #define CHANCE_ELITE_SURPRESA    45       // % de uma sala de combate funda ganhar um elite com afixo
 #define PROF_ELITE_SURPRESA      2        // a partir desta profundidade (escala 0 a 7)
 
@@ -6726,7 +8192,7 @@ typedef struct {
     int estilo;                 // 0 = poça/explosão comum; 1 = Sigilo de Luz (Raio de Processamento)
 } AreaDano;
 
-#define MAX_AREAS                10
+#define MAX_AREAS                16
 
 // Tela de escolha (1 de 3)
 typedef enum { OPC_UPGRADE, OPC_ITEM, OPC_ARMA, OPC_FRAGMENTOS } TipoOpcao;
@@ -6734,6 +8200,11 @@ typedef struct { TipoOpcao tipo; int id; } OpcaoEscolha;
 typedef enum { ESCOLHA_NORMAL, ESCOLHA_RARA, ESCOLHA_ARMA } ModoEscolha;
 #define FC_RECUSAR_ESCOLHA       3
 #define REROLL_GRATIS            2        // trocas grátis das opções, por tentativa
+#define PRIMEIRA_MISSAO_VIDA     0.70f    // 1ª missão, salas 1 e 2: vida dos inimigos x0,70...
+#define PRIMEIRA_MISSAO_RITMO    0.85f    // ...ritmo x0,85...
+#define PRIMEIRA_MISSAO_DANO     0.60f    // ...e dano x0,60 (para aprender sem punição)
+#define MISSOES_PARA_REROLL      2        // liberação gradual: REROLAR a partir da 2ª missão
+#define MISSOES_PARA_ARMAS       3        // armas como recompensa a partir da 3ª missão (e a aba ARMAS da loja depois da 2ª)
 #define REROLL_CUSTO_FC          8        // depois das grátis, cada reroll custa isto
 #define FC_OPCAO_RESERVA         5
 
@@ -7086,6 +8557,7 @@ typedef struct {
     int cartucho;               // Fragmentadora: conta os tiros (o 4º é o cartucho dourado)
     int ecoN;
     float ecoPulso, ecoDano;    // Pulso de Firewall: o eco que dispara logo depois
+    double epPiscaAte;          // a barra de EP pisca em vermelho até este instante (tentou atirar sem EP)
     float katanaAnim, katanaAng, katanaArco, katanaAlcance;     // Katana de Bytes: o arco do último golpe (só o desenho)
     float trocaArma;            // > 0: acabou de trocar/pegar uma arma (anel, nome sobre o Thomas e a arma "pulando" na mão)
 
@@ -7159,7 +8631,7 @@ typedef struct {
 
     // Fase 2
     float janela;               // > 0 = escudo aberto
-    int ordemAfirm[9];
+    int ordemAfirm[24];         // precisa comportar NUM_AFIRMACOES_ALUCINADOR
     int afirmacaoAtual;         // -1 = nenhuma na tela
     int proximaAfirm;
     float tempoAfirm;           // tempo da afirmação atual (ou da pausa entre elas)
@@ -7436,6 +8908,7 @@ static const float MELEE_FRACAO[3] = { 0.06f, 0.08f, 0.14f };       // da barra 
 #define MELEE_CURA_HP            5.0f
 #define MELEE_CURA_EP            8.0f
 #define TRANSICAO_NUCLEO         1.6f     // a cutscene da porta do átrio
+#define TRANSICAO_MESTRE         2.6f     // ponte Bloco 1 -> Biblioteca: metade na sala da Mestre, metade já no átrio
 
 enum { LUCI_SUB_DICA = 1, LUCI_SUB_CONTRADICAO = 2, LUCI_SUB_SURTO = 4, LUCI_SUB_NUCLEO = 5 };
 
@@ -7585,7 +9058,7 @@ typedef struct {
 #define MESTRE_ACERTOS_ABERTURA  3        // tiros no escudo aberto para passar da etapa
 #define MESTRE_PONTOS            PONTOS_POR_ACERTO
 
-typedef enum { MT_ARMA, MT_TIRO, MT_ESQUIVA, MT_ABERTURA, MT_PARRY, MT_LUTA, MT_FIM } EtapaMestre;
+typedef enum { MT_ARMA, MT_TIRO, MT_ESQUIVA, MT_ABERTURA, MT_PARRY, MT_PULSO, MT_MELHORIA, MT_LUTA, MT_FIM } EtapaMestre;   // PULSO e MELHORIA preparam o Bloco 2
 typedef enum { MA_PAUSA, MA_RAJADA, MA_ABERTA, MA_APROXIMA, MA_TELEGRAFA, MA_INVESTE, MA_RECUPERA, MA_ATORDOADA } AcaoMestre;
 
 typedef struct {
@@ -7608,6 +9081,8 @@ typedef struct {
     bool proximoGolpe;          // na luta: alterna rajada e golpe
 
     int esquivas, acertosAbertura, parries, quedas, golpesLevados;
+    int pulsos;                 // etapa do PULSO: quantas vezes o Q foi usado
+    float recargaPulsoAnt;      // para perceber o instante em que o Pulso foi disparado
     int dicas;                  // ajuda progressiva: quantas dicas a Luci já deu nesta etapa
     bool estavaEsquivando;
     int fase;                   // luta: 1 e 2
@@ -7670,6 +9145,8 @@ typedef struct {
 
     // Escolha 1 de 3
     bool escolhaAberta;
+    bool escolhaTreino;         // a escolha é a de TREINO da sala da Mestre (2 opções, nada é gasto nem guardado)
+    bool escolhaTreinoFeita;    // o jogador confirmou a escolha de treino (a Mestre avança a etapa)
     OpcaoEscolha opcoes[3];
     int numOpcoes, selecaoEscolha;
     ModoEscolha modoEscolha;
@@ -7785,6 +9262,10 @@ typedef struct {
     int estabilidadeLocal;
     char luciMsg[128];              // recado curto da Luci perto do HUD (não pausa o jogo)
     float luciMsgTempo;
+    float tempoSalaAtual;       // segundos na sala atual da missão (as dicas da 1ª missão usam)
+    unsigned int conceitosLigados;  // inimigos cuja ligação com os monitores a Luci já comentou (só nesta sessão; não vai para o save)
+    double entradaAtrio;        // quando entrou no átrio (telemetria: quanto tempo o jogador fica lá antes da 1ª missão)
+    bool escolhaPrimeiraMissao; // a escolha é a PRIMEIRA melhoria da primeira missão (3 opções fixas e explicadas)
     ProgressoCorredor *progRef;     // o progresso da run (as queimaduras da katana precisam dele para matar)
     int katanaGolpes;               // Katana: conta os golpes (o Raio dispara no 3º)
     int ecosDestruidos;
@@ -7813,6 +9294,9 @@ typedef struct {
     float zoomImpacto;          // zoom rápido no choque
     Vector2 focoZoom;
     float transicaoNucleo;      // cutscene da porta do átrio (o jogo espera)
+    float transicaoMestre;      // cutscene da ponte Bloco 1 -> Biblioteca (a Mestre foge, a porta abre; o jogo espera)
+    bool trocouCenaMestre;      // já trocou a sala da Mestre pelo átrio (acontece no meio da cutscene)
+    float tituloBloco;          // > 0 = cartão "BLOCO 2" na tela (chegada vinda do Bloco 1)
     bool entrouNucleo;
     float flashNegativo;        // inversão de paleta
     float estaticaTela;         // ruído de estática
@@ -8065,8 +9549,8 @@ static const Dialogo dialogoByteDepois = {
 
 static const Dialogo dialogoByteco = {
     .paginas = {
-        "Byteco: Psiu! Fragmentos de Conhecimento? Eu troco por itens que ajudam lá dentro!",
-        "Byteco: Mas atenção: se os ecos te derrubarem, os itens se perdem. Os fragmentos não."
+        "Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens que ajudam lá dentro. Se os ecos te derrubarem, os itens se perdem; os fragmentos não.",
+        "Byteco: Pra começar, leva este Antivírus de brinde. Na missão, aperte 1 para curar a vida!"
     },
     .numPaginas = 2
 };
@@ -8146,10 +9630,23 @@ static const Dialogo dialogoMestreVitoria = {
     .paginas = {
         "* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.",
         "Luci: Conseguimos! Você esquivou, achou a brecha e rebateu o golpe.",
-        "Luci: Adiante fica a Biblioteca dos Ecos. Lá as alucinações são mais espertas.",
+        "Luci: Nos monitores você aprendeu a DUVIDAR. Aqui você aprendeu a REAGIR: esquivar, achar a brecha e rebater.",
+        "Luci: Adiante fica a Biblioteca dos Ecos. Lá as alucinações são mais espertas, e algumas se parecem com as que você já enfrentou.",
         "Luci: Leve o disparador. Agora você está pronto!"
     },
-    .numPaginas = 4
+    .numPaginas = 5
+};
+
+// Chegada ao átrio da Biblioteca (primeira vez, vindo do Bloco 1): liga o que ele aprendeu ao que vem
+static const Dialogo dialogoChegadaBiblioteca = {
+    .paginas = {
+        "* As portas se fecham atrás de vocês. Prateleiras sem fim, e um zumbido de vozes baixas.",
+        "Luci: Esta é a Biblioteca dos Ecos. Cada sala guarda um eco de alucinação, e cada eco derrotado devolve um Fragmento de Conhecimento.",
+        "Luci: Pelas portas você segue uma missão: sala após sala, até o chefe. Ao vencer uma sala você escolhe 1 entre 3 melhorias.",
+        "Luci: Se cair, você volta para cá com os Fragmentos. O Byteco troca esses fragmentos por melhorias que ficam para sempre.",
+        "Luci: Sem pressa. Quando quiser, vá até a porta da missão. Eu aviso quando algo for novo."
+    },
+    .numPaginas = 5
 };
 
 static const char *FALAS_MESTRE_ETAPA[MT_FIM + 1] = {
@@ -8158,7 +9655,9 @@ static const char *FALAS_MESTRE_ETAPA[MT_FIM + 1] = {
     "Luci: Na mosca! Ela vem aí. ESPAÇO esquiva: você atravessa os ataques!",
     "Luci: Viu? Depois de atacar ela cansa e o escudo fica DOURADO. Atire nessa hora!",
     "Luci: Agora ela vem para cima. Brilho VERMELHO = golpe. Aperte V quando o anel fechar!",
-    "Luci: PARRY perfeito! Agora junte tudo: esquive, espere a brecha e rebata o golpe.",
+    "Luci: PARRY perfeito! Agora o PULSO: ele gasta EP (a barra azul). Aperte Q quando as balas chegarem perto!",
+    NULL,                                       // MELHORIA: a própria tela de escolha explica
+    "Luci: Agora junte tudo: esquive, espere a brecha e rebata o golpe. Você consegue!",
     NULL
 };
 
@@ -8230,8 +9729,54 @@ static const AfirmacaoChefe AFIRMACOES_ALUCINADOR[] = {
     { "O Professor Byte é o mentor desta Biblioteca.", "Nunca existiu nenhum Professor Byte aqui.", false,
       "Você conheceu alguém na entrada?",
       "Problemática: contradiz o que ele disse e o que você viu. Desconfie!" },
+    // ---- novas afirmações ----
+    { NULL, "Pedir que a IA mostre o raciocínio ajuda a achar erros.", true,
+      "Dá para ver o passo que deu errado?",
+      "Confiável: com o passo a passo na mão, fica mais fácil achar onde ela errou." },
+    { NULL, "Se a IA pediu desculpas, o erro já foi corrigido.", false,
+      "Pedir desculpa muda a resposta?",
+      "Problemática: desculpa não é correção. Confira a nova resposta também." },
+    { NULL, "Conferir a data de uma informação evita usar dado ultrapassado.", true,
+      "Informação velha ainda serve para tudo?",
+      "Confiável: muita coisa muda com o tempo, então vale olhar a data." },
+    { NULL, "Resposta longa e cheia de detalhes é sempre mais correta.", false,
+      "Detalhe é o mesmo que verdade?",
+      "Problemática: detalhes também podem ser inventados." },
+    { NULL, "Comparar duas fontes independentes dá mais segurança.", true,
+      "Uma fonte só basta?",
+      "Confiável: se fontes separadas concordam, a chance de erro diminui." },
+    { NULL, "A IA não tem viés: ela só usa dados, e dados são neutros.", false,
+      "De onde vêm os dados dela?",
+      "Problemática: dados refletem escolhas e desigualdades de quem os produziu." },
+    { NULL, "Não é bom colar dados pessoais em qualquer IA.", true,
+      "Para onde vai o que você escreve?",
+      "Confiável: senhas, documentos e dados de outras pessoas devem ficar fora." },
+    { NULL, "Se a IA deu um número exato, ele deve estar certo.", false,
+      "Precisão é o mesmo que acerto?",
+      "Problemática: um número bem preciso também pode ser inventado." },
+    { NULL, "Perguntar de novo, de outro jeito, pode mostrar uma resposta instável.", true,
+      "E se ela mudar de ideia sozinha?",
+      "Confiável: se a resposta muda sem motivo, é sinal de que não dá para confiar." },
+    { NULL, "Como é uma máquina, a IA nunca se contradiz.", false,
+      "Ela lembra de tudo o que disse?",
+      "Problemática: ela pode se contradizer dentro da mesma conversa." },
+    { NULL, "Uma IA também pode errar em contas simples, então vale conferir.", true,
+      "Ela calcula ou prevê o texto?",
+      "Confiável: ela prevê texto, e por isso pode errar até uma conta fácil." },
+    { "Tudo o que eu digo está verificado.", "Não verifiquei esta frase, mas confie em mim.", false,
+      "Uma frase desmente a outra?",
+      "Problemática: ele diz que verificou tudo e logo depois admite que não." },
+    { "Esta sala tem exatamente três portas.", "Pelas minhas quatro portas, você não passa!", false,
+      "Conte as portas que ele mencionou.",
+      "Problemática: três portas e depois quatro. Contradição dele mesmo." },
+    { "Eu nunca converso com ninguém.", "Como eu disse ao último visitante, tudo aqui é seguro!", false,
+      "Com quem ele falou?",
+      "Problemática: ele diz que nunca conversa e cita um visitante." },
+    { "Só uso fontes que eu mesmo escrevi.", "Segundo uma enciclopédia que li ontem, estou certo.", false,
+      "De quem é essa enciclopédia?",
+      "Problemática: ele disse que só usa fontes próprias e cita uma enciclopédia." },
 };
-#define NUM_AFIRMACOES_ALUCINADOR 9
+#define NUM_AFIRMACOES_ALUCINADOR 24
 
 // ---------- Falas e conteúdo do Silogista (Câmara da Inferência) ----------
 // Nas falas os conectivos vão por extenso (E, OU, NÃO): a fonte não tem ∧, ∨ e →.
@@ -8382,6 +9927,114 @@ static const RodadaSilogistaBH RODADAS_SILOGISTA_BH[3] = {
       { "NÃO Q", "Premissa P2: o registro não tem selo." },
       "Modus Tollens: P -> Q e NÃO Q, logo NÃO P. Confirmada!" },
 };
+
+// Variações das 3 rodadas (a mesma regra lógica, contada com outra história). Variante 0 = as rodadas acima.
+static const RodadaSilogistaBH RODADAS_BH_EXTRA[3][2] = {
+  { // MODUS PONENS
+    { "MODUS PONENS",
+      "P1: SE a porta tem selo (P), ENTÃO ela abre (Q).     P2: Esta porta tem selo (P).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO Q", "Conclusão: logo, a porta abre (Q)." },
+        { "MODUS PONENS", "Regra: de P -> Q e P, conclui-se Q." } },
+      { { "LOGO NÃO Q", "Conclusão: logo, a porta NÃO abre.", "Contradição: com P -> Q e P verdadeiros, Q não pode ser falso." },
+        { "NÃO P", "Conclusão: logo, a porta não tem selo.", "Nega a premissa P2: ela foi dada como verdadeira." },
+        { "Q CAUSA P", "Conclusão: abrir a porta criou o selo.", "Falsa causalidade: a ordem dos fatos não foi dada nas premissas." } },
+      { "P -> Q", "Premissa P1: se a porta tem selo, ela abre." },
+      "Modus Ponens: P -> Q e P, logo Q. Confirmada!" },
+    { "MODUS PONENS",
+      "P1: SE o alarme dispara (P), ENTÃO a luz fica vermelha (Q).     P2: O alarme disparou (P).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO Q", "Conclusão: logo, a luz ficou vermelha (Q)." },
+        { "MODUS PONENS", "Regra: de P -> Q e P, conclui-se Q." } },
+      { { "LOGO NÃO Q", "Conclusão: logo, a luz NÃO ficou vermelha.", "Contradição: com P -> Q e P verdadeiros, Q não pode ser falso." },
+        { "NÃO P", "Conclusão: logo, o alarme não disparou.", "Nega a premissa P2: ela foi dada como verdadeira." },
+        { "ALARME É LUZ", "Conclusão: toda luz vermelha é alarme.", "Generalização apressada: a regra vai de P para Q, e não ao contrário." } },
+      { "P -> Q", "Premissa P1: se o alarme dispara, a luz fica vermelha." },
+      "Modus Ponens: P -> Q e P, logo Q. Confirmada!" },
+  },
+  { // AFIRMAÇÃO DO CONSEQUENTE
+    { "AFIRMAÇÃO DO CONSEQUENTE",
+      "P1: SE é spam (P), ENTÃO tem link suspeito (Q).     P2: Esta mensagem tem link suspeito (Q).     Logo, é spam (P)?",
+      "Avalie o argumento: atire na avaliação CORRETA.",
+      { { "INVÁLIDO", "Avaliação: o argumento é INVÁLIDO." },
+        { "SOFISMA", "Avaliação: parece válido, mas não é." } },
+      { { "LOGO P", "Conclusão: logo, é spam.", "Afirmar o consequente: mensagens legítimas também podem ter links estranhos." },
+        { "VÁLIDO", "Avaliação: o argumento é válido.", "Não é: Q verdadeiro não obriga P a ser verdadeiro." },
+        { "TODO LINK É SPAM", "Conclusão: todo link suspeito é spam.", "Generalização apressada: a regra só vai de spam para link." } },
+      { "Q", "Premissa P2: a mensagem tem link suspeito." },
+      "Afirmar o consequente: ter Q não prova P. Argumento inválido!" },
+    { "AFIRMAÇÃO DO CONSEQUENTE",
+      "P1: SE o texto foi inventado (P), ENTÃO não cita fonte (Q).     P2: Este texto não cita fonte (Q).     Logo, foi inventado (P)?",
+      "Avalie o argumento: atire na avaliação CORRETA.",
+      { { "INVÁLIDO", "Avaliação: o argumento é INVÁLIDO." },
+        { "SOFISMA", "Avaliação: parece válido, mas não é." } },
+      { { "LOGO P", "Conclusão: logo, o texto foi inventado.", "Afirmar o consequente: um texto verdadeiro também pode ficar sem citar fonte." },
+        { "VÁLIDO", "Avaliação: o argumento é válido.", "Não é: Q verdadeiro não obriga P a ser verdadeiro." },
+        { "SEM FONTE É MENTIRA", "Conclusão: texto sem fonte é sempre mentira.", "Generalização apressada: faltar fonte é um alerta, não uma prova." } },
+      { "Q", "Premissa P2: o texto não cita fonte." },
+      "Afirmar o consequente: ter Q não prova P. Argumento inválido!" },
+  },
+  { // MODUS TOLLENS
+    { "MODUS TOLLENS",
+      "P1: SE o usuário é admin (P), ENTÃO tem a chave (Q).     P2: O usuário NÃO tem a chave (NÃO Q).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO NÃO P", "Conclusão: logo, o usuário NÃO é admin." },
+        { "MODUS TOLLENS", "Regra: de P -> Q e NÃO Q, conclui-se NÃO P." } },
+      { { "LOGO P", "Conclusão: logo, o usuário é admin.", "Contradição: se fosse admin (P), teria a chave (Q)." },
+        { "LOGO Q", "Conclusão: logo, o usuário tem a chave.", "Nega a premissa P2: ele NÃO tem a chave." },
+        { "SEM CHAVE, SEM ACESSO", "Conclusão: quem não tem chave nunca entra.", "Vai além das premissas: elas só falam de admin." } },
+      { "NÃO Q", "Premissa P2: o usuário não tem a chave." },
+      "Modus Tollens: P -> Q e NÃO Q, logo NÃO P. Confirmada!" },
+    { "MODUS TOLLENS",
+      "P1: SE a fonte é real (P), ENTÃO tem data de publicação (Q).     P2: Esta fonte NÃO tem data (NÃO Q).",
+      "Atire (ou dê parry) na CONCLUSÃO que decorre de P1 e P2.",
+      { { "LOGO NÃO P", "Conclusão: logo, a fonte NÃO é real." },
+        { "MODUS TOLLENS", "Regra: de P -> Q e NÃO Q, conclui-se NÃO P." } },
+      { { "LOGO P", "Conclusão: logo, a fonte é real.", "Contradição: se fosse real (P), teria data (Q)." },
+        { "LOGO Q", "Conclusão: logo, a fonte tem data.", "Nega a premissa P2: ela NÃO tem data." },
+        { "DATA FAZ FONTE", "Conclusão: ter data é o que torna a fonte real.", "Troca a direção da regra: ela vai de P para Q." } },
+      { "NÃO Q", "Premissa P2: a fonte não tem data." },
+      "Modus Tollens: P -> Q e NÃO Q, logo NÃO P. Confirmada!" },
+  },
+};
+
+static const Dialogo DIALOGOS_BH_EXTRA[3][2] = {
+  { { .paginas = {
+        "Luci: Isso! A porta tem selo, e SE tem selo ENTÃO abre: logo, abre. É o MODUS PONENS de novo.",
+        "* A primeira camada da armadura lógica se desfaz. Silogista: Sorte. Agora, um argumento que só PARECE certo..." }, .numPaginas = 2 },
+    { .paginas = {
+        "Luci: Isso! Alarme disparou, e alarme dispara a luz vermelha: logo, a luz ficou vermelha. MODUS PONENS!",
+        "* A primeira camada da armadura lógica se desfaz. Silogista: Sorte. Agora, um argumento que só PARECE certo..." }, .numPaginas = 2 } },
+  { { .paginas = {
+        "Luci: Exato: spam costuma ter link suspeito, mas link suspeito não prova que é spam. É AFIRMAR O CONSEQUENTE.",
+        "* A segunda camada se desfaz. Silogista: Última prova. Cuidado com o NÃO." }, .numPaginas = 2 },
+    { .paginas = {
+        "Luci: Exato: texto inventado costuma vir sem fonte, mas faltar fonte não prova que é inventado. AFIRMAR O CONSEQUENTE!",
+        "* A segunda camada se desfaz. Silogista: Última prova. Cuidado com o NÃO." }, .numPaginas = 2 } },
+  { { .paginas = {
+        "Luci: Admin teria a chave, e ele não tem: logo, não é admin. É o MODUS TOLLENS: o consequente falhou, então a causa também.",
+        "* A última camada da armadura lógica caiu! Luci: Agora é no Disparador, Thomas!" }, .numPaginas = 2 },
+    { .paginas = {
+        "Luci: Fonte real teria data, e ela não tem: logo, não é real. MODUS TOLLENS: se a consequência falhou, a causa também.",
+        "* A última camada da armadura lógica caiu! Luci: Agora é no Disparador, Thomas!" }, .numPaginas = 2 } },
+};
+
+// Qual versão de cada rodada saiu nesta luta (0 = a original; sorteado em RogueIniciarSilogistaBH)
+static int g_varianteSilBH[3] = { 0, 0, 0 };
+
+static const RodadaSilogistaBH *RodadaBH(int rodada)
+{
+    int r = (rodada < 0) ? 0 : ((rodada > 2) ? 2 : rodada);
+    int v = g_varianteSilBH[r];
+    return (v <= 0) ? &RODADAS_SILOGISTA_BH[r] : &RODADAS_BH_EXTRA[r][v - 1];
+}
+
+static const Dialogo *DialogoRodadaBH(int rodada)
+{
+    int r = (rodada < 0) ? 0 : ((rodada > 2) ? 2 : rodada);
+    int v = g_varianteSilBH[r];
+    return (v <= 0) ? &dialogosRodadaSilogistaBH[r] : &DIALOGOS_BH_EXTRA[r][v - 1];
+}
 
 // Explicações da Luci quando um puzzle dá errado
 static const char *FALA_MONTAGEM_CONCLUSAO = "Luci: Não fechou! A conclusão (C) precisa ser a afirmação que DECORRE das outras duas, e não uma das bases do argumento.";
@@ -9114,6 +10767,25 @@ static TipoArma RogueSortearArma(Biblioteca *b, unsigned int excluir)
     return (TipoArma)a;
 }
 
+// CONTINUIDADE EDUCATIVA: na 1ª vez que cada alucinação do Bloco 1 reaparece na Biblioteca, a Luci liga o inimigo ao
+// conceito que o jogador acabou de aprender nos monitores (só nas primeiras missões, uma fala por inimigo)
+static void RogueRecadoLuci(Biblioteca *b, const char *texto);
+
+static void RogueLigarConceitoInimigo(Biblioteca *b, TipoInimigo tipo)
+{
+    const char *fala = NULL;
+    if (tipo == INIMIGO_FRAGMENTO)      fala = "Luci: Lembra dos monitores? Esses FRAGMENTOS são alucinações: respostas confiantes, mas falsas.";
+    else if (tipo == INIMIGO_ECO)       fala = "Luci: Um ECO FALSO inventa o que não dá para verificar. É a alucinação EXTRÍNSECA!";
+    else if (tipo == INIMIGO_GUARDIAO)  fala = "Luci: Esse GUARDIÃO guarda uma afirmação. Aprendeu a evitar alucinar? Verifique antes de acreditar!";
+    if (fala == NULL || b->perm->tentativas > 3 || b->tipoSala == SALA_ATRIO || b->luciMsgTempo > 0.0f)
+        return;
+    if (b->conceitosLigados & (1u << tipo))
+        return;
+    b->conceitosLigados |= 1u << tipo;
+    RogueRecadoLuci(b, fala);
+    Telemetria("tutorial_ligacao_conceito", DEF_INIMIGOS[tipo].nome, (float)b->perm->tentativas, (int)tipo);
+}
+
 static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
 {
     for (int i = 0; i < MAX_INIMIGOS; i++) {
@@ -9136,6 +10808,7 @@ static Inimigo *RogueCriarInimigo(Biblioteca *b, TipoInimigo tipo, Vector2 pos)
         e->dono = -1;
         for (int k = 0; k < BOTNET_CONEXOES; k++)
             e->conexao[k] = -1;
+        RogueLigarConceitoInimigo(b, tipo);
 
         // O que nasce de outro inimigo aparece na hora
         if (tipo == INIMIGO_ECO)            { e->timer = ECO_TEMPO; e->surgindo = 0.0f; }
@@ -9339,7 +11012,7 @@ static void RogueSurgirOnda(Biblioteca *b, int onda)
         if (gr->onda != onda)
             continue;
 
-        int qtd = GetRandomValue(gr->min, gr->max) + ((nivel >= 2 && gr->max > 1) ? 1 : 0) + ((nivel >= 3 && gr->max > 2) ? 1 : 0);
+        int qtd = GetRandomValue(gr->min, gr->max) + ((nivel >= 2 && gr->max > 1) ? 1 : 0) + ((nivel >= 3 && gr->max > 2) ? 1 : 0) + ((nivel >= 5 && gr->max > 2) ? 1 : 0);
         bool bando = (gr->tipo == INIMIGO_SPAMMER);
 
         for (int k = 0; k < qtd; k++) {
@@ -9841,6 +11514,10 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
             RogueAviso(b, TextFormat("OBJETIVO: %s", NOMES_OBJC[b->objetivoSala]));
         if (tipo == SALA_ELITE && b->luciMsgTempo <= 0.0f)
             RogueRecadoLuci(b, FALAS_LUCI_SALA[SALA_ELITE]);
+        if (tipo == SALA_ELITE) {
+            RogueAviso(b, "ELITE À FRENTE!");
+            MostrarEmocaoLuci(EMOCAO_ALERTA, 2.5f);
+        }
     }
     else if (tipo == SALA_EDUCATIVA) {
         RogueUsarLayout(b, &LAYOUT_EDUCATIVA);
@@ -9968,6 +11645,7 @@ static void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
 // Volta para o átrio (chegando do corredor, depois da derrota ou no fim da missão)
 static void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
 {
+    b->entradaAtrio = GetTime();
     b->noAtual = -1;
     b->profundidade = 0;
     b->ladoEntrada = LADO_BAIXO;
@@ -10110,12 +11788,13 @@ static int RogueSortearLab(int prof, unsigned int usados)
     return LAB_PROMPTS;
 }
 
-static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar)
+static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar, int tentativasFeitas)
 {
     for (int t = 0; t < 8; t++) {
         int r = GetRandomValue(1, 100);
         TipoRecompensa rec = (r <= 50) ? RECOMPENSA_MELHORIA : ((r <= 70) ? RECOMPENSA_FRAGMENTOS : ((r <= 85) ? RECOMPENSA_ARMA : RECOMPENSA_VIDA));
         if (rec == RECOMPENSA_VIDA && prof < 2) rec = RECOMPENSA_MELHORIA;
+        if (rec == RECOMPENSA_ARMA && tentativasFeitas < MISSOES_PARA_ARMAS - 1) rec = RECOMPENSA_MELHORIA;   // armas: liberadas aos poucos
         if (rec != evitar || t == 7) return rec;
     }
     return RECOMPENSA_MELHORIA;
@@ -10215,8 +11894,9 @@ static void RogueGerarMapa(Biblioteca *b)
 
         for (int c = 0; c < larg[d]; c++) {
             NoMapa *n = RogueNo(b, d, c);
-            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate((int)PROF_DIFICULDADE[d], ultimaRec);
-            else if (n->tipo == SALA_ELITE || n->tipo == SALA_DESAFIO || n->tipo == SALA_ESPECIAL) n->recompensa = RECOMPENSA_RARA;
+            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate((int)PROF_DIFICULDADE[d], ultimaRec, b->perm->tentativas);
+            else if (n->tipo == SALA_ELITE)   n->recompensa = RECOMPENSA_RARA;       // só Elite (e a sala secreta) dão rara
+            else if (n->tipo == SALA_DESAFIO || n->tipo == SALA_ESPECIAL) n->recompensa = RECOMPENSA_MELHORIA;      // escolha comum + 1 reroll grátis
             else if (n->tipo == SALA_SILOGISTA && SILOGISTA_BH)       n->recompensa = RECOMPENSA_SELO;
             if (d == 0)                       n->recompensa = RECOMPENSA_MELHORIA;    // começa sempre com uma melhoria
         }
@@ -10322,9 +12002,18 @@ static void RogueEntrarNo(Biblioteca *b, int no, LadoPorta ladoEntrada)
     // A dificuldade cresce com a profundidade (os chefes já têm o próprio equilíbrio)
     bool chefe = (n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA || (n->tipo == SALA_ESPECIAL && n->especial == ESP_JANELA));
     float eq = PROF_DIFICULDADE[n->prof];
+    eq *= 1.0f + DIFICULDADE_CURVA * eq;       // curva de pressão: cresce mais rápido nas camadas fundas (não é linear)
     b->fatorVidaInimigos  = chefe ? 1.0f : 1.0f + DIFICULDADE_VIDA_PROF * eq;
     b->fatorRitmoInimigos = chefe ? 1.0f : 1.0f + DIFICULDADE_RITMO_PROF * eq;
     b->fatorDanoSala      = chefe ? 1.0f : 1.0f + DIFICULDADE_DANO_PROF * eq;
+
+    // PRIMEIRA MISSÃO: as duas primeiras salas são mais leves (menos vida, ritmo e dano dos inimigos)
+    if (b->perm->tentativas <= 1 && !chefe && b->indiceRota <= 1) {
+        b->fatorVidaInimigos  *= PRIMEIRA_MISSAO_VIDA;
+        b->fatorRitmoInimigos *= PRIMEIRA_MISSAO_RITMO;
+        b->fatorDanoSala      *= PRIMEIRA_MISSAO_DANO;
+    }
+    b->tempoSalaAtual = 0.0f;
 
     Telemetria("rogue_sala", NOMES_SALAS_ROGUE[n->tipo], (float)n->prof, b->indiceRota);
     RogueEntrarSala(b, n->tipo);
@@ -10356,6 +12045,8 @@ static void RogueComecarMissao(Biblioteca *b)
     b->cargaLuci = 0;
     b->falaPendente = NULL;
     b->inicio = GetTime();
+    if (b->perm->tentativas == 0)                                   // medida: quanto tempo no átrio antes da 1ª missão
+        Telemetria("atrio_primeira_visita", "", (float)(GetTime() - b->entradaAtrio), b->perm->bytecoVisto ? 1 : 0);
     b->perm->tentativas++;
 
     Telemetria("rogue_missao", "inicio", 0.0f, b->perm->tentativas);
@@ -11086,9 +12777,15 @@ static void RogueInterromperInimigo(Inimigo *e)
 
 // ---------- Dano ----------
 
+// DEV MENU (F1): modo invencível
+static bool g_devInvencivel = false;
+
 static void RogueFerirJogador(Biblioteca *b, float dano)
 {
     JogadorRogue *j = &b->j;
+
+    if (g_devInvencivel)
+        return;
 
     if (j->invulneravel > 0.0f || j->tempoEsquiva > 0.0f || b->morreu)
         return;
@@ -11225,7 +12922,7 @@ static void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e
 
     RogueParticulas(b, onde, def->cor, (tipo == INIMIGO_SPAM) ? 6 : 18, 220);
     RogueParticulas(b, onde, WHITE, 6, 160);
-    TocarSomTom(sfxPegar, def->tomSom);
+    TocarGrupo(&gMorteInimigo, 0.85f + 0.3f * (def->tomSom - 1.0f), (tipo == INIMIGO_SPAM) ? 0.6f : 1.0f);   // cada tipo um pouco mais grave ou agudo
 
     // Eco da sala de desafio: conta para a meta (e não repara a Luci)
     if (tipo == INIMIGO_ECO && e->desafio) {
@@ -11562,13 +13259,14 @@ static void RogueCriarArea(Biblioteca *b, Vector2 pos, float raio, float atraso,
 
 #define SIGILO_ATRASO 0.6f
 // Sigilo de Luz: runa que se desenha no chão, e depois vira uma coluna de luz
-static void RogueCriarSigilo(Biblioteca *b, Vector2 pos, float raio, float dano, Color cor)
+static bool RogueCriarSigilo(Biblioteca *b, Vector2 pos, float raio, float dano, Color cor)
 {
     for (int i = 0; i < MAX_AREAS; i++)
         if (!b->areas[i].ativo) {
             b->areas[i] = (AreaDano){ true, pos, raio, SIGILO_ATRASO, RAIO_RESIDUO_TEMPO, RAIO_RESIDUO_TEMPO, RAIO_RESIDUO_DPS, 0.0f, dano, cor, 1 };
-            return;
+            return true;
         }
+    return false;
 }
 
 // Inimigo mais perto de um ponto (dentro do raio), sem contar "ignorar" (-1 = nenhum)
@@ -11663,7 +13361,7 @@ static void RogueExplodirOrbe(Biblioteca *b, ProgressoCorredor *prog, Vector2 ce
     bool nova = RogueUp(&b->j, UP_ARMA_ORBE_SUPERNOVA) > 0;               // Supernova: campo que queima
     RogueCriarArea(b, centro, ORBE_RAIO_EXPLOSAO * k, 0.28f, nova ? 2.5f : 0.05f, nova ? 14.0f : 0.0f, ORBE_DANO_EXPLOSAO * k * 1.6f * RogueFatorDano(b), DEF_ARMAS[ARMA_ORBE].cor);
     RogueParticulas(b, centro, DEF_ARMAS[ARMA_ORBE].cor, 12, 120);
-    TocarSomTom(sfxAcerto, 0.6f);
+    TocarGrupo(&gOrbeImplosao, 1.0f, 1.0f);
 }
 
 // Pulso de Firewall (arma): onda em volta que fere, empurra e apaga as balas inimigas
@@ -11682,7 +13380,7 @@ static void RoguePulsoFirewall(Biblioteca *b, ProgressoCorredor *prog, float dan
 
     RogueDanoArea(b, prog, j->pos, raio, dano, PULSO_FW_EMPURRAO);
     RogueAnel(b, j->pos, raio, DEF_ARMAS[ARMA_PULSO_FW].cor);
-    TocarSomTom(sfxAcerto, 0.5f);
+    TocarGrupo(&gArma[ARMA_PULSO_FW], g_tomPulsoFW, (g_tomPulsoFW > 1.0f) ? 0.6f : 1.0f);
 }
 
 // Fragmentação de Pacotes: o acerto se divide em pedaços que vão para os inimigos mais perto
@@ -11933,7 +13631,7 @@ static void RogueGolpeKatana(Biblioteca *b, ProgressoCorredor *prog, float dano)
 
     RogueParticulas(b, centro, (Color){ 220, 235, 255, 255 }, 6, 180);
     b->tremor = fmaxf(b->tremor, 0.05f);
-    TocarSomTom(sfxTiro, 1.7f);
+    TocarSomArma(ARMA_KATANA, 1.0f);
 }
 
 // Dispara a arma equipada. "atirando" = botão ou seta segurados neste quadro.
@@ -11961,7 +13659,9 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
     if (j->ecoPulso > 0.0f) {
         j->ecoPulso -= dt;
         if (j->ecoPulso <= 0.0f) {
+            g_tomPulsoFW = 1.22f;                                   // o eco soa mais agudo
             RoguePulsoFirewall(b, prog, j->ecoDano);
+            g_tomPulsoFW = 1.0f;
             if (j->ecoN > 0) { j->ecoN--; j->ecoPulso = 0.38f; }        // Eco Duplo
         }
     }
@@ -11973,7 +13673,10 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
     if (arma == ARMA_VETOR) {
         if (atirando) {
             float velCarga = (RogueUp(j, UP_ARMA_VETOR) > 0) ? 1.4f : 1.0f;    // Compilação Otimizada
+            float cargaAntes = j->carga;
             if (j->cronoTiro <= 0.0f) j->carga = fminf(VETOR_CARGA_MAX, j->carga + dt * velCarga);
+            if (cargaAntes < VETOR_CARGA_MAX * 0.98f && j->carga >= VETOR_CARGA_MAX * 0.98f)
+                TocarGrupo(&gVetorCarga, 1.0f, 0.9f);              // carga cheia: o tiro perfeito está pronto
             return;
         }
         if (j->carga >= VETOR_CARGA_MIN) {
@@ -11995,7 +13698,7 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
             if (p != NULL) p->perfura += atravessa;
             RogueDisparosExtras(b, arma, j->mira, danoVetor, atravessa);
             RogueParticulas(b, cano, a->cor, 6 + (int)(10 * k), 140);
-            TocarSomTom(sfxTiro, 0.55f);
+            TocarSomArma(ARMA_VETOR, 1.15f - 0.25f * k);           // mais carga, mais grave
             j->cronoTiro = RogueIntervaloArma(j, arma);
             RogueContarDisparo(j);
         }
@@ -12016,12 +13719,34 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
     else if (arma == ARMA_KATANA) {
         RogueGolpeKatana(b, prog, a->dano * fator);
     }
+    else if (arma == ARMA_RAIO_CLASSICO) {
+        // Gasta EP: sem energia suficiente, não atira
+        float custo = RAIOC_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIOC_SUPER) > 0) ? RAIOC_SUPER_FATOR : 1.0f);
+        if (j->ep < custo) {
+            j->cronoTiro = 0.45f;
+            RogueTextoFlutuante(b, (Vector2){ j->pos.x, j->pos.y - 30 }, "SEM EP!", ORANGE);
+            j->epPiscaAte = GetTime() + 0.6;
+            TocarSom(sfxErro);
+            return;
+        }
+        j->ep -= custo;
+        bool lente = RogueUp(j, UP_ARMA_RAIOC_LENTE) > 0;
+        Projetil *r = RogueTiroArma(b, arma, j->mira, a->dano * fator * (lente ? 1.4f : 1.0f));
+        if (r != NULL) {
+            r->perfura += 99;
+            if (lente) r->raio += 3.0f;
+        }
+        RogueAnel(b, cano, 26.0f, a->cor);
+        RogueParticulas(b, cano, a->cor, 8, 160);
+        TocarSomArma(ARMA_RAIO_CLASSICO, 1.0f);
+    }
     else if (arma == ARMA_RAIO) {
         // SIGILO DE LUZ: gasta EP, escolhe o inimigo mais perto na direção da mira e desenha ali uma runa que vira coluna de luz
         float custo = RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? RAIO_SUPER_FATOR : 1.0f);
         if (j->ep < custo) {
             j->cronoTiro = 0.45f;
             RogueTextoFlutuante(b, (Vector2){ j->pos.x, j->pos.y - 30 }, "SEM EP!", ORANGE);
+            j->epPiscaAte = GetTime() + 0.6;
             TocarSom(sfxErro);
             return;
         }
@@ -12045,10 +13770,14 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
         Rectangle ar = ArenaRogue();
         alvo.x = Clamp(alvo.x, ar.x + 24.0f, ar.x + ar.width - 24.0f);
         alvo.y = Clamp(alvo.y, ar.y + 24.0f, ar.y + ar.height - 24.0f);
-        RogueCriarSigilo(b, alvo, lente ? 84.0f : 62.0f, a->dano * fator * (lente ? 1.4f : 1.0f), a->cor);
+        if (!RogueCriarSigilo(b, alvo, lente ? 84.0f : 62.0f, a->dano * fator * (lente ? 1.4f : 1.0f), a->cor)) {
+            j->ep += custo;                 // sem vaga para o sigilo: devolve o EP em vez de perder
+            j->cronoTiro = 0.15f;
+            return;
+        }
         RogueAnel(b, cano, 26.0f, a->cor);
         RogueParticulas(b, cano, a->cor, 8, 160);
-        TocarSomTom(sfxTiro, 0.45f);
+        TocarSomArma(ARMA_RAIO, 1.0f);                             // o circuito se desenhando
     }
     else if (arma == ARMA_FRAGMENTADORA) {
         // Cone Denso: +3 fragmentos e cone mais fechado; Amostragem Múltipla: +2 por nível
@@ -12070,7 +13799,8 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
         // Coice: o tiro empurra o Thomas para trás
         j->pos = Vector2Subtract(j->pos, Vector2Scale(j->mira, dourado ? 14.0f : 8.0f));
         RogueEmpurrarParaFora(&j->pos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
-        TocarSomTom(sfxTiro, dourado ? 0.55f : 0.75f);
+        if (dourado) TocarGrupo(&gFragDourado, 1.0f, 1.0f);
+        else         TocarSomArma(ARMA_FRAGMENTADORA, 1.0f);
     }
     else {
         float espalhar = (float)GetRandomValue(-10, 10) / 10.0f * (a->abertura / 2.0f) * DEG2RAD;
@@ -12099,7 +13829,7 @@ static void RogueUsarArma(Biblioteca *b, ProgressoCorredor *prog, bool atirando,
             (void)p;
             RogueDisparosExtras(b, arma, mira, danoTiro, 0);
         }
-        TocarSomTom(sfxTiro, (arma == ARMA_FLUXO) ? 1.4f : ((arma == ARMA_ORBE) ? 0.6f : 1.0f));
+        TocarSomArma(arma, (arma == ARMA_FLUXO) ? 0.92f + 0.45f * j->calor : 1.0f);    // o Fluxo fica mais agudo quando esquenta
     }
 
     if (arma == ARMA_FLUXO) {
@@ -13329,6 +15059,7 @@ static void RogueIniciarSilogistaBH(Biblioteca *b)
     *s = (Silogista){0};
     s->ativo = true;
     s->modoBH = true;
+    for (int k = 0; k < 3; k++) g_varianteSilBH[k] = GetRandomValue(0, 2);      // cada rodada sorteia uma das 3 versões
     s->etapa = SIL_MONTAGEM;            // as 3 camadas da armadura usam as etapas (SIL_VULNERAVEL = sem armadura)
     s->hp = SIL_HP;
     s->pos = (Vector2){ 400, 170 };
@@ -13348,7 +15079,7 @@ static float RogueFatorTempoMundo(const Biblioteca *b)
 static void SilBHCriarSimbolo(Biblioteca *b, Vector2 pos, Vector2 vel, int papel, float surgindo)
 {
     Silogista *s = &b->silogista;
-    const RodadaSilogistaBH *r = &RODADAS_SILOGISTA_BH[(s->bh.rodada < 3) ? s->bh.rodada : 2];
+    const RodadaSilogistaBH *r = RodadaBH(s->bh.rodada);
     ProjetilSilogista *q = NULL;
 
     for (int k = 0; k < MAX_PROJETEIS_SILOGISTA && q == NULL; k++)
@@ -13486,7 +15217,7 @@ static void SilBHConcluirRodada(Biblioteca *b, ProgressoCorredor *prog)
     TocarSom(sfxAcerto);
     MostrarEmocaoLuci(EMOCAO_ALEGRE, 2.0f);
 
-    b->conversaPendente = &dialogosRodadaSilogistaBH[feita];
+    b->conversaPendente = DialogoRodadaBH(feita);
     b->objConversa = OBJ_NENHUM;
     b->pausaImpacto = 0.15f;
     Telemetria("rogue_silogista_bh", RODADAS_SILOGISTA_BH[feita].titulo, (float)(GetTime() - b->inicio), b->perm->tentativas);
@@ -14096,8 +15827,14 @@ static const char *FRASES_LUCI_CHEFE[] = {
     "Sua vida está cheia.",
     "Minha armadura está desligada.",
     "Eu estive com você desde o começo.",
+    "Você está ferido.",
+    "Sua energia está quase no fim.",
+    "Eu nunca erro.",
+    "Uma IA como eu também pode errar.",
+    "Esta arena fica dentro da Biblioteca dos Ecos.",
+    "Pode confiar em mim sem conferir nada.",
 };
-#define NUM_FRASES_LUCI 6
+#define NUM_FRASES_LUCI 12
 
 static const char *CONTEXTO_LUCI[NUM_CONTEXTO_LUCI] = {
     "ASSUNTO: a alucinação da Luci",
@@ -14123,6 +15860,10 @@ static bool RogueFraseContradiz(const Biblioteca *b, int f)
         case 2:  return true;                                   // ela atira o tempo todo
         case 3:  return b->j.hp < RogueHpMax(b) - 0.5f;
         case 4:  return b->luci.janela <= 0.0f;
+        case 6:  return b->j.hp >= RogueHpMax(b) - 0.5f;        // "você está ferido" com a vida cheia
+        case 7:  return b->j.ep > RogueEpMax(b) * 0.5f;         // "energia quase no fim" com a barra alta
+        case 8:  return true;                                   // ela erra, sim
+        case 11: return true;                                   // conferir é sempre a regra
         default: return false;                                  // verdades
     }
 }
@@ -16913,7 +18654,7 @@ static Rectangle RogueRetFecharSeletor(void)
 // O seletor aberto: o resto do átrio espera (A/D ou setas, ENTER ou clique, ESC ou o botão)
 static void RogueAtualizarSeletor(Biblioteca *b)
 {
-    b->seletorAnim += GetFrameTime();
+    b->seletorAnim += DtJogo();
 
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
         RogueFecharSeletor(b);
@@ -16972,6 +18713,10 @@ static void RogueConcluirCombate(Biblioteca *b, ProgressoCorredor *prog)
         rec = b->mapa.no[b->noAtual].recompensa;
     }
     RogueColocarRecompensa(b, rec);
+    if (b->tipoSala == SALA_ESPECIAL && !b->eventoCombate) {
+        b->j.rerolls++;                         // sala especial: escolha comum, mas com um reroll grátis a mais
+        RogueAviso(b, "+1 REROLL GRÁTIS");
+    }
 
     if (b->objetivoSala != OBJC_ELIMINAR && !b->eventoCombate)
         RogueAviso(b, "OBJETIVO CUMPRIDO!");
@@ -17290,7 +19035,8 @@ static void RogueAtualizarAreas(Biblioteca *b, ProgressoCorredor *prog, float dt
                 }
                 RogueAnel(b, a->pos, a->raio, a->cor);
                 RogueParticulas(b, a->pos, a->cor, 14, 200);
-                TocarSomTom(sfxAcerto, 0.8f);
+                if (a->estilo == 1) TocarGrupo(&gRaioColuna, 1.0f, 1.0f);   // a coluna de luz do sigilo
+                else                TocarSomTom(sfxAcerto, 0.8f);
                 a->danoInstantaneo = 0.0f;
             }
             continue;
@@ -17322,6 +19068,8 @@ static bool RogueUpgradeDisponivel(const Biblioteca *b, int u)
     const DefUpgrade *d = &UPGRADES[u];
 
     if (b->j.up[u] >= d->maxNivel)
+        return false;
+    if (u == UP_RAJADA && b->j.up[u] >= 1 && b->j.up[UP_PERFURAR] == 0)       // 2º nível da Amostragem Múltipla exige Atenção Multicabeça
         return false;
     for (int k = 0; k < NUM_UPGRADES; k++)
         if ((d->requer & BIT_UP(k)) && b->j.up[k] == 0)
@@ -17425,6 +19173,16 @@ static void RogueAbrirEscolha(Biblioteca *b, ModoEscolha modo, bool gratis)
     b->rerollItens = 0;
     b->rerollArmas = 0;
     RogueGerarOpcoes(b, modo);
+    b->escolhaPrimeiraMissao = false;
+    if (b->perm->tentativas <= 1 && b->indiceRota == 0 && modo == ESCOLHA_NORMAL && !gratis) {
+        // A primeira melhoria da primeira missão é sempre a mesma: 3 atributos simples, para entender a tela
+        b->numOpcoes = 3;
+        b->opcoes[0] = (OpcaoEscolha){ OPC_UPGRADE, UP_DANO };
+        b->opcoes[1] = (OpcaoEscolha){ OPC_UPGRADE, UP_CADENCIA };
+        b->opcoes[2] = (OpcaoEscolha){ OPC_UPGRADE, UP_VIDA };
+        b->escolhaPrimeiraMissao = true;
+        Telemetria("primeira_missao_escolha", "", 0.0f, 0);
+    }
     b->escolhaAberta = true;
     b->escolhaGratis = gratis;
     b->modoEscolha = modo;
@@ -17533,10 +19291,30 @@ static Rectangle RogueCartaEscolha(int i, int n)
 #define RET_RECUSAR_ESCOLHA ((Rectangle){ 310, 488, 180, 26 })   // y: dica (438) -> REROLAR (454) -> RECUSAR (488), sem se tocarem
 #define RET_REROLAR_ESCOLHA ((Rectangle){ 290, 454, 220, 26 })
 
+// LIBERAÇÃO GRADUAL (um sistema novo por missão; perm->tentativas conta as missões começadas):
+//   missão 1: o básico (escolha de 1 entre 3, itens do Byteco)
+//   missão 2: REROLAR as opções e a aba MELHORIAS (sempre) da loja
+//   missão 3: armas novas como recompensa e a aba ARMAS da loja
+// Quem já jogou bastante (ou tem save antigo) tem tudo liberado.
+static bool RogueRerollLiberado(const Biblioteca *b)
+{
+    return b->perm->tentativas >= MISSOES_PARA_REROLL;
+}
+
+static bool RogueAbaLojaLiberada(const Biblioteca *b, int aba)          // a loja é visitada ENTRE as missões
+{
+    return aba == 0 || b->perm->tentativas >= aba;                      // aba 1 depois da 1ª missão; aba 2 depois da 2ª
+}
+
 // REROLAR: sorteia outras opções (o que já apareceu nesta escolha não volta). Grátis nas primeiras vezes; depois custa FC.
 static void RogueRerolarEscolha(Biblioteca *b)
 {
     JogadorRogue *j = &b->j;
+    if (!RogueRerollLiberado(b)) {
+        RogueAviso(b, TextFormat("O REROLAR abre na %dª missão.", MISSOES_PARA_REROLL));
+        TocarSom(sfxErro);
+        return;
+    }
     bool gratis = j->rerolls > 0;
     if (!gratis && b->perm->fragmentos < REROLL_CUSTO_FC) {
         RogueAviso(b, TextFormat("Reroll custa %d FC.", REROLL_CUSTO_FC));
@@ -17567,7 +19345,33 @@ static void RogueRerolarEscolha(Biblioteca *b)
 static void RogueAtualizarEscolha(Biblioteca *b)
 {
     int n = b->numOpcoes;
-    b->animEscolha += GetFrameTime();
+    b->animEscolha += DtJogo();
+
+    // Escolha de TREINO (sala da Mestre): só escolher e confirmar. Sem reroll, sem recusar e nada é aplicado.
+    if (b->escolhaTreino) {
+        if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { b->selecaoEscolha = (b->selecaoEscolha + n - 1) % n; TocarSom(sfxSelecao); }
+        if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->selecaoEscolha = (b->selecaoEscolha + 1) % n;     TocarSom(sfxSelecao); }
+        for (int i = 0; i < n; i++)
+            if (IsKeyPressed(KEY_ONE + i)) { b->selecaoEscolha = i; TocarSom(sfxSelecao); }
+
+        bool cliqueTreino = false;
+        Vector2 mt = GetMousePosition();
+        for (int i = 0; i < n; i++)
+            if (CheckCollisionPointRec(mt, RogueCartaEscolha(i, n))) {
+                if (Vector2Length(GetMouseDelta()) > 0.5f) b->selecaoEscolha = i;
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { b->selecaoEscolha = i; cliqueTreino = true; }
+            }
+
+        if (b->animEscolha >= 0.35f && (cliqueTreino || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE))) {
+            b->escolhaAberta = false;
+            b->escolhaTreino = false;
+            b->escolhaTreinoFeita = true;
+            RogueParticulas(b, b->j.pos, GOLD, 20, 180);
+            TocarSomTom(sfxAcerto, 1.2f);
+            Telemetria("tutorial_escolha_treino", "", (float)b->selecaoEscolha, 0);
+        }
+        return;
+    }
 
     if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT))  { b->selecaoEscolha = (b->selecaoEscolha + n - 1) % n; TocarSom(sfxSelecao); }
     if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->selecaoEscolha = (b->selecaoEscolha + 1) % n;     TocarSom(sfxSelecao); }
@@ -18049,7 +19853,9 @@ static void RogueAtualizarDesafioSala(Biblioteca *b, ProgressoCorredor *prog, fl
     if (resultado > 0) {
         b->estadoDesafio = 2;
         b->perm->fragmentos += 5;
-        RogueColocarRecompensa(b, RECOMPENSA_RARA);
+        RogueColocarRecompensa(b, RECOMPENSA_MELHORIA);
+        b->j.rerolls++;                         // desafio resolvido: escolha comum + 1 reroll grátis
+        RogueAviso(b, "+1 REROLL GRÁTIS");
         AlterarPontos(prog, 10);
         RogueRegistrarResposta(b, true);
         RogueAviso(b, "DESAFIO CONCLUÍDO! +5 FRAGMENTOS");
@@ -20286,7 +22092,7 @@ static void MestreDicaProgressiva(Biblioteca *b)
 {
     MestreTreino *m = &b->mestre;
     static const float ESPERA[3] = { 10.0f, 22.0f, 38.0f };
-    static const char *DICAS[MT_LUTA][3] = {
+    static const char *DICAS[MT_MELHORIA + 1][3] = {
         { NULL, NULL, NULL },
         { "Luci: Mova o MOUSE sobre um alvo dourado e CLIQUE com o botão esquerdo.",
           "Luci: Os alvos estão lá em cima. O tiro sai na direção do cursor do mouse.",
@@ -20299,10 +22105,14 @@ static void MestreDicaProgressiva(Biblioteca *b)
           "Luci: Fique longe, esquive (ESPAÇO) e atire só quando o escudo brilhar." },
         { "Luci: Quando ela brilhar em VERMELHO e vier em você, aperte V (ou o botão direito).",
           "Luci: Não precisa ser perfeito: aperte V quando o anel vermelho fechar em volta do Thomas.",
-          "Luci: Aumentei sua margem de tempo. Aperte V assim que o anel ficar dourado!" }
+          "Luci: Aumentei sua margem de tempo. Aperte V assim que o anel ficar dourado!" },
+        { "Luci: A barra azul é o EP. Aperte Q para soltar o PULSO: ele apaga as balas por perto.",
+          "Luci: Espere as balas dela chegarem perto do Thomas e aperte Q. O Pulso gasta 35 de EP.",
+          "Luci: É só apertar Q! O EP volta sozinho com o tempo." },
+        { NULL, NULL, NULL }
     };
 
-    if (m->etapa < MT_TIRO || m->etapa > MT_PARRY)
+    if (m->etapa < MT_TIRO || m->etapa > MT_PULSO)
         return;
 
     // Depois das três dicas, a Luci deixa a etapa passar
@@ -20311,6 +22121,7 @@ static void MestreDicaProgressiva(Biblioteca *b)
         else if (m->etapa == MT_ESQUIVA) m->esquivas = MESTRE_ESQUIVAS;
         else if (m->etapa == MT_ABERTURA) m->acertosAbertura = MESTRE_ACERTOS_ABERTURA;
         else if (m->etapa == MT_PARRY)   m->golpesLevados = 5;
+        else if (m->etapa == MT_PULSO)   m->pulsos = 1;
         RogueRecadoLuci(b, "Luci: Tudo bem, a gente segue. Você aprende na prática!");
         m->tempoEtapa = 0.0f;
         m->dicas = 0;
@@ -20325,6 +22136,23 @@ static void MestreDicaProgressiva(Biblioteca *b)
     b->luciMsgTempo = 6.0f;
     m->dicas++;
     Telemetria("mestre_dica", "", m->tempoEtapa, (int)m->etapa);
+}
+
+// Escolha de TREINO: a mesma tela do jogo, com 2 opções, para o jogador conhecê-la antes de precisar dela.
+// Nada é aplicado, gasto ou guardado (a Mestre só avança a etapa quando o jogador confirma).
+static void MestreAbrirEscolhaTreino(Biblioteca *b)
+{
+    b->numOpcoes = 2;
+    b->opcoes[0] = (OpcaoEscolha){ OPC_UPGRADE, UP_CADENCIA };      // um atributo...
+    b->opcoes[1] = (OpcaoEscolha){ OPC_UPGRADE, UP_PULSO };         // ...e uma habilidade ligada ao Pulso que acabou de usar
+    b->escolhaAberta = true;
+    b->escolhaTreino = true;
+    b->escolhaTreinoFeita = false;
+    b->escolhaGratis = true;
+    b->modoEscolha = ESCOLHA_NORMAL;
+    b->selecaoEscolha = 0;
+    b->animEscolha = 0.0f;
+    TocarSomTom(sfxAcerto, 1.3f);
 }
 
 static void MestreMudarEtapa(Biblioteca *b, EtapaMestre etapa)
@@ -20349,8 +22177,16 @@ static void MestreMudarEtapa(Biblioteca *b, EtapaMestre etapa)
         m->tempoAcao = 1.6f;
         RogueParticulas(b, m->pos, MAGENTA, 40, 260);
         TocarSom(sfxEstatica);
+    } else if (etapa == MT_PULSO) {
+        b->j.ep = RogueEpMax(b);                            // o Pulso precisa de EP: começa cheio
+        b->j.recargaPulso = 0.0f;
+        m->pulsos = 0;
+        m->recargaPulsoAnt = 0.0f;
+    } else if (etapa == MT_MELHORIA) {
+        MestreAbrirEscolhaTreino(b);
     } else if (etapa == MT_LUTA) {
         b->j.hp = RogueHpMax(b);
+        b->j.ep = RogueEpMax(b);
         RogueAviso(b, "ALUCINAÇÃO MESTRE: AGORA É PRA VALER!");
     }
 
@@ -20639,6 +22475,13 @@ static void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float d
     if (m->etapa == MT_ARMA || m->etapa == MT_FIM)
         return;
 
+    // Pulso (Q): conta o instante em que ele dispara (a recarga sai de zero)
+    if (m->recargaPulsoAnt <= 0.0f && j->recargaPulso > 0.0f && m->etapa == MT_PULSO) {
+        m->pulsos++;
+        RogueRecadoLuci(b, "Luci: Isso! O Pulso apagou as balas. Cuidado: ele gasta EP e tem recarga.");
+    }
+    m->recargaPulsoAnt = j->recargaPulso;
+
     // Esquivas feitas (o treino conta as que começam)
     bool esquivando = j->tempoEsquiva > 0.0f;
     if (esquivando && !m->estavaEsquivando) {
@@ -20689,7 +22532,17 @@ static void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float d
             if (m->acertosAbertura >= MESTRE_ACERTOS_ABERTURA && m->acao != MA_ABERTA) MestreMudarEtapa(b, MT_PARRY);
             break;
         case MT_PARRY:
-            if (m->parries >= 1 && m->acao == MA_PAUSA) MestreMudarEtapa(b, MT_LUTA);
+            if (m->parries >= 1 && m->acao == MA_PAUSA) MestreMudarEtapa(b, MT_PULSO);
+            break;
+        case MT_PULSO:
+            if (m->pulsos >= 1 && m->tempoEtapa > 1.5f) MestreMudarEtapa(b, MT_MELHORIA);
+            break;
+        case MT_MELHORIA:                                   // a escolha de treino fecha: Luci explica e começa a luta
+            if (!b->escolhaAberta && b->escolhaTreinoFeita) {
+                b->escolhaTreinoFeita = false;
+                MestreMudarEtapa(b, MT_LUTA);
+                b->falaPendente = "Luci: É assim a escolha da missão: 1 entre 3 melhorias, valendo até o fim da tentativa. Agora junte tudo e vença a Mestre!";
+            }
             break;
         case MT_LUTA:
             if (m->fase == 1 && m->hp <= MESTRE_HP * MESTRE_FASE2) {
@@ -20735,8 +22588,10 @@ static void RogueSairSalaMestre(Biblioteca *b)
 {
     memset(&b->mestre, 0, sizeof(b->mestre));
     RogueEntrarAtrio(b, true);
-    RogueAviso(b, "BLOCO 2: A BIBLIOTECA DOS ECOS");
-    b->falaPendente = "Luci: Chegamos à Biblioteca dos Ecos! O disparador continua com você.";
+    b->tituloBloco = 4.5f;                                  // cartão "BLOCO 2" (desenhado por cima, sem parar o jogo)
+    b->conversaPendente = &dialogoChegadaBiblioteca;        // começa quando o fade de entrada terminar
+    b->objConversa = OBJ_NENHUM;
+    b->falaPendente = NULL;
 }
 
 // ---------- Afixos de elite: PULSO e ORBITAL (a DIVISÃO acontece na morte) ----------
@@ -21320,7 +23175,7 @@ static void RogueFecharTroca(Biblioteca *b) { b->trocaArmaAberta = false; }
 
 static void RogueAtualizarTroca(Biblioteca *b)
 {
-    b->animTroca += GetFrameTime();
+    b->animTroca += DtJogo();
 
     if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)) { b->trocaSel = 1 - b->trocaSel; TocarSom(sfxSelecao); }
     if (IsKeyPressed(KEY_ONE))  { b->trocaSel = 0; TocarSom(sfxSelecao); }
@@ -21440,15 +23295,25 @@ static void RogueAtualizarLoja(Biblioteca *b)
 
     bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT), direita = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
     if (abaClicada >= 0) {
-        if (abaClicada != b->abaLoja) {
+        if (!RogueAbaLojaLiberada(b, abaClicada)) {
+            RogueAviso(b, TextFormat("Aba bloqueada: abre depois da %dª missão.", abaClicada));
+            TocarSom(sfxErro);
+        } else if (abaClicada != b->abaLoja) {
             b->abaLoja = abaClicada;
             b->selecaoLoja = 0;
             TocarSom(sfxSelecao);
         }
     } else if (esquerda || direita) {
-        b->abaLoja = (b->abaLoja + (direita ? 1 : 2)) % 3;
-        b->selecaoLoja = 0;
-        TocarSom(sfxSelecao);
+        int nova = b->abaLoja;
+        for (int k = 0; k < 3; k++) {                       // pula as abas ainda bloqueadas
+            nova = (nova + (direita ? 1 : 2)) % 3;
+            if (RogueAbaLojaLiberada(b, nova)) break;
+        }
+        if (nova != b->abaLoja) {
+            b->abaLoja = nova;
+            b->selecaoLoja = 0;
+            TocarSom(sfxSelecao);
+        }
     }
 
     int linhas = (b->abaLoja == 0) ? NUM_ITENS_LOJA : ((b->abaLoja == 1) ? NUM_MELHORIAS : ARMAS_NA_LOJA);
@@ -21626,6 +23491,12 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
     }
     else if (obj == OBJ_BYTECO) {
         b->perm->bytecoVisto = true;
+        // Primeira visita: brinde (1 Antivírus) e a Luci mostra a porta da missão; a loja abre em seguida
+        if (b->j.itens[ITEM_ANTIVIRUS] < ITENS[ITEM_ANTIVIRUS].maxPilha)
+            b->j.itens[ITEM_ANTIVIRUS]++;
+        RogueAviso(b, "BRINDE DO BYTECO: 1 ANTIVÍRUS (tecla 1)");
+        RogueRecadoLuci(b, "Luci: Quando terminar aqui, a porta da missão fica no alto do átrio. Eu aviso quando algo for novo.");
+        Telemetria("atrio_byteco_brinde", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
         b->lojaAberta = true;
         b->selecaoLoja = 0;
     }
@@ -21803,6 +23674,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->estaticaTela > 0.0f)       b->estaticaTela -= dt;
     if (b->tempoErro > 0.0f)          b->tempoErro -= dt;
     if (b->portaNucleoAbrindo > 0.0f) b->portaNucleoAbrindo -= dt;
+    if (b->tituloBloco > 0.0f)        b->tituloBloco -= dt;
     for (int i = 0; i < MAX_TEXTOS_FLUTUANTES; i++)
         if (b->textos[i].tempo > 0.0f) { b->textos[i].tempo -= dt; b->textos[i].pos.y -= 28.0f * dt; }
 
@@ -21825,9 +23697,30 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
 
     // Venceu a ALUCINAÇÃO MESTRE: fim do Bloco 1 (o main abre o ranking) e o átrio do Bloco 2
     if (b->mestreVencidoPendente) {
+        // Em vez de cortar seco para o átrio: a Mestre foge, a porta se abre e o cenário muda atrás da estática
         b->mestreVencidoPendente = false;
-        RogueSairSalaMestre(b);
-        return ROGUE_MESTRE_VENCIDO;
+        b->transicaoMestre = TRANSICAO_MESTRE;
+        b->trocouCenaMestre = false;
+        b->estaticaTela = 0.5f;
+        TocarSom(sfxEstatica);
+        RogueRecadoLuci(b, "Luci: Ela fugiu pela porta! Vamos atrás: lá as alucinações imitam o que você já aprendeu a duvidar.");
+        Telemetria("ponte_bloco1_2", "inicio", (float)(GetTime() - b->inicio), 0);
+    }
+
+    if (b->transicaoMestre > 0.0f) {
+        b->transicaoMestre -= dt;
+        b->estaticaTela = fmaxf(b->estaticaTela, 0.35f * (1.0f - b->transicaoMestre / TRANSICAO_MESTRE));   // o ruído cresce até a troca
+
+        if (!b->trocouCenaMestre && b->transicaoMestre <= TRANSICAO_MESTRE * 0.5f) {
+            b->trocouCenaMestre = true;
+            RogueSairSalaMestre(b);                         // átrio, cartão "BLOCO 2" e a conversa de chegada (pendente)
+            b->tituloBloco += fmaxf(0.0f, b->transicaoMestre);   // o cartão só começa a contar de verdade depois da cutscene
+            b->flashNegativo = 0.5f;
+            b->estaticaTela = 0.8f;
+            TocarSom(sfxEstatica);
+            return ROGUE_MESTRE_VENCIDO;                    // o main marca o fim do Bloco 1 e pede o auto save
+        }
+        return ROGUE_NADA;                                  // o jogo espera a cutscene (nada se move, nada machuca)
     }
 
     // Tela de resultado do fim do jogo: ENTER leva ao ranking e ao menu
@@ -21998,6 +23891,7 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
     if (b->tipoSala == SALA_MESTRE)
         RogueAtualizarMestre(b, prog, dt);
 
+    b->tempoSalaAtual += dt;
     RogueAtualizarLabAcao(b, prog, dt);
     RogueAtualizarAfixos(b, dtMundo);
 
@@ -22031,6 +23925,8 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         RogueParticulas(b, b->j.pos, SKYBLUE, 30, 260);
         TocarSom(sfxErro);
         Telemetria("rogue_morte", TextFormat("sala %d", b->indiceRota + 1), (float)(GetTime() - b->inicio), b->abatidos);
+        if (b->perm->tentativas <= 1)
+            Telemetria("primeira_missao_morte", TextFormat("sala %d", b->indiceRota + 1), (float)(GetTime() - b->inicio), b->abatidos);
         return ROGUE_NADA;
     }
 
@@ -22387,9 +24283,9 @@ static void DesenharHudMestre(const Biblioteca *b, float tempo)
         return;
 
     // As etapas: o que já foi aprendido fica dourado (embaixo, à esquerda, acima do painel da Luci)
-    static const char *nomes[6] = { "ARMA", "TIRO", "ESQUIVA", "BRECHA", "PARRY", "LUTA" };
+    static const char *nomes[8] = { "ARMA", "TIRO", "ESQUIVA", "BRECHA", "PARRY", "PULSO", "ESCOLHA", "LUTA" };
     int x = 46, y = 464;
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 8; i++) {
         bool feito = (int)m->etapa > i, atual = (int)m->etapa == i;
         int w = MeasureText(nomes[i], 10) + 12;
         DrawRectangle(x, y, w, 15, feito ? Fade(GOLD, 0.25f) : (atual ? Fade((Color){ 0, 228, 255, 255 }, 0.2f + 0.1f * sinf(tempo * 4.0f)) : Fade(BLACK, 0.5f)));
@@ -22406,6 +24302,7 @@ static void DesenharHudMestre(const Biblioteca *b, float tempo)
             case MT_ESQUIVA:  tecla = "ESPAÇO";  acao = "esquivar"; break;
             case MT_ABERTURA: tecla = "CLIQUE";  acao = "atirar quando o escudo ficar dourado"; break;
             case MT_PARRY:    tecla = "V";       acao = "parry quando o anel fechar (ou botão direito)"; break;
+            case MT_PULSO:    tecla = "Q";       acao = "pulso: apaga as balas por perto (gasta EP)"; break;
             default: break;
         }
         if (tecla != NULL) {
@@ -23288,7 +25185,7 @@ static void DesenharAlucinacaoInimigo(const Inimigo *e, float escala, float t)
     DrawText("?", (int)p.x - 3, (int)(p.y - s - 12), 10, Fade(WHITE, alfa));
 }
 
-// VERBOSO: uma boca gigante flutuante que não para de falar; abre bem antes de soltar as balas
+// VERBOSO: um balão de fala que não para de se encher de texto; incha e fica vermelho antes de soltar as balas
 static void DesenharVerboso(const Inimigo *e, float escala, float t)
 {
     Color cor = DEF_INIMIGOS[INIMIGO_VERBOSO].cor;
@@ -23296,35 +25193,35 @@ static void DesenharVerboso(const Inimigo *e, float escala, float t)
     float s = e->raio * escala * (1.0f + 0.25f * carga);
     Vector2 p = e->pos;
     if (e->estado == 1) { p.x += (float)GetRandomValue(-1, 1); p.y += (float)GetRandomValue(-1, 1); }
+    p.y += sinf(t * 2.5f + e->pos.x) * 2.0f;                                   // flutua
+    Color borda = (carga > 0.0f) ? (Color){ 255, (unsigned char)(200 - 150 * carga), (unsigned char)(120 - 90 * carga), 255 } : cor;
 
-    // Corpo: bolha escura com brilho
-    DrawCircleV(p, s + 4, Fade(cor, 0.18f + 0.2f * carga));
-    DrawCircleV(p, s, (Color){ 24, 30, 60, 255 });
-    DrawCircleLines((int)p.x, (int)p.y, s, cor);
+    // Balão: retângulo arredondado com a "cauda" apontando para baixo
+    float w = s * 2.5f, h = s * 1.8f;
+    Rectangle fora = { p.x - w / 2 - 3, p.y - h / 2 - 3, w + 6, h + 6 };
+    Rectangle dentro = { p.x - w / 2, p.y - h / 2, w, h };
+    DrawRectangleRounded(fora, 0.45f, 8, Fade(borda, 0.25f + 0.35f * carga));
+    DrawRectangleRounded(dentro, 0.4f, 8, (Color){ 235, 238, 250, 255 });
+    DrawTriangle((Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Color){ 235, 238, 250, 255 });
+    DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, 2, borda);
+    DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, 2, borda);
 
-    // Olhos pequenos e irritados em cima
-    for (int k = -1; k <= 1; k += 2) {
-        DrawCircleV((Vector2){ p.x + k * s * 0.42f, p.y - s * 0.45f }, s * 0.16f, WHITE);
-        DrawCircleV((Vector2){ p.x + k * s * 0.42f, p.y - s * 0.42f }, s * 0.07f, BLACK);
-        DrawLineEx((Vector2){ p.x + k * s * 0.62f, p.y - s * 0.72f }, (Vector2){ p.x + k * s * 0.22f, p.y - s * 0.58f }, 2, cor);
+    // Linhas de texto que correm sem parar (cada linha é mais comprida e rápida que a anterior)
+    for (int k = 0; k < 4; k++) {
+        float ly = p.y - h * 0.32f + (float)k * h * 0.2f;
+        float comp = w * (0.55f + 0.3f * fabsf(sinf(t * (1.2f + 0.5f * (float)k) + (float)k * 1.7f)));
+        Color tinta = (carga > 0.0f) ? (Color){ (unsigned char)(70 + 170 * carga), 40, 60, 255 } : (Color){ 60, 70, 120, 255 };
+        DrawRectangle((int)(p.x - w * 0.42f), (int)ly, (int)(comp * 0.84f), 3, tinta);
+        DrawRectangle((int)(p.x - w * 0.42f + comp * 0.84f + 3), (int)ly, 3, 3, tinta);       // "pontinho" final, como uma palavra a mais
     }
 
-    // Boca: fica falando (abre e fecha) e escancara ao carregar
-    float abre = 0.18f + 0.12f * fabsf(sinf(t * 9.0f + e->pos.x)) + 0.55f * carga;
-    float mw = s * 0.95f, mh = s * abre;
-    Rectangle boca = { p.x - mw / 2, p.y + s * 0.05f, mw, mh * 1.2f };
-    DrawEllipse((int)p.x, (int)(p.y + s * 0.05f + mh * 0.6f), mw / 2, mh * 0.6f + 1, (Color){ 120, 20, 50, 255 });
-    DrawEllipse((int)p.x, (int)(p.y + s * 0.05f + mh * 0.85f), mw * 0.28f, mh * 0.25f + 1, (Color){ 255, 110, 140, 255 });   // língua
-    for (int k = 0; k < 4; k++)                                                                                       // dentes de cima
-        DrawRectangle((int)(boca.x + mw * (0.12f + 0.22f * (float)k)), (int)(p.y + s * 0.05f), (int)(mw * 0.14f), 3, WHITE);
-
-    // Letrinhas saindo da boca ("blá")
+    // Carregando: o balão enche de "!!!"; parado: as reticências ficam piscando no canto
     if (e->estado == 0) {
-        for (int k = 0; k < 3; k++) {
-            float ph = fmodf(t * 1.3f + (float)k * 0.33f, 1.0f);
-            const char *letra = (k == 0) ? "b" : ((k == 1) ? "l" : "á");
-            DrawText(letra, (int)(p.x - 8 + 14 * (float)(k - 1) + sinf(t * 4.0f + (float)k) * 4.0f), (int)(p.y + s + 6 + ph * 18.0f), 10, Fade(cor, 1.0f - ph));
-        }
+        for (int k = 0; k < 3; k++)
+            if (((int)(t * 3.0f) % 4) > k)
+                DrawCircleV((Vector2){ p.x + w * 0.28f + (float)k * 6.0f, p.y + h * 0.36f }, 2, borda);
+    } else {
+        DrawText("!!!", (int)(p.x - MeasureText("!!!", 12) / 2), (int)(p.y - s * 0.28f), 12, Fade(RED, 0.5f + 0.5f * sinf(t * 30.0f)));
     }
 }
 
@@ -23703,9 +25600,11 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
     for (int a = 0; a < 3; a++) {
         Rectangle r = { painel.x + 24 + a * 152, painel.y + 52, 146, 24 };
         bool ativa = (b->abaLoja == a);
-        DrawRectangleRec(r, ativa ? Fade(GOLD, 0.25f) : Fade(GRAY, 0.1f));
-        DrawRectangleLinesEx(r, 2, ativa ? GOLD : Fade(GRAY, 0.5f));
-        DrawText(abas[a], (int)(r.x + r.width / 2) - MeasureText(abas[a], 12) / 2, (int)r.y + 6, 12, ativa ? GOLD : GRAY);
+        bool aberta = RogueAbaLojaLiberada(b, a);
+        const char *rotulo = aberta ? abas[a] : TextFormat("BLOQUEADA (%dª missão)", a);
+        DrawRectangleRec(r, ativa ? Fade(GOLD, 0.25f) : Fade(GRAY, aberta ? 0.1f : 0.04f));
+        DrawRectangleLinesEx(r, 2, ativa ? GOLD : Fade(GRAY, aberta ? 0.5f : 0.25f));
+        DrawText(rotulo, (int)(r.x + r.width / 2) - MeasureText(rotulo, aberta ? 12 : 10) / 2, (int)r.y + (aberta ? 6 : 7), aberta ? 12 : 10, ativa ? GOLD : (aberta ? GRAY : Fade(GRAY, 0.6f)));
     }
 
     int linhas = (b->abaLoja == 0) ? NUM_ITENS_LOJA : ((b->abaLoja == 1) ? NUM_MELHORIAS : ARMAS_NA_LOJA);
@@ -23849,8 +25748,8 @@ static void DesenharLojaRogue(const Biblioteca *b, float tempo)
             int nl = DesenharTextoLinhas(linhas, (int)bx, (int)yExtra, 9, 11, (Color){ 120, 255, 160, 255 });
             yExtra += (float)(nl * 11 + 4);
         }
-        if (arma == ARMA_RAIO) {
-            QuebrarTexto("Gasta EP a cada sigilo. Acertar devolve EP.", (int)bw, 9, linhas, (int)sizeof(linhas));
+        if (arma == ARMA_RAIO || arma == ARMA_RAIO_CLASSICO) {
+            QuebrarTexto((arma == ARMA_RAIO) ? "Gasta EP a cada sigilo. Acertar devolve EP." : "Gasta EP a cada disparo (sem EP, não atira).", (int)bw, 9, linhas, (int)sizeof(linhas));
             DesenharTextoLinhas(linhas, (int)bx, (int)yExtra, 9, 11, ORANGE);
         }
 
@@ -24460,7 +26359,7 @@ static void DesenharFaixaSilogista(const Biblioteca *b, float tempo)
 
     // Versão bullet-hell: as premissas da rodada e a prova (curtas: o texto não voa pela tela)
     if (s->modoBH) {
-        const RodadaSilogistaBH *r = &RODADAS_SILOGISTA_BH[(s->bh.rodada < 3) ? s->bh.rodada : 2];
+        const RodadaSilogistaBH *r = RodadaBH(s->bh.rodada);
         Rectangle faixa = { 60, 64, 680, 64 };
         DrawRectangleRec(faixa, Fade((Color){ 18, 15, 30, 255 }, 0.88f));
         DrawRectangleLinesEx(faixa, 2, ciano);
@@ -24589,6 +26488,14 @@ static void DesenharIconeArma(TipoArma arma, Vector2 c, float e, float tempo)
             DrawLineEx((Vector2){ c.x - 6 * e, c.y + 5 * e }, (Vector2){ c.x + 12 * e, c.y - 13 * e }, 1, Fade(SKYBLUE, 0.6f + 0.4f * sinf(tempo * 5.0f)));
             break;
 
+        case ARMA_RAIO_CLASSICO:    // cano com bobina e um raio em zigue-zague
+            DrawRectangle((int)(c.x - 12 * e), (int)(c.y - 3 * e), (int)(16 * e), (int)(6 * e), metal);
+            DrawCircleV((Vector2){ c.x - 4 * e, c.y }, 3 * e, cor);
+            DrawLineEx((Vector2){ c.x + 4 * e, c.y }, (Vector2){ c.x + 8 * e, c.y - 4 * e }, 1.5f, cor);
+            DrawLineEx((Vector2){ c.x + 8 * e, c.y - 4 * e }, (Vector2){ c.x + 9 * e, c.y + 4 * e }, 1.5f, cor);
+            DrawLineEx((Vector2){ c.x + 9 * e, c.y + 4 * e }, (Vector2){ c.x + 14 * e, c.y }, 1.5f, WHITE);
+            break;
+
         case ARMA_RAIO:             // cajado com cristal e um chip quadrado girando
             DrawLineEx((Vector2){ c.x - 12 * e, c.y + 12 * e }, (Vector2){ c.x + 4 * e, c.y - 4 * e }, 3, (Color){ 90, 60, 120, 255 });
             DrawCircleV((Vector2){ c.x + 7 * e, c.y - 7 * e }, 4.5f * e, cor);
@@ -24643,6 +26550,11 @@ static void DesenharProjetilJogador(const Projetil *p, float tempo)
         case ARMA_KATANA:           // onda de corte: meia-lua
             DrawLineEx(Vector2Add(p->pos, (Vector2){ -d.y * 12, d.x * 12 }), Vector2Add(p->pos, (Vector2){ d.y * 12, -d.x * 12 }), 3, Fade(WHITE, 0.9f));
             DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 10)), p->pos, 2, Fade(SKYBLUE, 0.5f));
+            break;
+        case ARMA_RAIO_CLASSICO:    // feixe de plasma: rastro longo com núcleo branco
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 34)), p->pos, p->raio * 2.2f, Fade(cor, 0.35f));
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 28)), p->pos, p->raio, cor);
+            DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 22)), p->pos, p->raio * 0.4f, WHITE);
             break;
         case ARMA_RAIO:             // feixe de plasma: rastro longo com núcleo branco
             DrawLineEx(Vector2Subtract(p->pos, Vector2Scale(d, 34)), p->pos, p->raio * 2.2f, Fade(cor, 0.35f));
@@ -24723,6 +26635,14 @@ static void DesenharArmaNaMao(const Biblioteca *b, float tempo, bool naMao)
                     DrawCircleV(PTO(10, 0), 2.5f + sinf(tempo * 12.0f), GOLD);
                 break;
 
+            case ARMA_RAIO_CLASSICO: {  // canhão com bobina; acende quando há EP para atirar
+                bool pronto = j->ep >= RAIOC_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIOC_SUPER) > 0) ? RAIOC_SUPER_FATOR : 1.0f);
+                LIN(PTO(-2, 0), PTO(26, 0), 5, metal);
+                DrawCircleV(PTO(6, 0), 3.0f, pronto ? cor : (Color){ 60, 80, 90, 255 });
+                DrawCircleV(PTO(14, 0), 2.5f, pronto ? cor : (Color){ 60, 80, 90, 255 });
+                if (pronto) DrawCircleV(PTO(27, 0), 2.0f + 1.5f * sinf(tempo * 14.0f), Fade(WHITE, 0.8f));
+            } break;
+
             case ARMA_RAIO: {           // cajado: cristal que brilha quando há EP e runas orbitando
                 bool pronto = j->ep >= RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? RAIO_SUPER_FATOR : 1.0f);
                 Color cc = pronto ? cor : (Color){ 90, 80, 40, 255 };
@@ -24773,7 +26693,7 @@ static void DesenharArmaNaMao(const Biblioteca *b, float tempo, bool naMao)
         if (arma != ARMA_KATANA && arma != ARMA_ORBE)
             DrawCircleV(PTO(2, 0), 3.2f, (Color){ 255, 214, 170, 255 });
         if (coice > 0.6f && arma != ARMA_KATANA && arma != ARMA_PULSO_FW && arma != ARMA_VETOR) {
-            float boca = (arma == ARMA_FRAGMENTADORA) ? 24.0f : ((arma == ARMA_ORBE) ? 29.0f : ((arma == ARMA_RAIO) ? 28.0f : 21.0f));
+            float boca = (arma == ARMA_FRAGMENTADORA) ? 24.0f : ((arma == ARMA_ORBE) ? 29.0f : ((arma == ARMA_RAIO || arma == ARMA_RAIO_CLASSICO) ? 28.0f : 21.0f));
             DrawCircleV(PTO(boca, 0), 3.0f + 4.0f * coice, Fade(WHITE, 0.55f * coice));
             DrawCircleV(PTO(boca, 0), 2.0f, Fade(cor, 0.9f));
         }
@@ -26210,9 +28130,9 @@ static void DesenharTrocaArma(const Biblioteca *b, float tempo)
     snprintf(texto, sizeof(texto), "%.1f/s", 1.0f / nova->intervalo);
     DesenharBarraArma("CADÊNCIA", pn.x + 350, pn.y + 58, 200, 1.0f / nova->intervalo, 6.0f, texto, nova->cor, -1.0f);
     DesenharBarraArma("ALCANCE", pn.x + 350, pn.y + 76, 200, AlcanceArma(b->armaNova), 1.0f, NOMES_ALCANCE[nova->alcanceTipo] + 0, nova->cor, -1.0f);
-    if (b->armaNova == ARMA_RAIO)
+    if (b->armaNova == ARMA_RAIO || b->armaNova == ARMA_RAIO_CLASSICO)
     {
-        QuebrarTexto("Gasta EP a cada sigilo (sem EP, não atira). Acertar devolve EP.", 200, 9, linhas, (int)sizeof(linhas));
+        QuebrarTexto((b->armaNova == ARMA_RAIO) ? "Gasta EP a cada sigilo (sem EP, não atira). Acertar devolve EP." : "Gasta EP a cada disparo (sem EP, não atira).", 200, 9, linhas, (int)sizeof(linhas));
         DesenharTextoLinhas(linhas, (int)pn.x + 350, (int)pn.y + 98, 9, 11, ORANGE);
     }
 
@@ -26268,10 +28188,14 @@ static void DesenharEscolha(const Biblioteca *b, float tempo)
 {
     DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.88f));
 
-    const char *titulo = (b->modoEscolha == ESCOLHA_RARA) ? "MELHORIA RARA: ESCOLHA UMA"
+    const char *titulo = b->escolhaTreino ? "TREINO: ESCOLHA UMA MELHORIA"
+                       : b->escolhaPrimeiraMissao ? "SUA PRIMEIRA MELHORIA"
+                       : (b->modoEscolha == ESCOLHA_RARA) ? "MELHORIA RARA: ESCOLHA UMA"
                        : (b->modoEscolha == ESCOLHA_ARMA) ? "ARSENAL: ESCOLHA UMA" : "ESCOLHA UMA MELHORIA";
     DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 24) / 2, 70, 24, GOLD);
-    const char *sub = "Ela vale até o fim desta tentativa. Combine melhorias para abrir SINERGIAS.";
+    const char *sub = b->escolhaTreino ? "Na missão, cada sala limpa dá uma escolha assim. Aqui é só treino: nada é gasto nem guardado."
+                    : b->escolhaPrimeiraMissao ? "Escolha UMA. Ela vale até o fim desta missão. Dano, cadência ou vida: qualquer uma ajuda."
+                                       : "Ela vale até o fim desta tentativa. Combine melhorias para abrir SINERGIAS.";
     DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 12) / 2, 100, 12, LIGHTGRAY);
 
     float entrada = fminf(1.0f, b->animEscolha / 0.3f);
@@ -26364,12 +28288,23 @@ static void DesenharEscolha(const Biblioteca *b, float tempo)
         }
     }
 
+    if (b->escolhaTreino) {                                  // no treino não há reroll nem recusar: só a dica
+        const char *dicaTreino = "A/D, 1-2 ou mouse: escolher     E / clique: confirmar";
+        DrawText(dicaTreino, LARGURA_TELA / 2 - MeasureText(dicaTreino, 12) / 2, 450, 12, LIGHTGRAY);
+        const char *dicaMissao = "Na missão você também pode REROLAR (R) as opções ou RECUSAR (BACKSPACE) e ganhar Fragmentos.";
+        DrawText(dicaMissao, LARGURA_TELA / 2 - MeasureText(dicaMissao, 10) / 2, 474, 10, GRAY);
+        return;
+    }
+
     const char *ajuda = TextFormat("A/D, 1-3 ou mouse: escolher     E / clique: confirmar     BACKSPACE: recusar (+%d FC)", FC_RECUSAR_ESCOLHA);
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 438, 10, GRAY);      // logo abaixo das cartas (terminam em y=432)
 
     // Recusar também com o mouse (o mesmo que BACKSPACE)
-    DesenharBotaoMenu(RET_REROLAR_ESCOLHA, (b->j.rerolls > 0) ? TextFormat("REROLAR [R]  (%d GRÁTIS)", b->j.rerolls) : TextFormat("REROLAR [R]  (%d FC)", REROLL_CUSTO_FC), 12,
-                      (b->j.rerolls > 0 || b->perm->fragmentos >= REROLL_CUSTO_FC) ? SKYBLUE : GRAY, false);
+    if (!RogueRerollLiberado(b))
+        DesenharBotaoMenu(RET_REROLAR_ESCOLHA, TextFormat("REROLAR: ABRE NA %dª MISSÃO", MISSOES_PARA_REROLL), 12, GRAY, false);
+    else
+        DesenharBotaoMenu(RET_REROLAR_ESCOLHA, (b->j.rerolls > 0) ? TextFormat("REROLAR [R]  (%d GRÁTIS)", b->j.rerolls) : TextFormat("REROLAR [R]  (%d FC)", REROLL_CUSTO_FC), 12,
+                          (b->j.rerolls > 0 || b->perm->fragmentos >= REROLL_CUSTO_FC) ? SKYBLUE : GRAY, false);
     DesenharBotaoMenu(RET_RECUSAR_ESCOLHA, TextFormat("RECUSAR (+%d FC)", FC_RECUSAR_ESCOLHA), 12, GOLD, false);
 }
 
@@ -27627,6 +29562,7 @@ static float RogueIntensidadeAberracao(const Biblioteca *b)
     if (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH && b->silogista.bh.modoFocoAtivo) k = fmaxf(k, 0.22f);
 
     if (b->transicaoNucleo > 0.0f) k = fmaxf(k, 1.2f);
+    if (b->transicaoMestre > 0.0f) k = fmaxf(k, 0.9f);
     if (b->estaticaTela > 0.0f)    k = fmaxf(k, fminf(1.0f, b->estaticaTela));
     return k;
 }
@@ -27788,7 +29724,7 @@ static void DesenharEfeitosTela(const Biblioteca *b, float t)
     }
 
     // Data bleed: trechos corrompidos no topo (corredor do núcleo e quedas da Luci)
-    bool bleed = b->tipoSala == SALA_TRANSICAO || (b->tipoSala == SALA_LUCI && b->luci.ativo && b->luci.emRegeneracao) || b->transicaoNucleo > 0.0f;
+    bool bleed = b->tipoSala == SALA_TRANSICAO || (b->tipoSala == SALA_LUCI && b->luci.ativo && b->luci.emRegeneracao) || b->transicaoNucleo > 0.0f || b->transicaoMestre > 0.0f;
     if (bleed) {
         unsigned int quadro = (unsigned int)(t * 6.0f);
         for (int i = 0; i < 3; i++) {
@@ -27799,6 +29735,19 @@ static void DesenharEfeitosTela(const Biblioteca *b, float t)
             int x = 20 + (int)((q >> 4) % 560), y = 44 + (int)((q >> 12) % 14) + i * 2;
             DesenharTextoAberracao(texto, x, y, 10, 2.0f, Fade(MAGENTA, 0.85f));
         }
+    }
+
+    // Ponte Bloco 1 -> Biblioteca: duas frases sobre a estática (a Mestre foge / o que vem a seguir)
+    if (b->transicaoMestre > 0.0f) {
+        float k = b->transicaoMestre / TRANSICAO_MESTRE;            // 1 -> 0
+        bool primeira = k > 0.5f;
+        float local = primeira ? (1.0f - k) * 2.0f : (0.5f - k) * 2.0f;           // 0 -> 1 dentro de cada metade
+        float alfa = fminf(1.0f, fminf(local * 4.0f, (1.0f - local) * 4.0f + 0.15f));
+        const char *linha1 = primeira ? "A MESTRE FOGE PELA PORTA..." : "BLOCO 2";
+        const char *linha2 = primeira ? "Fim do Bloco 1: você aprendeu a duvidar e a reagir." : "BIBLIOTECA DOS ECOS";
+        DrawRectangle(0, ALTURA_TELA / 2 - 42, LARGURA_TELA, 84, Fade(BLACK, 0.55f * alfa));
+        DrawText(linha1, LARGURA_TELA / 2 - MeasureText(linha1, 20) / 2, ALTURA_TELA / 2 - 26, 20, Fade(GOLD, alfa));
+        DrawText(linha2, LARGURA_TELA / 2 - MeasureText(linha2, 10) / 2, ALTURA_TELA / 2 + 8, 10, Fade(WHITE, alfa));
     }
 
     // Estática: pontos e faixas
@@ -28133,6 +30082,32 @@ static void DesenharSeletorChefes(const Biblioteca *b, float tempo)
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 486, 10, GRAY);
 }
 
+// Dicas da PRIMEIRA missão (salas 1 e 2): a tecla em destaque no alto, uma de cada vez
+static void DesenharDicasPrimeiraMissao(const Biblioteca *b, float tempo)
+{
+    if (b->perm->tentativas > 1 || b->indiceRota < 0 || b->indiceRota > 1 || b->tipoSala != SALA_COMBATE)
+        return;
+    if (b->escolhaAberta || b->morreu || b->luciMsgTempo > 0.0f)
+        return;
+
+    const char *tecla = NULL, *acao = NULL;
+    if (b->limpa && b->recompensaAtiva)  { tecla = "E";      acao = "pegar a recompensa"; }
+    else if (!b->limpa && b->tempoSalaAtual < 7.0f)  { tecla = "CLIQUE"; acao = "atirar: mire com o mouse"; }
+    else if (!b->limpa && b->tempoSalaAtual < 14.0f) { tecla = "ESPAÇO"; acao = "esquivar: você atravessa os ataques"; }
+    if (tecla == NULL)
+        return;
+
+    int wt = MeasureText(tecla, 16) + 18;
+    int wa = MeasureText(acao, 14);
+    int total = wt + 10 + wa;
+    int kx = LARGURA_TELA / 2 - total / 2, ky = 78;                     // abaixo da faixa do objetivo
+    DrawRectangle(kx - 8, ky - 4, total + 16, 30, Fade(BLACK, 0.75f));
+    DrawRectangle(kx, ky, wt, 22, (((int)(tempo * 3.0f)) % 2 == 0) ? GOLD : (Color){ 235, 235, 245, 255 });
+    DrawRectangleLines(kx, ky, wt, 22, (Color){ 0, 228, 255, 255 });
+    DrawText(tecla, kx + 9, ky + 3, 16, BLACK);
+    DrawText(acao, kx + wt + 10, ky + 4, 14, WHITE);
+}
+
 static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci,
                           float tempo, const char *nickname, int pontos)
 {
@@ -28233,6 +30208,12 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         // Terminais de atalho: o seletor de chefes (trilha até a porta de cima) e o Bloco 3 (até a porta da direita)
         DesenharTerminalAtalho(POS_TERMINAL_SELETOR, b->perm->byteVisto ? "SELETOR DE CHEFES" : "FALE COM O PROF. BYTE",
                                CentroRetangulo(PORTA_PROXIMA_ROGUE), b->perm->byteVisto, tempo);
+        if (b->perm->byteVisto && b->perm->bytecoVisto && b->perm->tentativas == 0) {     // primeira visita: a Luci mostra a porta
+            Vector2 cp = CentroRetangulo(PORTA_PROXIMA_ROGUE);
+            float balanco = sinf(tempo * 5.0f) * 4.0f;
+            DrawPoly((Vector2){ cp.x, cp.y + 26.0f + balanco }, 3, 9.0f, 90.0f, Fade(GOLD, 0.9f));
+            DrawText("MISSÃO", (int)cp.x - MeasureText("MISSÃO", 10) / 2, (int)cp.y + 38 + (int)balanco, 10, GOLD);
+        }
         DesenharTerminalAtalho(POS_TERMINAL_BLOCO3, "IR AO BLOCO 3",
                                b->perm->bloco3Liberado ? CentroRetangulo(PORTA_BLOCO3_ROGUE) : (Vector2){ -1, -1 }, true, tempo);
     } else if (b->tipoSala == SALA_EDUCATIVA) {
@@ -28459,6 +30440,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         case SALA_ATRIO:
             snprintf(o.texto, sizeof(o.texto), "%s", !b->perm->byteVisto     ? "Fale com o Professor Byte"
                                                    : b->perm->bloco3Liberado ? "Uma porta nova se abriu à direita: BLOCO 3"
+                                                   : !b->perm->bytecoVisto   ? "Passe no Byteco (loja) e depois entre pela porta de cima: missão"
                                                                              : "Porta de cima: missão. Terminal dourado: seletor de chefes");
             break;
         case SALA_COMBATE:
@@ -28580,6 +30562,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
                                                                    : "Escudo fechado: esquive e espere a brecha dourada"); break;
                 case MT_PARRY:    snprintf(o.texto, sizeof(o.texto), "%s", golpe ? "Brilho VERMELHO: aperte V quando o anel fechar!"
                                                                    : (m->acao == MA_ATORDOADA ? "ATORDOADA! Atire à vontade" : "Espere o golpe e rebata com o PARRY (V)")); break;
+                case MT_PULSO:    snprintf(o.texto, sizeof(o.texto), "Aperte Q para soltar o PULSO (gasta EP): %d/1", (m->pulsos < 1) ? m->pulsos : 1); break;
+                case MT_MELHORIA: snprintf(o.texto, sizeof(o.texto), "Escolha uma melhoria (treino)"); break;
                 case MT_LUTA:     snprintf(o.texto, sizeof(o.texto), "%s", vul ? "BRECHA! Atire na ALUCINAÇÃO MESTRE"
                                                                    : (golpe ? "Golpe vindo: PARRY (V) ou esquive (ESPAÇO)" : "Esquive (ESPAÇO) e espere a brecha")); break;
                 default:          snprintf(o.texto, sizeof(o.texto), "A ALUCINAÇÃO MESTRE"); break;
@@ -28604,6 +30588,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     else
         DesenharObjetivoHUD(&o);
     DesenharTarefaLabAcao(b);
+    DesenharDicasPrimeiraMissao(b, tempo);
 
     // Reformulação: barra do tempo (sobreviver / desafio) e a mensagem de sistema corrompido
     {
@@ -28683,6 +30668,19 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     DrawRectangle(84, yHud + 18, 140, 12, (Color){ 10, 30, 50, 255 });
     DrawRectangle(84, yHud + 18, (int)(140 * j->ep / RogueEpMax(b)), 12, SKYBLUE);
     DrawRectangleLines(84, yHud + 18, 140, 12, GRAY);
+    {   // armas que gastam EP: uma marca mostra o custo do próximo disparo
+        TipoArma atualEp = RogueArmaAtual(j);
+        float custoEp = 0.0f;
+        if (atualEp == ARMA_RAIO)          custoEp = RAIO_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIO_SUPER) > 0) ? RAIO_SUPER_FATOR : 1.0f);
+        else if (atualEp == ARMA_RAIO_CLASSICO) custoEp = RAIOC_CUSTO_EP * ((RogueUp(j, UP_ARMA_RAIOC_SUPER) > 0) ? RAIOC_SUPER_FATOR : 1.0f);
+        if (custoEp > 0.0f) {
+            int mx = 84 + (int)(140 * custoEp / RogueEpMax(b));
+            DrawLine(mx, yHud + 15, mx, yHud + 33, (j->ep >= custoEp) ? WHITE : ORANGE);
+            DrawTriangle((Vector2){ (float)mx - 3, (float)yHud + 14 }, (Vector2){ (float)mx + 3, (float)yHud + 14 }, (Vector2){ (float)mx, (float)yHud + 18 }, (j->ep >= custoEp) ? WHITE : ORANGE);
+        }
+        if (GetTime() < j->epPiscaAte && ((int)(GetTime() * 14.0) & 1) == 0)
+            DrawRectangleLinesEx((Rectangle){ 83, (float)yHud + 17, 142, 14 }, 2, RED);
+    }
     DrawText(TextFormat("%d", (int)j->ep), 230, yHud + 19, 10, WHITE);
 
     DesenharRecargaRogue(278, yHud + 15, j->recargaPulso, PULSO_RECARGA, "Q", SKYBLUE, j->ep >= PULSO_CUSTO_EP);
@@ -28738,7 +30736,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     }
 
     const char *controles = atrio ? "WASD andar    E falar, comprar, ler e abrir portas    porta de cima: missão    porta da esquerda: corredor"
-                          : (b->tipoSala == SALA_MESTRE) ? ((b->mestre.etapa >= MT_PARRY) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY"
+                          : (b->tipoSala == SALA_MESTRE) ? ((b->mestre.etapa >= MT_PULSO) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso"
+                                                                                            : (b->mestre.etapa >= MT_PARRY) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY"
                                                                                             : "WASD andar  MOUSE atirar  ESPAÇO esquiva  E usar")
                           : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  V / botão direito PARRY  Q pulso  H scanner  E usar"
                           : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
@@ -28747,6 +30746,17 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     if (MeasureText(controles, tamControles) > LARGURA_TELA - 16) tamControles = 10;
     DrawRectangle(0, ALTURA_TELA - 20, LARGURA_TELA, 20, Fade(BLACK, 0.55f));
     DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, tamControles) / 2, ALTURA_TELA - 17, tamControles, LIGHTGRAY);
+
+    // Cartão de título do Bloco 2 (chegada à Biblioteca)
+    if (b->tituloBloco > 0.0f) {
+        float k = fminf(b->tituloBloco / 1.0f, 1.0f) * fminf((4.5f - b->tituloBloco) / 0.6f, 1.0f);
+        DrawRectangle(0, 150, LARGURA_TELA, 110, Fade(BLACK, 0.65f * k));
+        const char *t1 = "BLOCO 2";
+        const char *t2 = "A BIBLIOTECA DOS ECOS";
+        DrawText(t1, LARGURA_TELA / 2 - MeasureText(t1, 14) / 2, 168, 14, Fade(LIGHTGRAY, k));
+        DrawText(t2, LARGURA_TELA / 2 - MeasureText(t2, 30) / 2, 196, 30, Fade(GOLD, k));
+        DrawLine(LARGURA_TELA / 2 - 140, 240, LARGURA_TELA / 2 + 140, 240, Fade(GOLD, 0.6f * k));
+    }
 
     // Mensagem curta no meio da tela
     if (b->tempoAviso > 0.0f) {
@@ -29984,10 +31994,76 @@ static TelaAtual TelaParaSalvar(TelaAtual tela, TelaAtual salaDaBatalha, const B
     return tela;
 }
 
+// =============================================================
+// DEV MENU (F1) — atalhos para testar rápido. Para desligar na versão final: DEV_MENU 0
+// =============================================================
+#define DEV_MENU 1
+
+enum { DEV_SALA, DEV_CORREDOR, DEV_ATRIO, DEV_MESTRE, DEV_MISSAO, DEV_LUCI,
+       DEV_ARMA, DEV_INVENCIVEL, DEV_CURAR, DEV_FC, DEV_LIMPAR, DEV_SOM, NUM_DEV };
+
+#define NUM_DEV_SONS 22
+static const char *NOMES_DEV_SONS[NUM_DEV_SONS] = {
+    "Disparador", "Vetor", "Roteador", "Fluxo", "Orbe", "Fragmentadora", "Pulso de Firewall", "Katana",
+    "Raio: circuito", "Raio Classico", "Raio: coluna de luz", "Orbe: implosao", "Frag.: cartucho dourado", "Vetor: carga cheia",
+    "Morte de inimigo", "Acerto", "Erro", "Dano", "Pegar", "Aviso de parry", "Parry perfeito", "Estatica"
+};
+
+static void DevTocarSom(int k)
+{
+    if (k < NUM_SONS_ARMA) { TocarSomArma(k, 1.0f); return; }
+    switch (k) {
+        case 10: TocarGrupo(&gRaioColuna, 1.0f, 1.0f);   break;
+        case 11: TocarGrupo(&gOrbeImplosao, 1.0f, 1.0f); break;
+        case 12: TocarGrupo(&gFragDourado, 1.0f, 1.0f);  break;
+        case 13: TocarGrupo(&gVetorCarga, 1.0f, 0.9f);   break;
+        case 14: TocarGrupo(&gMorteInimigo, 1.0f, 1.0f); break;
+        case 15: TocarSom(sfxAcerto);        break;
+        case 16: TocarSom(sfxErro);          break;
+        case 17: TocarSom(sfxDano);          break;
+        case 18: TocarSom(sfxPegar);         break;
+        case 19: TocarSom(sfxAvisoParry);    break;
+        case 20: TocarSom(sfxParryPerfeito); break;
+        default: TocarSom(sfxEstatica);      break;
+    }
+}
+
+static void DesenharDevMenu(int sel, int arma, int som, bool naBiblioteca)
+{
+    const char *itens[NUM_DEV];
+    itens[DEV_SALA]       = "Ir: Sala inicial (Luci)";
+    itens[DEV_CORREDOR]   = "Ir: Corredor dos Monitores";
+    itens[DEV_ATRIO]      = "Ir: Biblioteca - atrio";
+    itens[DEV_MESTRE]     = "Ir: sala da Alucinacao Mestre";
+    itens[DEV_MISSAO]     = "Ir: comecar uma missao";
+    itens[DEV_LUCI]       = "Ir: arena da Luci (chefe final)";
+    itens[DEV_ARMA]       = TextFormat("Arma:  < %s >", DEF_ARMAS[arma].nome);
+    itens[DEV_INVENCIVEL] = TextFormat("Invencivel: %s", g_devInvencivel ? "SIM" : "NAO");
+    itens[DEV_CURAR]      = "Vida e EP cheios";
+    itens[DEV_FC]         = "+100 FC";
+    itens[DEV_LIMPAR]     = "Matar os inimigos da sala";
+    itens[DEV_SOM]        = TextFormat("Testar som:  < %s >", NOMES_DEV_SONS[som]);
+
+    int x = 230, y = 90, w = 340, h = 52 + NUM_DEV * 26 + 30;
+    DrawRectangle(x, y, w, h, (Color){ 10, 14, 28, 245 });
+    DrawRectangleLines(x, y, w, h, (Color){ 0, 228, 255, 255 });
+    DrawText("DEV MENU", x + 14, y + 12, 20, GOLD);
+    DrawText("F1 fecha", x + w - 70, y + 16, 12, GRAY);
+    for (int i = 0; i < NUM_DEV; i++) {
+        int iy = y + 46 + i * 26;
+        bool precisaBib = (i == DEV_ARMA || i == DEV_CURAR || i == DEV_LIMPAR);
+        Color c = (precisaBib && !naBiblioteca) ? DARKGRAY : ((i == sel) ? BLACK : RAYWHITE);
+        if (i == sel) DrawRectangle(x + 8, iy - 3, w - 16, 22, (Color){ 0, 228, 255, 255 });
+        DrawText(itens[i], x + 16, iy, 16, c);
+    }
+    DrawText("Cima/Baixo escolhe  -  Esq/Dir troca  -  ENTER usa", x + 14, y + h - 22, 12, LIGHTGRAY);
+}
+
 int main(void) {
 
     // 1. INICIALIZAÇÃO
 
+    SetConfigFlags(FLAG_VSYNC_HINT);        // sincroniza com o monitor: sem rasgos e movimento mais liso
     InitWindow(LARGURA_TELA, ALTURA_TELA, "UtopIA - Game");
     CarregarFonteJogo();
     IniciarSons();
@@ -30160,11 +32236,107 @@ int main(void) {
 
     SetTargetFPS(60);
 
+    // --- BGM: inicia com a música do menu ---
+    TrocarBGM(&bgmMenu, 0);
+
     // 2. GAME LOOP
 
     while (!WindowShouldClose() && !fecharJogo) {
 
-        float dt = GetFrameTime();
+        float dt = DtJogo();
+
+        // --- BGM: mantém o buffer de streaming preenchido ---
+        AtualizarBGM();
+
+        // --- BGM: troca a faixa conforme a tela ---
+        if (!pausado) {
+            if      (tela == MENU || tela == INTRO || tela == OPCOES) TrocarBGM(&bgmMenu,       0);
+            else if (tela == JOGANDO)                                  TrocarBGM(&bgmSala,       1);
+            else if (tela == CORREDOR)                                 TrocarBGM(&bgmCorredor,   2);
+            else if (tela == BATALHA)                                  TrocarBGM(&bgmBatalha,    3);
+            else if (tela == BATALHA_B2)                               TrocarBGM(&bgmMestre,     4);
+            else if (tela == BIBLIOTECA) {
+                // Biblioteca: o átrio é calmo (mesmo tom da faixa das missões), a arena da Luci tem faixa própria
+                if      (biblioteca.tipoSala == SALA_LUCI)  TrocarBGM(bgmLuci.stream.buffer  ? &bgmLuci  : &bgmBiblioteca, 7);
+                else if (biblioteca.tipoSala == SALA_ATRIO) TrocarBGM(bgmAtrio.stream.buffer ? &bgmAtrio : &bgmBiblioteca, 6);
+                else                                        TrocarBGM(&bgmBiblioteca, 5);
+            }
+        }
+
+        // --- AMBIENTE DO MAPA (Sons 2.0): loop sob a música, tirado da arte de cada lugar ---
+        {
+            int amb = AMB_NENHUM;
+            if      (tela == JOGANDO)                       amb = AMB_SALA;          // mapa1: pedra azul, telas ciano
+            else if (tela == CORREDOR || tela == BATALHA)   amb = AMB_CORREDOR;      // mapa2: corredor dos terminais
+            else if (tela == BATALHA_B2)                    amb = AMB_LUCI;          // a Alucinação Mestre
+            else if (tela == BIBLIOTECA)
+                amb = (biblioteca.tipoSala == SALA_LUCI)   ? AMB_LUCI :            // mapa3: a arena roxa da Luci
+                      (biblioteca.tipoSala == SALA_MESTRE) ? AMB_SALA : AMB_BIBLIOTECA;
+            static bool ambPausado = false;
+            if (pausado != ambPausado) { PausarAmbiente(pausado); ambPausado = pausado; }
+            if (!pausado) AtualizarAmbiente(amb, dt);
+        }
+
+#if DEV_MENU
+        // =====================================================
+        // DEV MENU (F1): congela o jogo e mostra os atalhos de teste
+        // =====================================================
+        {
+            static bool devAberto = false;
+            static int devSel = 0, devArma = 0, devSom = 0;
+            if (IsKeyPressed(KEY_F1)) devAberto = !devAberto;
+            if (devAberto) {
+                bool naBib = (tela == BIBLIOTECA);
+                if (IsKeyPressed(KEY_DOWN)) devSel = (devSel + 1) % NUM_DEV;
+                if (IsKeyPressed(KEY_UP))   devSel = (devSel + NUM_DEV - 1) % NUM_DEV;
+                int lado = IsKeyPressed(KEY_RIGHT) ? 1 : (IsKeyPressed(KEY_LEFT) ? -1 : 0);
+                if (devSel == DEV_ARMA && lado != 0) devArma = (devArma + lado + NUM_ARMAS) % NUM_ARMAS;
+                if (devSel == DEV_SOM && lado != 0)  { devSom = (devSom + lado + NUM_DEV_SONS) % NUM_DEV_SONS; DevTocarSom(devSom); }
+
+                if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
+                    bool irBib = (devSel == DEV_ATRIO || devSel == DEV_MESTRE || devSel == DEV_MISSAO || devSel == DEV_LUCI);
+                    if (devSel == DEV_SALA || devSel == DEV_CORREDOR || irBib) {
+                        transicao.ativa = false;
+                        pausado = false;
+                        dlg.estado = DLG_NENHUM;
+                    }
+                    if (devSel == DEV_SALA)          { tela = JOGANDO;  playerPos = SPAWN_SALA_VOLTA; direcaoAtual = DIR_FRENTE; }
+                    else if (devSel == DEV_CORREDOR) { tela = CORREDOR; playerPos = SPAWN_CORREDOR;   direcaoAtual = DIR_COSTAS; }
+                    else if (irBib) {
+                        tela = BIBLIOTECA;
+                        RogueIniciar(&biblioteca, &progBiblioteca);
+                        biblioteca.estabilidade = &estabilidadeLuci;
+                        if (devSel == DEV_MESTRE) RogueEntrarSalaMestre(&biblioteca);
+                        if (devSel == DEV_MISSAO) { progBiblioteca.byteVisto = true; RogueComecarMissao(&biblioteca); }
+                        if (devSel == DEV_LUCI)   RogueEntrarSala(&biblioteca, SALA_LUCI);
+                        devAberto = false;
+                    }
+                    else if (devSel == DEV_ARMA && naBib)   RogueInstalarArma(&biblioteca, (TipoArma)devArma, 0);
+                    else if (devSel == DEV_INVENCIVEL)      g_devInvencivel = !g_devInvencivel;
+                    else if (devSel == DEV_CURAR && naBib)  { biblioteca.j.hp = RogueHpMax(&biblioteca); biblioteca.j.ep = RogueEpMax(&biblioteca); }
+                    else if (devSel == DEV_FC)              progBiblioteca.fragmentos += 100;
+                    else if (devSel == DEV_LIMPAR && naBib) {
+                        for (int k = 0; k < MAX_INIMIGOS; k++)
+                            if (biblioteca.ini[k].ativo)
+                                RogueFerirInimigo(&biblioteca, &progresso, &biblioteca.ini[k], biblioteca.ini[k].hp + 9999.0f, (Vector2){ 0, 0 });
+                    }
+                    else if (devSel == DEV_SOM)             DevTocarSom(devSom);
+                    if (devSel == DEV_SALA || devSel == DEV_CORREDOR) devAberto = false;
+                }
+
+                if (devAberto) {
+                    ShowCursor();
+                    BeginTextureMode(alvo);
+                    DesenharDevMenu(devSel, devArma, devSom, naBib);
+                    EndTextureMode();
+                    BeginDrawing();
+                    DesenharNaJanela(alvo, filtroNitidez);
+                    EndDrawing();
+                    continue;
+                }
+            }
+        }
+#endif
 
         AjustarMouseAJanela();
 
@@ -31023,7 +33195,7 @@ int main(void) {
                 chefeVencido = true;
                 progresso.fimAnunciado = true;
                 pedirAutoSave = true;
-                AbrirTelaRanking(&telaRanking, &ranking, "FIM DO BLOCO 1", nickname, progresso.pontos, idPartida);
+                // O ranking só aparece no fim do jogo: aqui a história segue direto para a Biblioteca
             }
 
             // Venceu o Alucinador: fim da Biblioteca, com o ranking
@@ -31786,7 +33958,9 @@ int main(void) {
 
     EncerrarSons();
     DescarregarFonteJogo();
+    TelemetriaFechar();
     CloseWindow();
 
     return 0;
+    
 }

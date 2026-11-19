@@ -121,6 +121,11 @@ Ele desperta em **UtopIA**, um mundo que representa o interior da ferramenta de 
   <img src="assets/personagens/thomas.png" alt="Thomas — Personagem de UtopIA" width="250">
   <br>
   <strong>Thomas</strong>
+
+  <p align="center">
+  <img src="assets/personagens/Sprites.Thomas.png" alt="Thomas — Sprites" width="300">
+  <br>
+  <strong>Thomas — Sprites </strong>
 </p>
 
 Lá, encontra um companion chamado **Luci**, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.

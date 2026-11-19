@@ -105,17 +105,17 @@ Após a compilação, execute o comando correspondente no terminal, dentro do di
 
 ---
 
-**# 🌐 A história**
+# 🌐 A história
 
 Tudo começa com **Thomas**, um usuário comum.
 
-Ele utiliza Inteligência Artificial diariamente, mas possui **\*\*maus hábitos de uso\*\***: confia cegamente nas respostas, não verifica informações, fornece comandos pouco claros e não questiona aquilo que recebe.
+Ele utiliza Inteligência Artificial diariamente, mas possui **maus hábitos de uso**: confia cegamente nas respostas, não verifica informações, fornece comandos pouco claros e não questiona aquilo que recebe.
 
 Certo dia, enquanto toma um café e escreve mais um prompt, algo inesperado acontece.
 
-☕💻 **\*\*Thomas é abduzido para dentro da própria IA.\*\***
+☕💻 **Thomas é abduzido para dentro da própria IA.**
 
-Ele desperta em **\*\*UtopIA\*\***, um mundo que representa o interior da ferramenta de Inteligência Artificial que utilizava todos os dias.
+Ele desperta em **UtopIA**, um mundo que representa o interior da ferramenta de Inteligência Artificial que utilizava todos os dias.
 
 <p align="center">
   <img src="assets/personagens/thomas.png" alt="Thomas — Personagem de UtopIA" width="250">
@@ -123,17 +123,17 @@ Ele desperta em **\*\*UtopIA\*\***, um mundo que representa o interior da ferram
   <strong>Thomas</strong>
 </p>
 
-Lá, encontra um companion chamada **\*\*Luci\*\***, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.
+Lá, encontra um companion chamado **Luci**, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.
 
 Mas existe um problema.
 
-A IA está sendo tomada por uma enorme **\*\*alucinação\*\***, que ameaça escapar de UtopIA e contaminar outras inteligências artificiais.
+A IA está sendo tomada por uma enorme **alucinação**, que ameaça escapar de UtopIA e contaminar outras inteligências artificiais.
 
 Para conseguir voltar ao mundo real, o jogador precisará atravessar três grandes áreas, aprender sobre IA, solucionar desafios e reunir ferramentas capazes de enfrentar a ameaça.
 
 Porém, existe uma condição:
 
-\> **\*\*Quanto mais o jogador erra, mais forte a alucinação fica.\*\***
+> **Quanto mais o jogador erra, mais forte a alucinação fica.**
 
 E talvez Luci não seja exatamente aquilo que aparenta ser...
 

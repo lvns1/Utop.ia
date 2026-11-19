@@ -154,7 +154,12 @@ Seu nome faz referência a **"hallucination" / alucinação**, funcionando como 
   <img src="assets/personagens/luci.png" alt="Luci — Companion do UtopIA" width="280">
   <br>
   <strong>Luci — Companion</strong>
-</p>
+
+  <p align="center">
+  <img src="assets/personagens/sprites.luci_interagindo.png" alt="Luci — Sprites" width="400">
+  <br>
+  <strong>Luci — Sprites </strong>
+  </p>
 
 Luci inicialmente se apresenta como uma **companheira, guia e assistente**, explicando as regras do mundo e ajudando o jogador a compreender os desafios.
 

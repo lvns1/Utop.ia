@@ -7958,7 +7958,7 @@ static const DefUpgrade UPGRADES[NUM_UPGRADES] = {
     { "REFLEXO ESPELHADO",       "Katana de Bytes: as balas que ela corta voltam como tiros seus.",  CAT_APRIMORAMENTO, RARIDADE_RARA,    1, 0, ARMA_KATANA },
     { "FOGO: SUPERAQUECIMENTO",  "Katana: os golpes incendeiam (queima por 3 s). Nível 2: queima mais forte.", CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 2, 0, ARMA_KATANA },
     { "GELO: CACHE CONGELADO",   "Katana: os golpes congelam o alvo: 50% mais lento por 2,5 s.",     CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_KATANA },
-    { "RAIO: SURTO DE TENSÃO",   "Katana: a cada 3 golpes, um raio salta entre até 3 inimigos.",     CAT_APRIMORAMENTO, RARIDADE_RARA,    1, 0, ARMA_KATANA },
+    { "RAIO: SURTO DE TENSÃO",   "Katana: 3 golpes seguidos que acertam: um raio salta entre até 3 inimigos.",     CAT_APRIMORAMENTO, RARIDADE_RARA,    1, 0, ARMA_KATANA },
     { "VENTO: VENTILAÇÃO",       "Katana: empurra muito mais longe e corta balas num raio maior.",   CAT_APRIMORAMENTO, RARIDADE_COMUM,   1, 0, ARMA_KATANA },
     { "ÁGUA: RESFRIAMENTO",      "Katana: cada inimigo atingido recupera 1,5 de vida e 4 de EP.",    CAT_APRIMORAMENTO, RARIDADE_INCOMUM, 1, 0, ARMA_KATANA },
 
@@ -9137,6 +9137,8 @@ typedef struct {
     bool torAtivo;
     Vector2 torPos, torDir;
     float torVida, torTick, torDano;
+    // Surto (Katana + Raio): os relâmpagos ficam visíveis por um instante (só visual)
+    struct { Vector2 de, para; float vida; unsigned int semente; } raioK[3];
 
     // Recompensa no chão (núcleo de melhoria, arsenal, restauração)
     bool recompensaAtiva;
@@ -11088,6 +11090,7 @@ static void RogueLimparSala(Biblioteca *b, TipoSalaRogue tipo, Vector2 entrada)
     memset(b->arm, 0, sizeof(b->arm));
     memset(b->areas, 0, sizeof(b->areas));
     b->torAtivo = false;
+    memset(b->raioK, 0, sizeof(b->raioK));
 
     b->tipoSala = tipo;
     arenaRogueAtual = (tipo == SALA_LUCI) ? ARENA_LUCI : ARENA_ROGUE_PADRAO;
@@ -13587,8 +13590,21 @@ static void RogueGolpeKatana(Biblioteca *b, ProgressoCorredor *prog, float dano)
         RogueParticulas(b, j->pos, (Color){ 80, 170, 255, 255 }, 4, 80);
     }
 
-    // RAIO: a cada 3 golpes, um raio salta entre até 3 inimigos perto do Thomas
-    if (RogueUp(j, UP_ARMA_KATANA_RAIO) > 0 && ++b->katanaGolpes >= 3) {
+    // RAIO: 3 golpes SEGUIDOS que acertam (um golpe no vazio zera a contagem): um raio salta entre até 3 inimigos
+    bool surto = false;
+    if (RogueUp(j, UP_ARMA_KATANA_RAIO) > 0) {
+        if (numZona > 0) {
+            b->katanaGolpes++;
+            if (b->katanaGolpes < 3)                                   // carregando: faíscas que crescem a cada acerto
+                RogueParticulas(b, j->pos, (Color){ 255, 240, 120, 255 }, 3 * b->katanaGolpes, 60.0f + 40.0f * (float)b->katanaGolpes);
+            else
+                surto = true;
+        } else if (b->katanaGolpes > 0) {
+            b->katanaGolpes = 0;                                       // errou: perde a carga
+            RogueParticulas(b, j->pos, GRAY, 4, 50);
+        }
+    }
+    if (surto) {
         b->katanaGolpes = 0;
         Vector2 de = j->pos;
         bool usados[MAX_INIMIGOS] = { false };
@@ -13604,8 +13620,11 @@ static void RogueGolpeKatana(Biblioteca *b, ProgressoCorredor *prog, float dano)
             if (alvo < 0) break;
             usados[alvo] = true;
             Inimigo *e = &b->ini[alvo];
-            for (int t = 1; t <= 6; t++)                 // o raio, em faíscas ao longo do caminho
-                RogueParticulas(b, Vector2Lerp(de, e->pos, (float)t / 6.0f), (Color){ 255, 240, 120, 255 }, 1, 50);
+            b->raioK[salto].de = de;                     // o relâmpago desenhado (DesenharRaiosKatana)
+            b->raioK[salto].para = e->pos;
+            b->raioK[salto].vida = 0.30f + 0.05f * (float)salto;
+            b->raioK[salto].semente = (unsigned int)GetRandomValue(1, 1000000);
+            RogueParticulas(b, e->pos, (Color){ 255, 240, 120, 255 }, 6, 140);    // faíscas no impacto
             Vector2 dir = Vector2Subtract(e->pos, de);
             dir = (Vector2Length(dir) > 0.01f) ? Vector2Normalize(dir) : j->mira;
             bool antes = b->golpeSecundario;
@@ -13616,6 +13635,7 @@ static void RogueGolpeKatana(Biblioteca *b, ProgressoCorredor *prog, float dano)
             de = e->pos;
         }
         TocarSomTom(sfxAcerto, 1.8f);
+        b->tremor = fmaxf(b->tremor, 0.10f);
     }
 
     // Tornado de Dados: o golpe também invoca um redemoinho (um por vez)
@@ -18968,6 +18988,9 @@ static void RogueAtualizarArmadilhas(Biblioteca *b, ProgressoCorredor *prog, flo
 // fere a cada 0,2 s e apaga as balas inimigas que toca
 static void RogueAtualizarTornado(Biblioteca *b, ProgressoCorredor *prog, float dt)
 {
+    for (int r = 0; r < 3; r++)                     // os relâmpagos do Surto só somem com o tempo
+        if (b->raioK[r].vida > 0.0f) b->raioK[r].vida -= dt;
+
     if (!b->torAtivo) return;
 
     b->torVida -= dt;
@@ -27744,24 +27767,130 @@ static void DesenharAreas(const Biblioteca *b)
     }
 }
 
-// Tornado de Dados: espirais de 0s e 1s girando em volta do centro
+// Tornado de Dados: um FUNIL de 0s e 1s — fino embaixo (tocando o chão) e largo em cima,
+// girando, balançando no alto e levantando poeira de dados na base.
+// Os bits de trás são desenhados antes e mais apagados; os da frente, depois e mais fortes (dá volume).
+static void DesenharTornadoBits(const Biblioteca *b, float t, float fade, float cresce, bool frente)
+{
+    const int CAMADAS = 9;
+    const float ALTURA = 96.0f;
+    for (int c = 0; c < CAMADAS; c++) {
+        float k = (float)c / (float)(CAMADAS - 1);                    // 0 = chão, 1 = topo
+        float raio = (5.0f + 42.0f * powf(k, 1.35f)) * cresce;
+        float balanco = sinf(t * 2.3f + k * 2.6f) * 9.0f * k;          // o alto balança, a base fica presa
+        float cy = b->torPos.y - ALTURA * k * cresce;
+        float cx = b->torPos.x + balanco;
+        int n = 3 + (int)(9.0f * k);
+        float giro = t * (10.0f - 5.0f * k);                          // embaixo gira mais rápido
+        for (int i = 0; i < n; i++) {
+            float ang = giro + (float)i * (2.0f * PI / (float)n) + k * 1.7f;
+            float sn = sinf(ang);
+            if ((sn >= 0.0f) != frente) continue;
+            Vector2 p = { cx + cosf(ang) * raio, cy + sn * raio * 0.32f };
+            float prof = 0.55f + 0.45f * sn;                          // 0,1 atrás .. 1 na frente
+            int tam = (frente ? 11 : 9) + (int)(2.0f * k);
+            const char *bit = (((i * 7 + c * 3 + (int)(t * 10.0f)) & 1) == 0) ? "0" : "1";
+            Color cor = frente ? (Color){ 210, 250, 255, 255 } : (Color){ 90, 170, 230, 255 };
+            DrawText(bit, (int)p.x - tam / 4, (int)p.y - tam / 2, tam, Fade(cor, (0.35f + 0.6f * prof) * fade));
+        }
+    }
+}
+
 static void DesenharTornado(const Biblioteca *b)
 {
     if (!b->torAtivo) return;
     float t = (float)GetTime();
     float fade = Clamp(b->torVida / 0.6f, 0.0f, 1.0f);
+    float cresce = Clamp((3.2f - b->torVida) / 0.25f, 0.2f, 1.0f);    // nasce crescendo do chão
     Color c = (Color){ 150, 230, 255, 255 };
+    const float ALTURA = 96.0f;
+    Vector2 base = b->torPos;
 
-    DrawCircleV(b->torPos, 60.0f, Fade(c, 0.10f * fade));
-    DrawCircleLines((int)b->torPos.x, (int)b->torPos.y, 60.0f, Fade(c, 0.35f * fade));
-    for (int camada = 0; camada < 3; camada++) {
-        for (int i = 0; i < 9; i++) {
-            float ang = t * (6.0f - camada) + (float)i * (2.0f * PI / 9.0f) + (float)camada;
-            float raio = 12.0f + 16.0f * (float)camada + 4.0f * sinf(t * 5.0f + (float)i);
-            Vector2 pos = { b->torPos.x + cosf(ang) * raio, b->torPos.y - 22.0f + 14.0f * (float)camada + sinf(ang) * raio * 0.45f };
-            const char *bit = (((i + camada + (int)(t * 8.0f)) & 1) == 0) ? "0" : "1";
-            DrawText(bit, (int)pos.x - 3, (int)pos.y - 5, 10, Fade(c, (0.5f + 0.15f * (float)camada) * fade));
+    // sombra e área de dano no chão
+    DrawEllipse((int)base.x, (int)base.y + 4, 46, 13, Fade(BLACK, 0.30f * fade));
+    DrawEllipseLines((int)base.x, (int)base.y + 4, 60, 17, Fade(c, 0.30f * fade));
+
+    DesenharTornadoBits(b, t, fade, cresce, false);                   // parte de trás
+
+    // corpo do funil: faixas translúcidas de baixo para cima
+    for (int f = 0; f < 12; f++) {
+        float k0 = (float)f / 12.0f, k1 = (float)(f + 1) / 12.0f;
+        float r0 = (5.0f + 42.0f * powf(k0, 1.35f)) * cresce, r1 = (5.0f + 42.0f * powf(k1, 1.35f)) * cresce;
+        float x0 = base.x + sinf(t * 2.3f + k0 * 2.6f) * 9.0f * k0, x1 = base.x + sinf(t * 2.3f + k1 * 2.6f) * 9.0f * k1;
+        float y0 = base.y - ALTURA * k0 * cresce, y1 = base.y - ALTURA * k1 * cresce;
+        Color corpo = Fade(c, (0.10f + 0.06f * sinf(t * 7.0f - k0 * 9.0f)) * fade);
+        DrawTriangle((Vector2){ x1 - r1, y1 }, (Vector2){ x0 - r0, y0 }, (Vector2){ x0 + r0, y0 }, corpo);
+        DrawTriangle((Vector2){ x1 - r1, y1 }, (Vector2){ x0 + r0, y0 }, (Vector2){ x1 + r1, y1 }, corpo);
+        // anéis de vento (riscos girando)
+        if (f % 3 == 1) {
+            float a0 = fmodf(t * 360.0f * (1.6f - k0), 360.0f);
+            DrawEllipseLines((int)x0, (int)y0, r0, r0 * 0.32f, Fade((Color){ 210, 250, 255, 255 }, 0.18f * fade));
+            DrawCircleV((Vector2){ x0 + cosf(a0 * DEG2RAD) * r0, y0 + sinf(a0 * DEG2RAD) * r0 * 0.32f }, 2.0f, Fade(WHITE, 0.7f * fade));
         }
+    }
+
+    // poeira de dados subindo em espiral perto da base
+    for (int i = 0; i < 10; i++) {
+        float fase = fmodf(t * 0.9f + (float)i * 0.1f, 1.0f);           // 0 = chão, 1 = some no alto
+        float ang = t * 6.0f + (float)i * 2.4f;
+        float r = (14.0f + 30.0f * fase) * cresce;
+        Vector2 p = { base.x + cosf(ang) * r, base.y - 40.0f * fase * cresce + sinf(ang) * r * 0.3f };
+        DrawRectangleV((Vector2){ p.x - 1.5f, p.y - 1.5f }, (Vector2){ 3, 3 }, Fade(c, (1.0f - fase) * 0.8f * fade));
+    }
+
+    DesenharTornadoBits(b, t, fade, cresce, true);                    // parte da frente
+}
+
+// Surto da Katana: relâmpago em zigue-zague com brilho (camadas grossas e fracas + núcleo branco),
+// galhos curtos e clarão nas pontas. O traçado muda ~25x por segundo (pisca como raio de verdade).
+static unsigned int RaioHash(unsigned int x)
+{
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+    return x;
+}
+static float RaioRnd(unsigned int *s) { *s = RaioHash(*s + 0x9E3779B9u); return (float)(*s & 0xFFFF) / 65535.0f * 2.0f - 1.0f; }
+
+static void DesenharRelampago(Vector2 de, Vector2 para, unsigned int semente, float alfa, float largura, bool galhos)
+{
+    Vector2 d = Vector2Subtract(para, de);
+    float len = Vector2Length(d);
+    if (len < 2.0f) return;
+    Vector2 n = { -d.y / len, d.x / len };
+    int segs = 3 + (int)(len / 16.0f);
+    if (segs > 24) segs = 24;
+    Vector2 pts[25];
+    unsigned int s = semente;
+    for (int i = 0; i <= segs; i++) {
+        float k = (float)i / (float)segs;
+        float desvio = (i == 0 || i == segs) ? 0.0f : RaioRnd(&s) * fminf(len * 0.12f, 16.0f) * sinf(PI * k);
+        pts[i] = Vector2Add(Vector2Add(de, Vector2Scale(d, k)), Vector2Scale(n, desvio));
+    }
+    Color brilho = (Color){ 255, 220, 90, 255 }, meio = (Color){ 255, 245, 170, 255 };
+    for (int i = 0; i < segs; i++) DrawLineEx(pts[i], pts[i + 1], largura * 4.5f, Fade(brilho, 0.16f * alfa));
+    for (int i = 0; i < segs; i++) DrawLineEx(pts[i], pts[i + 1], largura * 2.2f, Fade(meio, 0.45f * alfa));
+    for (int i = 0; i < segs; i++) DrawLineEx(pts[i], pts[i + 1], largura, Fade(WHITE, alfa));
+    if (galhos) {
+        for (int g = 0; g < 2; g++) {
+            int i = 1 + (int)((RaioRnd(&s) * 0.5f + 0.5f) * (float)(segs - 2));
+            Vector2 dir = Vector2Rotate(Vector2Normalize(d), RaioRnd(&s) * 0.9f);
+            Vector2 fim = Vector2Add(pts[i], Vector2Scale(dir, len * (0.18f + 0.12f * (RaioRnd(&s) * 0.5f + 0.5f))));
+            DesenharRelampago(pts[i], fim, s + 77u * (unsigned int)g, alfa * 0.7f, largura * 0.55f, false);
+        }
+    }
+}
+
+static void DesenharRaiosKatana(const Biblioteca *b)
+{
+    float t = (float)GetTime();
+    for (int r = 0; r < 3; r++) {
+        if (b->raioK[r].vida <= 0.0f) continue;
+        float alfa = Clamp(b->raioK[r].vida / 0.30f, 0.0f, 1.0f);
+        unsigned int sem = b->raioK[r].semente + (unsigned int)(t * 25.0f) * 131u;     // pisca/muda de forma
+        DesenharRelampago(b->raioK[r].de, b->raioK[r].para, sem, alfa, 2.5f, true);
+        // clarão no alvo e na origem
+        DrawCircleV(b->raioK[r].para, 16.0f * alfa + 4.0f, Fade((Color){ 255, 230, 120, 255 }, 0.35f * alfa));
+        DrawCircleV(b->raioK[r].para, 6.0f, Fade(WHITE, 0.9f * alfa));
+        DrawCircleV(b->raioK[r].de, 5.0f, Fade(WHITE, 0.6f * alfa));
     }
 }
 
@@ -30366,6 +30495,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         }
     }
 
+    DesenharRaiosKatana(b);                       // Surto da Katana: os relâmpagos ficam por cima de todos
+
     for (int i = 0; i < MAX_PARTICULAS_ROGUE; i++) {
         const ParticulaRogue *p = &b->part[i];
         if (p->vida > 0.0f)
@@ -32092,6 +32223,7 @@ int main(void) {
 
     // caminhos das imagens (sprites) do jogo e carregamento delas
     Texture2D imagem_titulo = LoadTexture("resources/ui/titulo.png");
+    SetTextureFilter(imagem_titulo, TEXTURE_FILTER_BILINEAR);   // a logo é desenhada reduzida: suaviza a redução
     CarregarLuci();
     CarregarMapasNovos();                // corredor do Bloco 1 e arena final (reduzidos para a tela)
 
@@ -33328,9 +33460,18 @@ int main(void) {
             ClearBackground(cor_de_fundo_menu);
 
             // Título original
-            DrawTexture(imagem_titulo, 215, (int)y, WHITE);
-            DrawTexture(imagem_titulo, 215, (int)y1, Fade(PURPLE, 0.1f));
-            DrawTexture(imagem_titulo, 215, (int)y2, Fade(PURPLE, 0.1f));
+            // A logo é escalada para caber acima dos botões (a imagem tem 615 px de largura e passava da tela).
+            // LOGO_LARGURA = largura do desenho na tela; a logo fica centralizada nos botões.
+            {
+                const float LOGO_LARGURA = 470.0f;
+                float esc = LOGO_LARGURA / (float)imagem_titulo.width;
+                Rectangle fonte = { 0, 0, (float)imagem_titulo.width, (float)imagem_titulo.height };
+                float lx = 400.0f - imagem_titulo.width * esc * 0.5f;
+                float desloc = -30.0f;            // sobe a logo para não encostar nos botões
+                DrawTexturePro(imagem_titulo, fonte, (Rectangle){ lx, y  + desloc, imagem_titulo.width * esc, imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, WHITE);
+                DrawTexturePro(imagem_titulo, fonte, (Rectangle){ lx, y1 + desloc, imagem_titulo.width * esc, imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(PURPLE, 0.1f));
+                DrawTexturePro(imagem_titulo, fonte, (Rectangle){ lx, y2 + desloc, imagem_titulo.width * esc, imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(PURPLE, 0.1f));
+            }
 
             // Botões
             if (existeSave) {

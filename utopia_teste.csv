@@ -1,0 +1,403 @@
+tempo_jogo_s;evento;detalhe;valor;quantidade
+3.5;sessao_inicio;;0.0;0
+3.5;sessao_inicio;;0.0;0
+3.6;sessao_inicio;;0.0;0
+8.8;sessao_inicio;;0.0;0
+27.9;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.9;3
+6.8;sessao_inicio;;0.0;0
+4.3;sessao_inicio;;0.0;0
+59.6;dialogo;Luci: Antes de entrar, vamos falar com o Professor Byte. Ele;0.5;1
+60.8;dialogo;Luci: Antes de entrar, vamos falar com o Professor Byte. Ele;1.0;1
+67.2;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;4.5;4
+68.5;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.1;2
+71.0;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;2.3;2
+116.0;atrio_primeira_visita;;107.4;0
+116.0;rogue_missao;inicio;0.0;1
+116.0;rogue_sala;COMBATE;0.0;0
+116.0;rogue_encontro;ENXAME DIGITAL;1.0;1
+124.9;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+127.8;luci_scanner;certo;0.0;5
+129.6;rogue_sala_limpa;sala 1 ELIMINAR;13.5;12
+130.9;primeira_missao_escolha;;0.0;0
+130.9;rogue_recompensa_sala;MELHORIA;0.0;0
+132.6;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+138.9;rogue_sala;COMBATE;1.0;1
+138.9;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+138.9;rogue_encontro;SOBRECARGA;2.0;2
+148.7;rogue_desafio;certo;0.0;8
+210.6;rogue_temporario;OVERCLOCK;0.0;0
+212.9;rogue_sala_limpa;sala 2 ELIMINAR;96.9;22
+216.0;rogue_recompensa_sala;FRAGMENTOS;1.0;1
+218.6;luci_scanner;certo;0.0;5
+222.3;rogue_secreta;descoberta;0.0;1
+223.9;rogue_sala;SECRETA;1.0;2
+226.2;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+227.3;rogue_build;DISPARADOR CALIBRADO;0.0;1
+228.1;luci_scanner;certo;0.0;5
+229.0;rogue_sala;COMBATE;2.0;3
+229.0;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+231.3;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+235.9;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+262.8;rogue_sala_limpa;sala 4 ALVO PRIORITÁRIO;146.8;37
+263.7;rogue_recompensa_sala;MELHORIA;2.0;3
+264.6;rogue_build;LENTE DE PLASMA;0.0;1
+271.7;luci_scanner;certo;0.0;5
+272.8;rogue_sala;ESPECIAL;3.0;4
+272.8;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+329.9;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+330.8;rogue_sala_limpa;sala 5 ELIMINAR;214.8;47
+332.0;rogue_recompensa_sala;MELHORIA;3.0;4
+335.6;rogue_abandono;sala 5;219.6;47
+342.9;rogue_missao;inicio;0.0;2
+342.9;rogue_sala;COMBATE;0.0;0
+342.9;rogue_encontro;ISCA E ANZOL;1.0;1
+351.9;rogue_sala_limpa;sala 1 ELIMINAR;9.0;8
+353.0;rogue_recompensa_sala;MELHORIA;0.0;0
+356.8;rogue_build;VENTO: VENTILAÇÃO;0.0;1
+357.4;luci_scanner;certo;0.0;5
+358.5;rogue_sala;COMBATE;1.0;1
+358.5;rogue_encontro;PREVISÃO LETAL;2.0;2
+366.0;rogue_sala_limpa;sala 2 NÚCLEOS DE CORRUPÇÃO;23.2;12
+368.0;rogue_recompensa_sala;MELHORIA;1.0;1
+374.4;rogue_build;ÁGUA: RESFRIAMENTO;1.0;1
+375.0;luci_scanner;certo;0.0;5
+377.6;rogue_sala;COMBATE;2.0;2
+377.6;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+401.8;rogue_missao;inicio;0.0;3
+401.8;rogue_sala;COMBATE;0.0;0
+401.8;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;3.0;1
+401.8;rogue_encontro;ISCA E ANZOL;1.0;1
+407.2;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;3.0;0
+413.4;tutorial_ligacao_conceito;ECO FALSO;3.0;2
+415.1;rogue_temporario;OVERCLOCK;0.0;0
+415.9;rogue_sala_limpa;sala 1 ELIMINAR;14.1;9
+419.9;rogue_recompensa_sala;MELHORIA;0.0;0
+421.7;rogue_build;LENTE DE PLASMA;0.0;1
+423.6;rogue_sala;COMBATE;1.0;1
+423.6;rogue_encontro;PROTOCOLO BLINDADO;2.0;2
+439.0;rogue_desafio;certo;0.0;9
+449.0;rogue_sala_limpa;sala 2 ELIMINAR;47.2;22
+450.3;rogue_recompensa_sala;MELHORIA;1.0;1
+455.8;rogue_build;ARCO AMPLIADO;1.0;1
+459.7;luci_scanner;certo;0.0;5
+461.8;rogue_sala;COMBATE;2.0;2
+461.8;rogue_encontro;REDE ZUMBI;2.0;3
+465.2;rogue_desafio;errado;0.0;2
+474.5;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+476.4;rogue_sala_limpa;sala 3 ELIMINAR;74.6;42
+478.0;rogue_recompensa_sala;MELHORIA;2.0;2
+479.9;rogue_build;TORNADO DE DADOS;2.0;1
+527.1;luci_scanner;certo;0.0;5
+529.8;rogue_sala;ESPECIAL;3.0;3
+529.8;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+545.3;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+557.8;rogue_sala_limpa;sala 4 ELIMINAR;156.0;54
+558.8;rogue_recompensa_sala;MELHORIA;3.0;3
+570.1;rogue_build;RAIO: SURTO DE TENSÃO;2.0;1
+572.7;luci_scanner;certo;0.0;5
+575.5;rogue_sala;COMBATE;4.0;4
+575.5;rogue_encontro;PREVISÃO LETAL;2.0;5
+594.4;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+596.1;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+600.6;rogue_sala_limpa;sala 5 NÚCLEOS DE CORRUPÇÃO;198.8;66
+603.8;rogue_recompensa_sala;MELHORIA;3.0;4
+604.6;rogue_build;TÊMPERA RÁPIDA;0.0;1
+3.8;sessao_inicio;;0.0;0
+21.3;rogue_missao;inicio;0.0;4
+21.3;rogue_sala;COMBATE;0.0;0
+21.3;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+30.1;rogue_sala_limpa;sala 1 ELIMINAR;8.8;12
+31.7;rogue_recompensa_sala;MELHORIA;0.0;0
+40.4;rogue_build;ARCO AMPLIADO;1.0;1
+42.9;rogue_sala;DESAFIO;1.0;1
+44.2;rogue_evento;9;0.0;1
+69.2;rogue_desafio_sala;integridade;1.0;0
+70.3;rogue_recompensa_sala;MELHORIA;1.0;1
+81.0;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+83.0;rogue_sala;ELITE;2.0;2
+83.0;rogue_encontro;MURALHA ELITE;3.0;2
+93.9;luci_scanner;certo;0.0;5
+104.5;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+105.8;rogue_sala_limpa;sala 3 ELIMINAR;84.5;32
+107.3;luci_scanner;certo;0.0;5
+107.7;rogue_recompensa_sala;MELHORIA RARA;2.0;2
+109.4;rogue_build;RAIO: SURTO DE TENSÃO;2.0;1
+111.1;rogue_sala;ESPECIAL;3.0;3
+111.1;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+132.1;rogue_sala_limpa;sala 4 ELIMINAR;110.8;43
+181.4;luci_scanner;certo;0.0;5
+182.7;rogue_recompensa_sala;MELHORIA;3.0;3
+189.7;rogue_sala;COMBATE;4.0;4
+189.7;rogue_encontro;ENXAME DIGITAL;2.0;4
+193.9;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+195.7;rogue_desafio;certo;0.0;2
+199.2;rogue_sala_limpa;sala 5 ELIMINAR;177.9;68
+200.1;rogue_recompensa_sala;ARSENAL;3.0;4
+202.8;rogue_build;LÂMINA AFIADA;0.0;1
+203.5;luci_scanner;certo;0.0;5
+204.5;rogue_sala;COMBATE;5.0;5
+204.5;rogue_encontro;DADOS PERSISTENTES;3.0;5
+207.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+222.4;rogue_sala_limpa;sala 6 MECANISMO CORROMPIDO;201.1;81
+224.3;rogue_recompensa_sala;MELHORIA;4.0;5
+228.2;rogue_build;TORNADO DE DADOS;2.0;1
+3.9;sessao_inicio;;0.0;0
+8.2;rogue_missao;inicio;0.0;5
+8.2;rogue_sala;COMBATE;0.0;0
+8.2;rogue_encontro;ISCA E ANZOL;1.0;1
+29.0;rogue_sala_limpa;sala 1 ELIMINAR;20.8;7
+30.4;rogue_recompensa_sala;MELHORIA;0.0;0
+34.5;rogue_build;FOGO: SUPERAQUECIMENTO;1.0;1
+35.2;luci_scanner;certo;0.0;5
+37.2;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+39.0;rogue_sala;COMBATE;1.0;1
+39.0;rogue_encontro;REDE ZUMBI;2.0;2
+46.8;rogue_desafio;certo;0.0;0
+51.3;rogue_sala_limpa;sala 2 ELIMINAR;43.2;25
+53.1;rogue_recompensa_sala;MELHORIA;1.0;1
+61.1;rogue_build;ÁGUA: RESFRIAMENTO;1.0;1
+61.7;luci_scanner;certo;0.0;5
+62.8;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+63.8;rogue_sala;COMBATE;2.0;2
+63.8;rogue_encontro;DADOS PERSISTENTES;2.0;3
+72.2;rogue_desafio;certo;0.0;1
+75.3;rogue_sala_limpa;sala 3 ELIMINAR;67.1;36
+77.1;rogue_recompensa_sala;MELHORIA;2.0;2
+79.2;rogue_build;LÂMINA AFIADA;0.0;1
+79.9;luci_scanner;certo;0.0;5
+82.2;rogue_secreta;descoberta;0.0;2
+82.8;rogue_sala;SECRETA;2.0;3
+85.3;rogue_recompensa_sala;MELHORIA RARA;2.0;3
+87.9;rogue_build;TORNADO DE DADOS;2.0;1
+94.4;rogue_sala;ESPECIAL;3.0;4
+94.4;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+3.9;sessao_inicio;;0.0;0
+16.1;rogue_missao;inicio;0.0;6
+16.1;rogue_sala;COMBATE;0.0;0
+16.1;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+32.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+38.2;rogue_sala_limpa;sala 1 ELIMINAR;22.1;10
+39.9;rogue_recompensa_sala;MELHORIA;0.0;0
+45.1;rogue_build;VENTO: VENTILAÇÃO;0.0;1
+45.6;luci_scanner;certo;0.0;5
+47.6;rogue_sala;DESAFIO;1.0;1
+49.4;rogue_evento;9;0.0;1
+62.9;rogue_desafio_sala;ecos;1.0;14
+64.4;rogue_recompensa_sala;MELHORIA;1.0;1
+68.8;rogue_build;TORNADO DE DADOS;2.0;1
+80.8;luci_scanner;certo;0.0;5
+82.0;rogue_sala;ELITE;2.0;2
+82.0;rogue_encontro;MURALHA ELITE;3.0;2
+95.2;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+102.8;rogue_temporario;OVERCLOCK;0.0;0
+104.1;rogue_sala_limpa;sala 3 ELIMINAR;88.0;40
+105.5;rogue_recompensa_sala;MELHORIA RARA;2.0;2
+108.8;rogue_build;ARCO AMPLIADO;1.0;1
+109.7;luci_scanner;certo;0.0;5
+110.9;rogue_secreta;descoberta;0.0;2
+111.5;rogue_sala;SECRETA;2.0;3
+112.4;rogue_recompensa_sala;MELHORIA RARA;2.0;3
+114.5;rogue_build;RAIO: SURTO DE TENSÃO;2.0;1
+115.6;rogue_sala;ESPECIAL;3.0;4
+115.6;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+135.3;rogue_sala_limpa;sala 5 ELIMINAR;119.1;52
+135.9;rogue_recompensa_sala;MELHORIA;3.0;4
+138.7;rogue_build;TÊMPERA RÁPIDA;0.0;1
+140.4;luci_scanner;certo;0.0;5
+141.9;rogue_sala;EVENTO;4.0;5
+147.7;rogue_evento;1;1.0;3
+150.3;rogue_sala;COMBATE;5.0;6
+150.3;rogue_encontro;REDE ZUMBI;3.0;4
+168.0;rogue_desafio;certo;0.0;2
+170.2;rogue_sala_limpa;sala 7 ELIMINAR;154.1;73
+171.4;rogue_recompensa_sala;MELHORIA;4.0;6
+174.7;rogue_build;VERIFICAÇÃO CRUZADA;1.0;1
+175.3;luci_scanner;certo;0.0;5
+176.4;rogue_sala;ESPECIAL;6.0;7
+176.4;rogue_especial;RETROPROPAGADOR;0.0;7
+193.4;rogue_sala_limpa;sala 8 ELIMINAR;177.3;90
+194.2;rogue_recompensa_sala;MELHORIA;5.0;7
+195.7;rogue_build;ÁGUA: RESFRIAMENTO;1.0;1
+4.3;sessao_inicio;;0.0;0
+27.5;rogue_missao;inicio;0.0;7
+27.5;rogue_sala;COMBATE;0.0;0
+27.5;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+31.3;luci_scanner;certo;0.0;5
+36.9;rogue_sala_limpa;sala 1 ELIMINAR;9.4;12
+38.9;rogue_recompensa_sala;MELHORIA;0.0;0
+42.3;rogue_build;VENTO: VENTILAÇÃO;0.0;1
+42.8;luci_scanner;certo;0.0;5
+45.6;rogue_sala;COMBATE;1.0;1
+45.6;rogue_encontro;ENXAME DIGITAL;2.0;2
+52.7;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+73.3;rogue_sala_limpa;sala 2 MECANISMO CORROMPIDO;45.9;43
+74.9;rogue_recompensa_sala;ARSENAL;1.0;1
+85.3;rogue_build;ARCO AMPLIADO;1.0;1
+85.9;luci_scanner;certo;0.0;5
+88.2;rogue_secreta;descoberta;0.0;1
+88.5;rogue_sala;SECRETA;1.0;2
+89.3;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+92.7;rogue_build;TORNADO DE DADOS;2.0;1
+881.8;luci_scanner;certo;0.0;5
+884.9;dialogo;* REGISTRO RECUPERADO // O PRIMEIRO ECO;1.6;4
+884.9;rogue_registro_sala;102;0.0;1
+885.5;rogue_sala;COMBATE;2.0;3
+885.5;rogue_encontro;ISCA E ANZOL;2.0;3
+888.9;rogue_desafio;certo;0.0;1
+901.4;luci_scanner;certo;0.0;5
+906.3;rogue_sala_limpa;sala 4 ELIMINAR;878.8;55
+907.7;luci_scanner;certo;0.0;5
+942.4;rogue_recompensa_sala;MELHORIA;2.0;3
+949.7;rogue_build;TÊMPERA RÁPIDA;0.0;1
+960.7;rogue_sala;ESPECIAL;3.0;4
+960.7;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+980.9;rogue_sala_limpa;sala 5 ELIMINAR;953.4;68
+981.7;luci_scanner;certo;0.0;5
+994.0;rogue_recompensa_sala;MELHORIA;3.0;4
+999.4;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+1000.1;luci_scanner;certo;0.0;5
+1003.7;rogue_sala;COMBATE;4.0;5
+1003.7;rogue_encontro;PROTOCOLO BLINDADO;2.0;5
+1012.8;rogue_desafio;certo;0.0;0
+1024.9;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1027.3;rogue_sala_limpa;sala 6 ELIMINAR;999.8;79
+1029.4;rogue_recompensa_sala;ARSENAL;3.0;5
+1033.1;rogue_build;GELO: CACHE CONGELADO;1.0;1
+1033.7;luci_scanner;certo;0.0;5
+1035.4;rogue_sala;COMBATE;5.0;6
+1035.4;rogue_encontro;REDE PROTEGIDA;3.0;6
+1038.9;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1046.1;rogue_sala_limpa;sala 7 ELIMINAR;1018.6;87
+1048.3;rogue_recompensa_sala;RESTAURAÇÃO;4.0;6
+1050.1;rogue_sala;ESPECIAL;6.0;7
+1050.1;rogue_especial;RETROPROPAGADOR;0.0;7
+1055.5;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1065.3;rogue_sala_limpa;sala 8 ELIMINAR;1037.9;108
+1066.6;rogue_recompensa_sala;MELHORIA;5.0;7
+1068.7;rogue_build;RAIO: SURTO DE TENSÃO;2.0;1
+1069.5;luci_scanner;certo;0.0;5
+1071.2;rogue_sala;ELITE;7.0;8
+1071.2;rogue_encontro;CAÇADOR DE TECLAS;3.0;8
+1089.3;rogue_sala_limpa;sala 9 ELIMINAR;1061.9;124
+1090.5;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1093.2;rogue_recompensa_sala;MELHORIA RARA;5.0;8
+1095.4;rogue_build;REFLEXO ESPELHADO;2.0;1
+1113.7;rogue_sala;ESPECIAL;8.0;9
+1113.7;rogue_especial;JANELA DE CONTEXTO;0.0;9
+1124.5;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;10.4;2
+1147.1;rogue_minichefe;janela;1119.7;3
+1148.3;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.2;2
+1157.0;rogue_sala_limpa;sala 10 ELIMINAR;1129.5;152
+1158.7;rogue_recompensa_sala;MELHORIA;6.0;9
+1162.1;rogue_build;FOGO: SUPERAQUECIMENTO;1.0;1
+1164.5;rogue_sala;COMBATE;9.0;10
+1164.5;rogue_encontro;TEMPESTADE DE SPAM;3.0;10
+1169.1;luci_scanner;certo;0.0;5
+1190.9;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+1193.3;rogue_temporario;OVERCLOCK;0.0;0
+1201.5;luci_scanner;certo;0.0;5
+1203.9;rogue_sala_limpa;sala 11 SOBREVIVER;1176.4;206
+1205.5;rogue_recompensa_sala;MELHORIA;7.0;10
+1207.6;rogue_build;CONTRA-ATAQUE HEURÍSTICO;1.0;1
+1208.6;rogue_sala;ALUCINADOR;10.0;11
+1220.9;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;11.9;4
+1226.3;rogue_chefe_fase2;;1198.8;0
+1227.4;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.1;2
+1231.3;rogue_chefe_afirmacao;certo;6.0;8
+1242.2;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.2;7
+1242.2;rogue_chefe_vitoria;;1214.8;7
+1242.3;ranking;CAA;1253.0;1
+1243.6;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;0.4;1
+1.6;sessao_inicio;;0.0;0
+1.2;sessao_inicio;;0.0;0
+17.7;rogue_missao;inicio;0.0;8
+17.7;rogue_sala;COMBATE;0.0;0
+17.7;rogue_encontro;ENXAME DIGITAL;1.0;1
+22.7;rogue_sala_limpa;sala 1 ELIMINAR;4.9;14
+23.2;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+24.0;rogue_recompensa_sala;MELHORIA;0.0;0
+28.5;rogue_build;ARCO AMPLIADO;1.0;1
+34.6;luci_scanner;certo;0.0;5
+35.2;rogue_sala;COMBATE;1.0;1
+35.2;rogue_encontro;REDE ZUMBI;2.0;2
+41.5;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+43.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+45.3;rogue_desafio;certo;0.0;8
+49.1;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+50.6;rogue_sala_limpa;sala 2 ELIMINAR;32.8;32
+52.3;rogue_recompensa_sala;MELHORIA;1.0;1
+53.7;rogue_build;TÊMPERA RÁPIDA;0.0;1
+55.9;rogue_sala;COMBATE;2.0;2
+55.9;rogue_encontro;DADOS PERSISTENTES;2.0;3
+58.9;rogue_temporario;OVERCLOCK;0.0;0
+78.5;rogue_sala_limpa;sala 3 ALVO PRIORITÁRIO;60.8;49
+81.2;rogue_recompensa_sala;FRAGMENTOS;2.0;2
+82.1;luci_scanner;certo;0.0;5
+84.2;rogue_sala;ESPECIAL;3.0;3
+84.2;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+100.8;rogue_sala_limpa;sala 4 ELIMINAR;83.1;62
+101.9;rogue_recompensa_sala;MELHORIA;3.0;3
+107.6;rogue_build;ÁGUA: RESFRIAMENTO;1.0;1
+109.8;luci_scanner;certo;0.0;5
+110.3;rogue_sala;COMBATE;4.0;4
+110.3;rogue_encontro;REDE PROTEGIDA;2.0;5
+114.8;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+130.5;rogue_sala_limpa;sala 5 ALVO PRIORITÁRIO;112.7;77
+133.1;luci_scanner;certo;0.0;5
+134.6;rogue_recompensa_sala;MELHORIA;3.0;4
+138.1;rogue_build;RAIO: SURTO DE TENSÃO;2.0;1
+139.5;rogue_sala;DESAFIO;5.0;5
+140.9;rogue_evento;9;0.0;4
+153.5;rogue_desafio_sala;ecos;1.0;15
+154.5;rogue_recompensa_sala;MELHORIA;4.0;5
+156.8;rogue_build;LÂMINA AFIADA;0.0;1
+158.1;luci_scanner;certo;0.0;5
+158.9;rogue_sala;ESPECIAL;6.0;6
+158.9;rogue_especial;RETROPROPAGADOR;0.0;6
+175.0;rogue_sala_limpa;sala 7 ELIMINAR;157.3;111
+175.9;rogue_temporario;OVERCLOCK;0.0;0
+176.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+176.4;rogue_recompensa_sala;MELHORIA;5.0;6
+180.3;rogue_build;FOGO: SUPERAQUECIMENTO;1.0;1
+180.8;luci_scanner;certo;0.0;5
+183.7;rogue_sala;COMBATE;7.0;7
+183.7;rogue_encontro;FORTALEZA DE CACHE;3.0;7
+208.7;rogue_sala_limpa;sala 8 NÚCLEOS DE CORRUPÇÃO;191.0;125
+210.1;luci_scanner;certo;0.0;5
+210.4;rogue_recompensa_sala;FRAGMENTOS;5.0;7
+212.4;rogue_sala;ESPECIAL;8.0;8
+212.4;rogue_especial;JANELA DE CONTEXTO;0.0;8
+213.7;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.0;2
+235.6;rogue_minichefe;janela;217.8;4
+236.7;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.1;2
+245.4;rogue_sala_limpa;sala 9 ELIMINAR;227.7;150
+246.7;rogue_recompensa_sala;MELHORIA;6.0;8
+248.4;rogue_build;FOGO: SUPERAQUECIMENTO;1.0;2
+249.1;luci_scanner;certo;0.0;5
+250.8;rogue_sala;COMBATE;9.0;9
+250.8;rogue_encontro;CAOS SISTÊMICO;3.0;9
+258.5;rogue_temporario;OVERCLOCK;0.0;0
+266.6;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+267.7;luci_scanner;certo;0.0;5
+271.6;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+279.7;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+279.7;rogue_temporario;OVERCLOCK;0.0;0
+290.2;rogue_sala_limpa;sala 10 SOBREVIVER;272.5;193
+291.6;rogue_recompensa_sala;FRAGMENTOS;7.0;9
+292.7;rogue_sala;ALUCINADOR;10.0;10
+294.6;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;1.6;4
+302.9;rogue_chefe_fase2;;285.2;0
+304.1;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.2;2
+307.3;rogue_chefe_afirmacao;certo;6.0;6
+316.5;rogue_chefe_afirmacao;certo;6.0;3
+325.4;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.3;7
+325.4;rogue_chefe_vitoria;;307.7;8
+325.4;ranking;CAA;1841.0;1
+332.0;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;5.5;0
+334.2;bloco3_porta;;316.5;8
+335.1;bloco3_entrada;boa;89.0;1841
+337.3;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.4;3
+357.3;bloco3_porta;;14.6;8
+358.2;bloco3_entrada;boa;89.0;1841
+360.9;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.9;3
+1.4;sessao_inicio;;0.0;0

@@ -170,8 +170,10 @@ Entretanto, conforme o jogador avança, seu comportamento começa a mudar.
 
 Acesse todos os sprites, animações e arquivos fonte através do link abaixo:
 
-[![Google Drive](https://img.shields.io/badge/Google%20Drive-Sprites%20do%20Personagem-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)]https://drive.google.com/drive/folders/1HFKePzENbnPrjAJn7Fm_oXGXSOvGzRRc?usp=drive_link
+[![Google Drive](https://img.shields.io/badge/Google%20Drive-Sprites%20do%20Personagem-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1HFKePzENbnPrjAJn7Fm_oXGXSOvGzRRc?usp=drive_link)
 
+
+## Desempenho dos Personagens
 
 Dependendo do desempenho:
 

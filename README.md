@@ -107,17 +107,23 @@ Após a compilação, execute o comando correspondente no terminal, dentro do di
 
 # 🌐 A história
 
-Tudo começa com um usuário comum.
+Tudo começa com **Thomas**, um usuário comum.
 
 Ele utiliza Inteligência Artificial diariamente, mas possui **maus hábitos de uso**: confia cegamente nas respostas, não verifica informações, fornece comandos pouco claros e não questiona aquilo que recebe.
 
 Certo dia, enquanto toma um café e escreve mais um prompt, algo inesperado acontece.
 
-☕💻 **O usuário é abduzido para dentro da própria IA.**
+☕💻 **Thomas é abduzido para dentro da própria IA.**
 
 Ele desperta em **UtopIA**, um mundo que representa o interior da ferramenta de Inteligência Artificial que utilizava todos os dias.
 
-Lá, encontra um companion chamada **Luci**, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.
+<p align="center">
+  <img src="assets/personagens/thomas.png" alt="Thomas — Personagem de UtopIA" width="250">
+  <br>
+  <strong>Thomas</strong>
+</p>
+
+Lá, encontra um companion chamado **Luci**, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.
 
 Mas existe um problema.
 
@@ -138,6 +144,12 @@ E talvez Luci não seja exatamente aquilo que aparenta ser...
 Durante toda a jornada, o jogador é acompanhado por **Luci**, uma entidade ligada ao funcionamento da própria IA.
 
 Seu nome faz referência a **"hallucination" / alucinação**, funcionando como uma pista escondida sobre sua verdadeira identidade.
+
+<p align="center">
+  <img src="assets/personagens/luci.png" alt="Luci — Companion do UtopIA" width="280">
+  <br>
+  <strong>Luci — Companion</strong>
+</p>
 
 Luci inicialmente se apresenta como uma **companheira, guia e assistente**, explicando as regras do mundo e ajudando o jogador a compreender os desafios.
 
@@ -565,6 +577,8 @@ No final, o jogador deve compreender que utilizar Inteligência Artificial tamb�
 ### 📝 User Stories
 
 As User Stories foram utilizadas para representar as funcionalidades, necessidades e objetivos do projeto a partir da perspectiva dos usuários e do desenvolvimento do UtopIA.
+
+🔗 **[Acesse o quadro de User Stories no Trello](https://trello.com/invite/b/6a9443190081fa6a951f6782/ATTI501015c15a964e0432480b3fc2217bd9642E5213)**
 
 <a href="assets/trello/board.png">
   <img src="assets/trello/board.png" width="600">
@@ -1011,7 +1025,7 @@ O desenvolvimento do UtopIA foi acompanhado ao longo das semanas por meio do Jir
 
    * **Ardilles:** Arquiteto de Software
    * **Gabriel:** Scrum Master / Project Owner
-   * **Brenna:** QA Engineer
+   * **Brenna:**  Product Owner (PO)
 
 4. **🧠 Lógica**
 

@@ -1,0 +1,15 @@
+ÍCONES OPCIONAIS DAS SALAS (Bloco 2 - Biblioteca dos Ecos)
+
+O jogo NÃO precisa de nenhum arquivo nesta pasta: sem eles, os ícones das
+portas, do mini-mapa e do mapa grande (M) são desenhados com formas do Raylib.
+
+Para trocar um ícone por um sprite, coloque aqui um PNG quadrado (sugestão:
+48x48 ou 64x64, fundo transparente) com um destes nomes:
+
+  combate.png    elite.png      educativa.png   tesouro.png
+  evento.png     descanso.png   desafio.png     secreta.png
+  silogista.png  alucinador.png
+
+O carregamento acontece na primeira vez que a Biblioteca é desenhada
+(CarregarIconesBiblioteca) e a liberação no fim do jogo
+(DescarregarIconesBiblioteca). Arquivo ausente = ícone desenhado à mão.

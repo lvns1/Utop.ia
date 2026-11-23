@@ -121,6 +121,11 @@ Ele desperta em **UtopIA**, um mundo que representa o interior da ferramenta de 
   <img src="assets/personagens/thomas.png" alt="Thomas — Personagem de UtopIA" width="250">
   <br>
   <strong>Thomas</strong>
+
+  <p align="center">
+  <img src="assets/personagens/Sprites.Thomas.png" alt="Thomas — Sprites" width="300">
+  <br>
+  <strong>Thomas — Sprites </strong>
 </p>
 
 Lá, encontra um companion chamado **Luci**, um algoritmo que afirma conhecer uma maneira de levá-lo de volta para casa.
@@ -149,11 +154,26 @@ Seu nome faz referência a **"hallucination" / alucinação**, funcionando como 
   <img src="assets/personagens/luci.png" alt="Luci — Companion do UtopIA" width="280">
   <br>
   <strong>Luci — Companion</strong>
-</p>
+
+  <p align="center">
+  <img src="assets/personagens/sprites.luci_interagindo.png" alt="Luci — Sprites" width="400">
+  <br>
+  <strong>Luci — Sprites </strong>
+  </p>
 
 Luci inicialmente se apresenta como uma **companheira, guia e assistente**, explicando as regras do mundo e ajudando o jogador a compreender os desafios.
 
 Entretanto, conforme o jogador avança, seu comportamento começa a mudar.
+
+
+## 🎨 Sprites dos Personagens
+
+Acesse todos os sprites, animações e arquivos fonte através do link abaixo:
+
+[![Google Drive](https://img.shields.io/badge/Google%20Drive-Sprites%20do%20Personagem-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1HFKePzENbnPrjAJn7Fm_oXGXSOvGzRRc?usp=drive_link)
+
+
+## Desempenho dos Personagens
 
 Dependendo do desempenho:
 

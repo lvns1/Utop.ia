@@ -4459,6 +4459,10 @@ static bool DialogoFalaDaLuci(const SessaoDialogo *d)
 // A flutuação e a órbita em volta do jogador vêm de quem chama.
 // Transparência do próximo desenho da Luci (1 = normal). Usada nos rastros da investida e nas falhas da 3ª barra.
 static float g_alfaLuci = 1.0f;
+// Transformações do próximo desenho da Luci (o companion usa; o resto do jogo deixa como está)
+static float g_luciGiro = 0.0f;                         // graus
+static float g_luciEsticaX = 1.0f, g_luciEsticaY = 1.0f;
+static float g_luciAsasFase = -1.0f, g_luciAsasAmp = 0.07f;   // fase < 0: as asas no ritmo padrão
 
 static void DesenharLuciTamanho(Vector2 p, float altura)
 {
@@ -4479,11 +4483,13 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
     if (tex.id > 0) {
 
         float escala = altura / recorte.height;
-        float asas = 1.0f + 0.07f * sinf(t * 14.0f);
-        float w = recorte.width * escala * asas;
-        float h = recorte.height * escala;
+        float asas = (g_luciAsasFase >= 0.0f) ? 1.0f + g_luciAsasAmp * sinf(g_luciAsasFase) : 1.0f + 0.07f * sinf(t * 14.0f);
+        float w = recorte.width * escala * asas * g_luciEsticaX;
+        float h = recorte.height * escala * g_luciEsticaY;
 
-        Rectangle destino = { p.x - w / 2, p.y - h / 2, w, h };
+        // Desenhada pelo centro (o giro e a inclinação do companion giram em volta dele)
+        Rectangle destino = { p.x, p.y, w, h };
+        Vector2 origem = { w / 2, h / 2 };
 
         // Instável: puxa para o magenta e, perto do limite, falha como as alucinações
         float k = instabilidadeLuci;
@@ -4491,11 +4497,11 @@ static void DesenharLuciTamanho(Vector2 p, float altura)
 
         if (k > 0.5f) {
             float d = 2.0f + 3.0f * k;
-            DrawTexturePro(tex, recorte, (Rectangle){ destino.x - d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(RED, 0.5f * g_alfaLuci));
-            DrawTexturePro(tex, recorte, (Rectangle){ destino.x + d, destino.y, w, h }, (Vector2){ 0, 0 }, 0.0f, Fade(SKYBLUE, 0.5f * g_alfaLuci));
+            DrawTexturePro(tex, recorte, (Rectangle){ destino.x - d, destino.y, w, h }, origem, g_luciGiro, Fade(RED, 0.5f * g_alfaLuci));
+            DrawTexturePro(tex, recorte, (Rectangle){ destino.x + d, destino.y, w, h }, origem, g_luciGiro, Fade(SKYBLUE, 0.5f * g_alfaLuci));
         }
 
-        DrawTexturePro(tex, recorte, destino, (Vector2){ 0, 0 }, 0.0f, tinta);
+        DrawTexturePro(tex, recorte, destino, origem, g_luciGiro, tinta);
         return;
     }
 
@@ -4665,8 +4671,351 @@ static void DesenharEmocaoLuci(Vector2 p, float altura)
         DrawText("!", (int)c.x - MeasureText("!", 14) / 2, (int)c.y - 7, 14, GOLD);
 }
 
+// =============================================================
+// LUCI COMPANION: movimentação, animação e reações
+//   Ela segue o Thomas com atraso (mola), paira no ombro quando ele para (com uma volta lenta de vez
+//   em quando), fica longe da linha da mira, reage ao combate, faz o Pulso (Q) e o Scanner (H) e voa
+//   até o objetivo para mostrar o caminho. E sem nada por perto: ela repete a dica.
+//   DESLIGAR: troque o 1 por 0 no que quiser tirar. LUCI_MOV_NOVO 0 volta à órbita fixa antiga.
+// =============================================================
+#define LUCI_MOV_NOVO        1   // segue com atraso, paira no ombro parada, foge da linha da mira
+#define LUCI_ANIM_INCLINAR   1   // inclina para onde voa e estica ao acelerar
+#define LUCI_ANIM_RASTRO     1   // pó de luz atrás dela quando voa rápido
+#define LUCI_ANIM_SOMBRA     1   // sombrinha no chão
+#define LUCI_ANIM_ASAS       1   // as asas batem mais rápido acelerando e devagar pairando
+#define LUCI_REACOES         1   // susto (dano), giro (esquiva), comemoração (parry), pouca vida, Pulso (Q) e Scanner (H)
+#define LUCI_GUIA            1   // voa até o objetivo e volta; E sem nada por perto repete a dica
+
+#define LUCI_RASTRO_N        12
+#define LUCI_PULSO_TEMPO     0.45f
+#define LUCI_SCANNER_TEMPO   0.9f
+#define LUCI_GUIA_TEMPO      2.8f
+
+typedef enum { LC_SEGUIR, LC_GUIA, LC_PULSO, LC_SCANNER } AcaoLuciComp;
+
+typedef struct {
+    bool iniciada;
+    Vector2 pos, vel;
+    Vector2 jogAnt;             // onde o Thomas estava no quadro anterior
+    Vector2 dirAndar;           // a última direção em que ele andou
+    float parado;               // há quanto tempo ele está parado
+    float lado;                 // -1 = ombro esquerdo, 1 = direito
+    float orbita, voltando, cronoVolta;     // a volta lenta quando ele está parado
+    float angAntigo;            // LUCI_MOV_NOVO 0: a órbita antiga
+    float faseAsas, ampAsas;
+    float inclina, estica, giro;            // graus, 0 a 1, graus
+    float susto, comemora, pertoVida, falando;
+    AcaoLuciComp acao;
+    float tempoAcao;
+    Vector2 alvo;
+    bool temAlvoAnt;
+    Vector2 alvoAnt;
+    float esperaGuia;
+    bool guiouParado;           // já foi mostrar o caminho nesta parada
+    Vector2 rastro[LUCI_RASTRO_N];
+    float vidaRastro[LUCI_RASTRO_N];
+    float cronoRastro;
+    int iRastro;
+    bool atras;                 // desenhada antes do Thomas (passando atrás dele)
+} LuciComp;
+
+static LuciComp g_luciComp = { 0 };
+static bool g_luciPedirDica = false;        // E sem nada por perto (o main consome no LuciCompAtualizar)
+static double g_repetirFalaLuciAte = 0.0;   // o balão do HUD digita a dica de novo (até este instante)
+static bool g_luciGuiaSoParado = false;     // o alvo só vale quando ele fica parado (ex.: a porta de uma sala resolvida)
+
+static void LuciCompSusto(Vector2 de)
+{
+    if (!LUCI_REACOES || !g_luciComp.iniciada) return;
+    LuciComp *c = &g_luciComp;
+    Vector2 d = Vector2Subtract(c->pos, de);
+    d = (Vector2Length(d) > 0.1f) ? Vector2Normalize(d) : (Vector2){ 0, -1 };
+    c->vel = Vector2Add(c->vel, Vector2Scale(d, 320.0f));     // pula para longe do golpe
+    c->susto = 0.5f;
+    MostrarEmocaoLuci(EMOCAO_ALERTA, 1.0f);
+}
+
+static void LuciCompGirar(void)
+{
+    if (!LUCI_REACOES) return;
+    g_luciComp.giro = 360.0f;
+}
+
+static void LuciCompComemorar(void)
+{
+    if (!LUCI_REACOES || !g_luciComp.iniciada) return;
+    g_luciComp.comemora = 0.8f;
+    g_luciComp.giro = 360.0f;
+    g_luciComp.vel.y -= 180.0f;                                 // um pulinho
+    MostrarEmocaoLuci(EMOCAO_ALEGRE, 1.2f);
+}
+
+static void LuciCompAcao(AcaoLuciComp a, float tempo)
+{
+    if (!LUCI_REACOES && (a == LC_PULSO || a == LC_SCANNER)) return;
+    g_luciComp.acao = a;
+    g_luciComp.tempoAcao = tempo;
+}
+
+static void LuciCompGuiar(Vector2 alvo)
+{
+    if (!LUCI_GUIA) return;
+    LuciComp *c = &g_luciComp;
+    c->acao = LC_GUIA;
+    c->tempoAcao = LUCI_GUIA_TEMPO;
+    c->alvo = alvo;
+    MostrarEmocaoLuci(EMOCAO_ALERTA, 1.2f);
+}
+
+// Atualiza a Luci que acompanha o Thomas.
+//   mira: direção da arma ({0,0} = sem arma: ela pode passear em volta dele)
+//   temAlvo/alvo: o objetivo atual (para ela mostrar o caminho); vidaFrac: 0 a 1
+static void LuciCompAtualizar(Vector2 jog, Vector2 mira, bool temAlvo, Vector2 alvo, float vidaFrac, float dt)
+{
+    LuciComp *c = &g_luciComp;
+
+    if (!c->iniciada || Vector2Distance(jog, c->jogAnt) > 80.0f) {     // entrou numa sala: aparece junto dele
+        float ang = c->angAntigo;
+        *c = (LuciComp){ 0 };
+        c->iniciada = true;
+        c->angAntigo = ang;
+        c->lado = 1.0f;
+        c->pos = (Vector2){ jog.x + 20.0f, jog.y - 36.0f };
+        c->jogAnt = jog;
+        c->dirAndar = (Vector2){ 0, 1 };
+        c->cronoVolta = 3.0f;
+        c->ampAsas = 0.06f;
+    }
+    if (dt <= 0.0f) return;
+    dt = fminf(dt, 1.0f / 30.0f);                               // um quadro lento não faz a mola "explodir"
+
+    // O que o Thomas está fazendo
+    Vector2 passo = Vector2Subtract(jog, c->jogAnt);
+    c->jogAnt = jog;
+    if (Vector2Length(passo) / dt > 20.0f) { c->dirAndar = Vector2Normalize(passo); c->parado = 0.0f; c->guiouParado = false; }
+    else c->parado += dt;
+
+    bool comMira = Vector2Length(mira) > 0.01f;
+    if (comMira) {                                              // o ombro do lado contrário da mira
+        if (mira.x > 0.25f) c->lado = -1.0f;
+        else if (mira.x < -0.25f) c->lado = 1.0f;
+    } else if (fabsf(c->dirAndar.x) > 0.3f) {
+        c->lado = (c->dirAndar.x > 0.0f) ? -1.0f : 1.0f;        // fica do lado de trás de quem anda
+    }
+
+    float alvoPerto = (LUCI_REACOES && vidaFrac < 0.3f) ? 1.0f : 0.0f;      // pouca vida: fica mais perto dele
+    c->pertoVida += (alvoPerto - c->pertoVida) * fminf(1.0f, dt * 3.0f);
+    float perto = c->pertoVida;
+
+    // E sem nada por perto: repete a dica e vai mostrar onde é
+    if (g_luciPedirDica) {
+        g_luciPedirDica = false;
+        if (LUCI_GUIA) {
+            g_repetirFalaLuciAte = GetTime() + 0.3;
+            c->falando = 1.4f;
+            if (temAlvo && Vector2Distance(jog, alvo) > 70.0f) LuciCompGuiar(alvo);
+            else { c->vel.y -= 120.0f; MostrarEmocaoLuci(EMOCAO_ALERTA, 1.0f); }
+        }
+    }
+
+    // Objetivo novo (ou ele parado faz tempo, longe dele): ela vai até lá e volta
+    if (LUCI_GUIA && temAlvo) {
+        if (!c->temAlvoAnt || Vector2Distance(alvo, c->alvoAnt) > 40.0f) c->esperaGuia = 0.9f;
+        c->temAlvoAnt = true;
+        c->alvoAnt = alvo;
+        bool longe = Vector2Distance(jog, alvo) > 130.0f;
+        if (c->esperaGuia > 0.0f && !g_luciGuiaSoParado) {
+            c->esperaGuia -= dt;
+            if (c->esperaGuia <= 0.0f && longe && c->acao == LC_SEGUIR) LuciCompGuiar(alvo);
+        }
+        if (c->parado > 6.0f && !c->guiouParado && longe && c->acao == LC_SEGUIR) { c->guiouParado = true; LuciCompGuiar(alvo); }
+        if (c->acao == LC_GUIA) c->alvo = alvo;
+    } else {
+        c->temAlvoAnt = false;
+        if (c->acao == LC_GUIA) c->acao = LC_SEGUIR;
+    }
+
+    // Para onde ela quer ir (a "âncora") e a força da mola
+    Vector2 ancora;
+    float k = 70.0f, amort = 11.0f;
+    c->atras = false;
+
+    if (c->parado > 0.35f) {                                    // parado: no ombro
+        ancora = (Vector2){ jog.x + c->lado * (20.0f - 6.0f * perto), jog.y - 36.0f + 4.0f * perto };
+        if (!comMira && c->acao == LC_SEGUIR) {                 // de vez em quando, uma volta lenta em volta dele
+            if (c->voltando <= 0.0f) {
+                c->cronoVolta -= dt;
+                if (c->cronoVolta <= 0.0f) { c->voltando = 2.6f; c->orbita = (c->lado > 0.0f) ? 0.0f : PI; }
+            }
+            if (c->voltando > 0.0f) {
+                c->voltando -= dt;
+                c->orbita += dt * (2.0f * PI / 2.6f);
+                ancora = (Vector2){ jog.x + cosf(c->orbita) * 26.0f, jog.y - 20.0f + sinf(c->orbita) * 9.0f };
+                c->atras = sinf(c->orbita) < 0.0f;
+                if (c->voltando <= 0.0f) c->cronoVolta = 5.0f + (float)GetRandomValue(0, 30) / 10.0f;
+            }
+        }
+    } else {                                                    // andando: logo atrás dele, um pouco acima
+        c->voltando = 0.0f;
+        c->cronoVolta = 3.0f;
+        ancora = (Vector2){ jog.x - c->dirAndar.x * (24.0f - 8.0f * perto) + c->lado * 6.0f, jog.y - 30.0f - c->dirAndar.y * 14.0f };
+    }
+
+    // Longe da linha da mira: se a âncora cair na frente da arma, vai para o lado
+    if (comMira) {
+        Vector2 rel = Vector2Subtract(ancora, jog);
+        if (Vector2Length(rel) > 0.1f && Vector2DotProduct(Vector2Normalize(rel), mira) > 0.55f) {
+            Vector2 n = { -mira.y, mira.x };
+            if (n.x * c->lado < 0.0f) n = Vector2Scale(n, -1.0f);
+            ancora = Vector2Add(jog, Vector2Add(Vector2Scale(n, 26.0f), (Vector2){ 0, -12.0f }));
+        }
+    }
+
+    // Ações: guiar, Pulso e Scanner
+    if (c->acao != LC_SEGUIR) {
+        c->tempoAcao -= dt;
+        if (c->acao == LC_GUIA) {
+            ancora = (Vector2){ c->alvo.x, c->alvo.y - 34.0f };
+            k = 34.0f; amort = 9.0f;
+            if (Vector2Distance(jog, c->alvo) < 60.0f) c->tempoAcao = fminf(c->tempoAcao, 0.2f);   // ele chegou: ela volta
+        } else if (c->acao == LC_PULSO) {
+            ancora = (Vector2){ jog.x, jog.y - 14.0f };
+            k = 420.0f; amort = 32.0f;
+        } else if (c->acao == LC_SCANNER) {
+            ancora = (Vector2){ jog.x, jog.y - 54.0f };
+            k = 170.0f; amort = 22.0f;
+        }
+        if (c->tempoAcao <= 0.0f) c->acao = LC_SEGUIR;
+    }
+
+    // A mola (com atraso: ela "voa" até a âncora)
+    Vector2 antes = c->vel;
+    if (LUCI_MOV_NOVO || c->acao != LC_SEGUIR) {
+        Vector2 acc = Vector2Subtract(Vector2Scale(Vector2Subtract(ancora, c->pos), k), Vector2Scale(c->vel, amort));
+        c->vel = Vector2Add(c->vel, Vector2Scale(acc, dt));
+        c->pos = Vector2Add(c->pos, Vector2Scale(c->vel, dt));
+        if (c->acao != LC_GUIA && Vector2Distance(c->pos, jog) > 160.0f)            // nunca fica muito para trás
+            c->pos = Vector2Add(jog, Vector2Scale(Vector2Normalize(Vector2Subtract(c->pos, jog)), 160.0f));
+    } else {                                                    // a órbita fixa antiga
+        c->angAntigo += dt * 2.5f;
+        Vector2 nova = { jog.x + cosf(c->angAntigo) * RAIO_ORBITA_LUCI, jog.y - 14.0f + sinf(c->angAntigo) * 8.0f + sinf(c->angAntigo * 2.7f) * 2.0f };
+        c->vel = Vector2Scale(Vector2Subtract(nova, c->pos), 1.0f / dt);
+        c->pos = nova;
+        c->atras = sinf(c->angAntigo) < 0.0f;
+    }
+
+    // Por cima da cabeça e bem junto dele: passa por trás
+    if (!c->atras && c->pos.y < jog.y - 22.0f && fabsf(c->pos.x - jog.x) < 12.0f && c->acao == LC_SEGUIR)
+        c->atras = true;
+
+    // Animação
+    float vel = Vector2Length(c->vel);
+    float kVel = Clamp(vel / 260.0f, 0.0f, 1.0f);
+    float acel = Vector2Length(Vector2Subtract(c->vel, antes)) / dt;
+    c->inclina += (Clamp(c->vel.x * 0.07f, -24.0f, 24.0f) - c->inclina) * fminf(1.0f, dt * 10.0f);
+    c->estica += (Clamp(acel / 2400.0f, 0.0f, 1.0f) - c->estica) * fminf(1.0f, dt * 8.0f);
+    c->ampAsas += ((0.05f + 0.09f * kVel) - c->ampAsas) * fminf(1.0f, dt * 6.0f);
+    c->faseAsas = fmodf(c->faseAsas + dt * (9.0f + 18.0f * kVel), 2.0f * PI);
+    if (c->giro > 0.0f) c->giro = fmaxf(0.0f, c->giro - dt * 900.0f);
+    if (c->susto > 0.0f) c->susto -= dt;
+    if (c->comemora > 0.0f) c->comemora -= dt;
+    if (c->falando > 0.0f) c->falando -= dt;
+
+    for (int i = 0; i < LUCI_RASTRO_N; i++)
+        if (c->vidaRastro[i] > 0.0f) c->vidaRastro[i] -= dt * 2.2f;
+    c->cronoRastro += dt;
+    if (vel > 110.0f && c->cronoRastro > 0.03f) {
+        c->cronoRastro = 0.0f;
+        c->rastro[c->iRastro] = c->pos;
+        c->vidaRastro[c->iRastro] = 1.0f;
+        c->iRastro = (c->iRastro + 1) % LUCI_RASTRO_N;
+    }
+}
+
+static bool LuciCompAtras(float angulo)
+{
+    return g_luciComp.iniciada ? g_luciComp.atras : LuciAtrasDoJogador(angulo);
+}
+
+static void DesenharLuciComp(Vector2 jog)
+{
+    const LuciComp *c = &g_luciComp;
+    float t = (float)GetTime();
+    Vector2 p = { c->pos.x, c->pos.y + sinf(t * 2.6f) * 2.0f };
+    if (c->susto > 0.0f) p.x += sinf(t * 90.0f) * 3.0f * (c->susto / 0.5f);
+    float altura = ALTURA_LUCI * (c->atras ? 0.88f : 1.0f);
+    float kPulso = (c->acao == LC_PULSO) ? 1.0f - c->tempoAcao / LUCI_PULSO_TEMPO : 0.0f;
+    if (c->acao == LC_PULSO) altura *= 1.0f + 0.4f * sinf(kPulso * PI);
+
+#if LUCI_ANIM_SOMBRA
+    {
+        float chao = jog.y + 20.0f;
+        float s = Clamp(1.0f - (chao - p.y - 30.0f) / 90.0f, 0.4f, 1.0f);
+        DrawEllipse((int)p.x, (int)chao, 7.0f * s, 2.5f * s, Fade(BLACK, 0.3f * s));
+    }
+#endif
+#if LUCI_ANIM_RASTRO
+    for (int i = 0; i < LUCI_RASTRO_N; i++) {
+        float v = c->vidaRastro[i];
+        if (v <= 0.0f) continue;
+        DrawCircleV(c->rastro[i], 1.0f + 3.0f * v, Fade(SKYBLUE, 0.3f * v));
+        DrawCircleV(c->rastro[i], 0.8f + 1.0f * v, Fade(WHITE, 0.5f * v));
+    }
+#endif
+
+    if (c->pertoVida > 0.02f)                                   // pouca vida: um pulso rosado em volta dela, colada nele
+        DrawCircleV(p, altura * (0.75f + 0.12f * sinf(t * 7.0f)), Fade((Color){ 255, 90, 140, 255 }, 0.2f * c->pertoVida));
+
+    if (c->acao == LC_PULSO) {                                  // o Pulso sai dela
+        float r = altura * (0.6f + 2.4f * kPulso);
+        DrawRing(p, r - 2.5f, r, 0.0f, 360.0f, 40, Fade(SKYBLUE, 0.8f * (1.0f - kPulso)));
+        DrawCircleV(p, altura * 0.9f, Fade(WHITE, 0.25f * (1.0f - kPulso)));
+    }
+
+    if (c->acao == LC_SCANNER) {                                // o Scanner: um radar girando a partir dela
+        float k = 1.0f - c->tempoAcao / LUCI_SCANNER_TEMPO;
+        float a = k * 540.0f - 90.0f;
+        Color ciano = { 0, 228, 255, 255 };
+        float R = 72.0f;
+        DrawCircleSector(p, R, a - 45.0f, a, 18, Fade(ciano, 0.16f * (1.0f - k)));
+        DrawLineEx(p, (Vector2){ p.x + cosf(a * DEG2RAD) * R, p.y + sinf(a * DEG2RAD) * R }, 2.0f, Fade(ciano, 0.8f * (1.0f - k)));
+        DrawRing(p, R - 1.5f, R, 0.0f, 360.0f, 48, Fade(ciano, 0.3f * (1.0f - k)));
+    }
+
+    if (c->acao == LC_GUIA && Vector2Distance(c->pos, (Vector2){ c->alvo.x, c->alvo.y - 34.0f }) < 30.0f) {
+        float r = 14.0f + 4.0f * sinf(t * 8.0f);                // chegou: brilha em cima do objetivo
+        DrawRing(p, r - 2.0f, r, 0.0f, 360.0f, 32, Fade(GOLD, 0.7f));
+        DrawCircleV(p, altura * 0.8f, Fade(GOLD, 0.15f));
+    }
+
+    g_luciGiro = (LUCI_ANIM_INCLINAR ? c->inclina : 0.0f) + c->giro;
+    g_luciEsticaX = LUCI_ANIM_INCLINAR ? 1.0f - 0.08f * c->estica : 1.0f;
+    g_luciEsticaY = LUCI_ANIM_INCLINAR ? 1.0f + 0.14f * c->estica : 1.0f;
+    if (LUCI_ANIM_ASAS) { g_luciAsasFase = c->faseAsas; g_luciAsasAmp = c->ampAsas; }
+
+    bool falandoAntes = luciFalando;
+    float tempoAntes = tempoFalaLuci;
+    if (c->falando > 0.0f) { luciFalando = true; tempoFalaLuci = 1.4f - c->falando; }
+
+    DesenharLuciTamanho(p, altura);
+
+    luciFalando = falandoAntes;
+    tempoFalaLuci = tempoAntes;
+    g_luciGiro = 0.0f;
+    g_luciEsticaX = g_luciEsticaY = 1.0f;
+    g_luciAsasFase = -1.0f;
+    g_luciAsasAmp = 0.07f;
+
+    DesenharEmocaoLuci(p, altura);
+}
+
 static void DesenharCompanion(Vector2 jogadorPos, float angulo)
 {
+    if (g_luciComp.iniciada) {
+        DesenharLuciComp(jogadorPos);
+        return;
+    }
+
     Vector2 p = {
         jogadorPos.x + cosf(angulo) * RAIO_ORBITA_LUCI,
         jogadorPos.y - 14.0f + sinf(angulo) * 8.0f + sinf(angulo * 2.7f) * 2.0f
@@ -4682,12 +5031,12 @@ static void DesenharCompanion(Vector2 jogadorPos, float angulo)
 static void DesenharJogadorComLuci(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Direcao direcao,
                                    int quadro, bool comLuci, float anguloLuci)
 {
-    if (comLuci && LuciAtrasDoJogador(anguloLuci))
+    if (comLuci && LuciCompAtras(anguloLuci))
         DesenharCompanion(pos, anguloLuci);
 
     DesenharJogador(sprites, pos, direcao, quadro);
 
-    if (comLuci && !LuciAtrasDoJogador(anguloLuci))
+    if (comLuci && !LuciCompAtras(anguloLuci))
         DesenharCompanion(pos, anguloLuci);
 }
 
@@ -8833,6 +9182,11 @@ static void DesenharFalaLuciHUD(const char *bruto, bool recado, bool sistema)
     bool nomeNoTexto = !sistema && FalaComecaComLuci(bruto) && !TextoDeFalaDaLuci(bruto);
     const char *texto = FalaSemPrefixoLuci(bruto);
     unsigned int ass = AssinaturaFala(texto) ^ (recado ? 0x9E3779B9u : 0u) ^ (sistema ? 0x51ED270Bu : 0u);
+
+    if (!sistema && !recado && GetTime() < g_repetirFalaLuciAte) {     // E sem nada por perto: ela repete a dica
+        g_repetirFalaLuciAte = 0.0;
+        assinatura = 0;
+    }
 
     if (ass != assinatura) {            // fala nova: o balão aparece, ela começa a falar e o bip toca
         assinatura = ass;
@@ -26584,6 +26938,14 @@ static EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, Sessao
         return ROGUE_NADA;
     }
 
+    // E sem nada por perto (nem um mecanismo para segurar): a Luci repete a dica
+    if (IsKeyPressed(KEY_E) && b->tipoSala != SALA_TRANSICAO && b->tipoSala != SALA_LUCI) {
+        bool mecanismo = false;
+        for (int k = 0; k < b->numMecanismos; k++)
+            if (!b->mecanismoDesligado[k] && Vector2Distance(b->j.pos, b->posMecanismo[k]) < MECANISMO_RAIO) mecanismo = true;
+        if (!mecanismo) g_luciPedirDica = true;
+    }
+
     return ROGUE_NADA;
 }
 
@@ -29980,6 +30342,60 @@ static void DesenharHudLuci(const Biblioteca *b, float tempo)
 }
 
 // ---------- Desenho do Bloco 3 ----------
+
+// Para onde a Luci companion mostra o caminho na Biblioteca (só com a sala sem inimigos)
+static bool RogueAlvoGuiaLuci(const Biblioteca *b, Vector2 *alvo)
+{
+    g_luciGuiaSoParado = false;
+    if (RogueInimigosVivos(b) > 0 || b->resultadoAberto || b->morreu)
+        return false;
+
+    if (b->tipoSala == SALA_MESTRE) {
+        const MestreTreino *m = &b->mestre;
+        if (m->etapa == MT_ARMA) { *alvo = POS_ARMA_MESTRE; return true; }
+        if (m->etapa == MT_TIRO)
+            for (int a = 0; a < MESTRE_ALVOS; a++)
+                if (m->alvoVivo[a]) { *alvo = m->alvo[a]; return true; }
+        return false;
+    }
+    if (b->tipoSala == SALA_ATRIO) {
+        *alvo = b->perm->byteVisto ? CentroRetangulo(PORTA_PROXIMA_ROGUE) : POS_BYTE;
+        return true;
+    }
+    if (b->noAtual >= 0 && b->limpa && b->numPortas > 0) {     // sala resolvida: a porta mais perto (só se ele ficar parado)
+        g_luciGuiaSoParado = true;
+        float melhor = 1e9f;
+        for (int k = 0; k < b->numPortas; k++) {
+            Vector2 c = CentroRetangulo(b->portas[k].r);
+            float d = Vector2Distance(c, b->j.pos);
+            if (d < melhor) { melhor = d; *alvo = c; }
+        }
+        return true;
+    }
+    return false;
+}
+
+// Observa o que aconteceu neste quadro e faz a Luci reagir (chamado pelo main, antes do LuciCompAtualizar)
+static void RogueLuciCompObservar(const Biblioteca *b)
+{
+    static float hpAnt = -1.0f, esquivaAnt = 0.0f, pulsoAnt = 0.0f, scannerAnt = 0.0f;
+    static int parriesAnt = -1;
+    const JogadorRogue *j = &b->j;
+    int parries = b->perm->parriesRun + b->mestre.parries;
+
+    if (hpAnt >= 0.0f && parriesAnt >= 0 && !b->morreu) {
+        if (j->hp < hpAnt - 0.5f)                LuciCompSusto(j->pos);
+        if (j->tempoEsquiva > 0.0f && esquivaAnt <= 0.0f) LuciCompGirar();
+        if (parries > parriesAnt)                LuciCompComemorar();
+        if (j->efeitoPulso > pulsoAnt + 0.05f)   LuciCompAcao(LC_PULSO, LUCI_PULSO_TEMPO);
+        if (b->scanner > scannerAnt + 0.05f)     LuciCompAcao(LC_SCANNER, LUCI_SCANNER_TEMPO);
+    }
+    hpAnt = j->hp;
+    esquivaAnt = j->tempoEsquiva;
+    pulsoAnt = j->efeitoPulso;
+    scannerAnt = b->scanner;
+    parriesAnt = parries;
+}
 
 static bool RogueNoBloco3(const Biblioteca *b)
 {
@@ -33671,6 +34087,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
 {
     const JogadorRogue *j = &b->j;
     bool atrio = (b->tipoSala == SALA_ATRIO);
+    bool semArmaAinda = (b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA);   // fim do Bloco 1: a arma ainda está no pedestal
 
     CarregarIconesBiblioteca();         // sprites opcionais dos ícones das salas (só na 1ª vez)
     ClearBackground((Color){ 8, 6, 18, 255 });
@@ -33899,8 +34316,9 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
             DesenharJogadorComLuci(sprites, j->pos, j->direcao, j->anim.quadro, !RogueNoBloco3(b), anguloLuci);   // no Bloco 3 ela se solta
             if (b->cenaLuciTipo == 1) DesenharCenaSeparacao(b, tempo, true);    // cena: a Luci na frente do Thomas
 
-            // A arma equipada na mão, apontada para a mira (guardada no átrio) + o aviso de troca
-            DesenharArmaNaMao(b, tempo, !atrio);
+            // A arma equipada na mão, apontada para a mira (guardada no átrio) + o aviso de troca.
+            // Na sala da Mestre, antes de pegar a arma no pedestal, o Thomas ainda está de mãos vazias.
+            if (!semArmaAinda) DesenharArmaNaMao(b, tempo, !atrio);
         }
 
         DesenharEfeitosJogador(b, tempo);
@@ -34005,7 +34423,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     EndMode2D();
 
     // Mira do mouse (só onde dá para atirar)
-    if (!j->miraSetas && !b->morreu && !atrio && b->cenaLuciTipo == 0 && !b->lojaAberta && !b->desafioAberto && !b->escolhaAberta && !b->eventoAberto && !b->mapaAberto && !b->lab.aberto) {
+    if (!j->miraSetas && !b->morreu && !atrio && !semArmaAinda && b->cenaLuciTipo == 0 && !b->lojaAberta && !b->desafioAberto && !b->escolhaAberta && !b->eventoAberto && !b->mapaAberto && !b->lab.aberto) {
         DesenharMiraMouse(b, cam, tempo);
     }
 
@@ -34283,7 +34701,8 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
         DrawText("SELO", (int)c.x - MeasureText("SELO", 8) / 2, yHud + 22, 8, GOLD);
     }
 
-    DesenharHudArmas(b, tempo);
+    if (!(b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA))   // ainda sem arma: o painel aparece quando ele pega
+        DesenharHudArmas(b, tempo);
     if (!atrio)
         DesenharHudLuci(b, tempo);
 
@@ -34316,6 +34735,7 @@ static void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_D
     const char *controles = atrio ? "WASD andar    E falar, comprar, ler e abrir portas    porta de cima: missão    porta da esquerda: corredor"
                           : (b->tipoSala == SALA_MESTRE) ? ((b->mestre.etapa >= MT_PULSO) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso"
                                                                                             : (b->mestre.etapa >= MT_PARRY) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY"
+                                                                                            : (b->mestre.etapa == MT_ARMA) ? "WASD andar  E pegar"
                                                                                             : "WASD andar  MOUSE atirar  ESPAÇO esquiva  E usar")
                           : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  V / botão direito PARRY  Q pulso  H scanner  E usar"
                           : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
@@ -36555,6 +36975,10 @@ int main(void) {
                             IniciarTransicao(&transicao, CORREDOR, DURACAO_FADE);
                         else
                             DialogoIniciar(&dlg, &dialogoPortaSalaTrancada, OBJ_NENHUM);
+
+                    } else if (luciAcompanhando) {
+
+                        g_luciPedirDica = true;         // nada por perto: a Luci repete a dica
                     }
                 }
             }
@@ -36736,10 +37160,14 @@ int main(void) {
                     // Monitores
                     else {
 
+                        bool achouMonitor = false;
+
                         for (int i = 0; i < TOTAL_MONITORES; i++) {
 
                             if (!CheckCollisionRecs(jogador, ZonaInteracao(monitores[i].area)))
                                 continue;
+
+                            achouMonitor = true;
 
                             int proximo = ProximoMonitor(&progresso);
 
@@ -36766,6 +37194,9 @@ int main(void) {
 
                             break;
                         }
+
+                        if (!achouMonitor)
+                            g_luciPedirDica = true;     // nada por perto: a Luci repete a dica
                     }
                 }
             }
@@ -36923,6 +37354,30 @@ int main(void) {
         // =====================================================
 
         Objetivo objetivo = ObjetivoAtual(tela, &progresso, luciAcompanhando, luciHitbox, chefeVencido);
+
+        // Luci companion: segue o Thomas, reage e mostra o caminho (ver LuciCompAtualizar)
+        {
+            bool comLuci = (tela == JOGANDO && luciAcompanhando) || tela == CORREDOR ||
+                           (tela == BIBLIOTECA && !RogueNoBloco3(&biblioteca));
+            float dtLuci = pausado ? 0.0f : dt;
+
+            if (!comLuci) {
+                g_luciComp.iniciada = false;
+                g_luciPedirDica = false;
+            } else if (tela == BIBLIOTECA) {
+                const Biblioteca *bb = &biblioteca;
+                bool semArma = bb->tipoSala == SALA_ATRIO || (bb->tipoSala == SALA_MESTRE && bb->mestre.etapa == MT_ARMA);
+                Vector2 alvoLuci = { 0 };
+                bool temAlvo = RogueAlvoGuiaLuci(bb, &alvoLuci);
+                RogueLuciCompObservar(bb);
+                LuciCompAtualizar(bb->j.pos, semArma ? (Vector2){ 0 } : bb->j.mira, temAlvo, alvoLuci,
+                                  bb->j.hp / fmaxf(1.0f, RogueHpMax(bb)), dtLuci * (1.0f - bb->lentidao));
+            } else {
+                bool guiaOk = dlg.estado == DLG_NENHUM && !cartao.ativo && !transicao.ativa;
+                g_luciGuiaSoParado = false;
+                LuciCompAtualizar(playerPos, (Vector2){ 0 }, objetivo.temAlvo && guiaOk, objetivo.alvo, 1.0f, dtLuci);
+            }
+        }
 
         bool emExploracao = (tela == JOGANDO || tela == CORREDOR);
         bool podeReagir = emExploracao && luciAcompanhando && !transicao.ativa && !pausado &&

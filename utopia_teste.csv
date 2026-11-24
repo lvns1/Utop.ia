@@ -1,0 +1,49 @@
+tempo_jogo_s;evento;detalhe;valor;quantidade
+2.5;sessao_inicio;;0.0;0
+11.0;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.3;3
+15.9;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;2.9;3
+65.4;batalha_derrota_repetir;MONITOR 1 // O QUE É ALUCINAÇÃO;28.8;2
+125.2;batalha_derrota;MONITOR 1 // O QUE É ALUCINAÇÃO;59.8;3
+127.2;cartao;ALUCINAÇÃO;2.0;0
+141.7;atalho_bloco2_terminal;;1.0;0
+142.3;atalho_bloco1_bloco2;nao;1.0;0
+142.7;atalho_bloco2_terminal;;1.0;0
+143.8;atalho_bloco1_bloco2;sim;1.0;0
+148.8;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.0;5
+151.7;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;2.7;2
+157.3;atrio_primeira_visita;;13.1;0
+157.3;rogue_missao;inicio;0.0;1
+157.3;rogue_sala;COMBATE;0.0;0
+157.3;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+157.3;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+161.3;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+168.2;rogue_temporario;OVERCLOCK;0.0;0
+171.8;rogue_sala_limpa;sala 1 ELIMINAR;14.5;6
+173.4;primeira_missao_escolha;;0.0;0
+173.4;rogue_recompensa_sala;MELHORIA;0.0;0
+177.8;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+179.8;rogue_sala;EDUCATIVA;1.0;1
+183.5;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;2.2;4
+183.5;rogue_terminal;conceito 1;0.0;4
+188.5;dialogo;* ARQUIVO DE AMEAÇA // NÚCLEO DE CORRUPÇÃO;1.2;3
+188.5;rogue_registro_sala;4;0.0;1
+197.6;rogue_sala;COMBATE;2.0;2
+197.6;rogue_encontro;SOBRECARGA;2.0;2
+211.6;rogue_temporario;OVERCLOCK;0.0;0
+218.3;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+220.9;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+227.4;rogue_sala_limpa;sala 3 SOBREVIVER;70.1;24
+228.6;rogue_recompensa_sala;MELHORIA;2.0;2
+229.8;rogue_build;DISPARADOR CALIBRADO;0.0;1
+231.1;rogue_sala;ESPECIAL;3.0;3
+231.1;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+264.4;rogue_sala_limpa;sala 4 ELIMINAR;107.1;35
+268.1;rogue_recompensa_sala;MELHORIA;3.0;3
+269.1;rogue_build;DISPARADOR CALIBRADO;0.0;2
+2.0;sessao_inicio;;0.0;0
+12.5;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;4.6;2
+16.7;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.5;3
+51.1;batalha_derrota;MONITOR 1 // O QUE É ALUCINAÇÃO;31.5;3
+52.7;cartao;ALUCINAÇÃO;1.6;0
+58.0;saber_mais;ALUCINAÇÃO;1.2;0
+60.9;cartao;ALUCINAÇÃO;0.6;0

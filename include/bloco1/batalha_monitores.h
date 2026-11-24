@@ -23,6 +23,7 @@
 #define HP_MAX_B2             20
 #define MAX_OPCOES_B2         4
 #define ATRASO_DESAFIO_B2     0.6f       // evita responder sem querer apertando ENTER rápido
+#define ESPERA_TELA_DERROTA_B1 1.0f      // game over: segundos antes de aceitar a escolha (não pula sem querer)
 
 // Visual dos inimigos das batalhas
 enum { GUARDIAO_ALUCINACAO, GUARDIAO_MESTRE, NUM_GUARDIOES };
@@ -194,6 +195,10 @@ typedef struct {
 
     // Partículas de acerto
     struct { Vector2 pos, vel; float vida; Color cor; } particulas[48];
+
+    // Game over do Bloco 1: a integridade da Luci zerou (issue 8)
+    bool telaDerrota;           // mostrando a tela de derrota (música de game over); E sai da batalha
+    float tempoDerrota;
 } BatalhaB2;
 
 // Cartão de resumo: aparece depois de cada desafio com uma frase para guardar

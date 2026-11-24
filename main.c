@@ -343,7 +343,11 @@ int main(void) {
             else if (jg->tela == JOGANDO)                                  TrocarBGM(&bgmSala,       1);
             else if (jg->tela == CORREDOR)                                 TrocarBGM(&bgmCorredor,   2);
             else if (jg->tela == BATALHA)                                  TrocarBGM(&bgmBatalha,    3);
-            else if (jg->tela == BATALHA_B2)                               TrocarBGM(&bgmMestre,     4);
+            else if (jg->tela == BATALHA_B2) {
+                // A integridade da Luci zerou: a faixa de game over toca na tela de derrota
+                if (jg->batalhaB2.telaDerrota && bgmGameover.stream.buffer) TrocarBGM(&bgmGameover, 8);
+                else                                                         TrocarBGM(&bgmMestre,   4);
+            }
             else if (jg->tela == BIBLIOTECA) {
                 // Biblioteca: o átrio é calmo (mesmo tom da faixa das missões), a arena da Luci tem faixa própria.
                 // Caiu: a faixa de game over toca na tela da queda (volta a da sala quando ele levanta)

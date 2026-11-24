@@ -771,6 +771,12 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
     bool cima  = IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP);
     bool baixo = IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN);
 
+    // Game over: o monitor falhou. E sai da batalha (o monitor fica como erro, sem nova tentativa)
+    if (b->telaDerrota) {
+        b->tempoDerrota += dt;
+        return b->tempoDerrota >= ESPERA_TELA_DERROTA_B1 && IsKeyPressed(KEY_E);
+    }
+
     // "Peso" do golpe: a batalha congela por um instante (o flash continua)
     if (b->flashInimigo > 0.0f) b->flashInimigo -= dt;
     if (b->anelGolpe > 0.0f)    b->anelGolpe -= dt;
@@ -919,8 +925,8 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
                     b->derrota = true;
                     b->fase = B2_FIM;
                     TocarGrupo(&gB1Sobrecarga, 1.0f, 0.85f);
-                    B2Texto(b, TextFormat("* Os dados corrompidos sobrecarregaram a Luci...\n"
-                                          "* Você volta para o corredor e perde %d pontos.", PENALIDADE_HP_ZERO));
+                    B2Texto(b, "* Os dados corrompidos sobrecarregaram a Luci...\n"
+                               "* A integridade dela chegou a zero.");
                 } else if (b->alucinacaoGuardiao < LIMITE_GOLPE_FINAL) {
                     B2ComecarGolpeFinal(b);
                 } else {
@@ -1085,8 +1091,8 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
 
                     b->derrota = true;
                     b->fase = B2_FIM;
-                    B2Texto(b, TextFormat("* Os dados corrompidos sobrecarregaram a Luci...\n"
-                                          "* Você volta para a sala e perde %d pontos.", PENALIDADE_HP_ZERO));
+                    B2Texto(b, "* Os dados corrompidos sobrecarregaram a Luci...\n"
+                               "* A integridade dela chegou a zero.");
 
                 } else {
 
@@ -1130,8 +1136,14 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
         } break;
 
         case B2_FIM: {
-            if (completar)     b->visiveis = (float)total;
-            else if (avancar)  return true;
+            if (completar) { b->visiveis = (float)total; break; }
+            if (!avancar)  break;
+            if (b->derrota) {                   // a Luci caiu: abre a tela de game over
+                b->telaDerrota = true;
+                b->tempoDerrota = 0.0f;
+                break;
+            }
+            return true;
         } break;
 
         case B2_GOLPE_FINAL: {
@@ -1804,8 +1816,30 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
     else if (b->fase == B2_GOLPE_FINAL) instrucao = "ENTER ou CLIQUE  -  VERIFICAR!";
     else if (b->fase == B2_FINALIZANDO) instrucao = "";
 
-    if (b->fase != B2_DESAFIO)
+    if (b->fase != B2_DESAFIO && !b->telaDerrota)
         DrawText(instrucao, LARGURA_TELA / 2 - MeasureText(instrucao, 12) / 2, 568, 12, GRAY);
+
+    // Game over (mesmo estilo do da Biblioteca)
+    if (b->telaDerrota) {
+
+        float k = fminf(b->tempoDerrota / 0.6f, 1.0f);
+        DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.75f * k));
+
+        const char *titulo = "A LUCI FOI SOBRECARREGADA";
+        DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 36) / 2, 230, 36, Fade(MAGENTA, k));
+
+        const char *sub = TextFormat("A integridade dela chegou a zero.  -%d pontos", PENALIDADE_HP_ZERO);
+        DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 16) / 2, 282, 16, Fade(WHITE, k));
+
+        const char *info = b->chefe ? "Você volta ao corredor. A ALUCINAÇÃO MESTRE continua esperando na porta."
+                                    : "Você falhou neste monitor: ele fica marcado como ERRO e não pode ser refeito.";
+        DrawText(info, LARGURA_TELA / 2 - MeasureText(info, 12) / 2, 308, 12, Fade((Color){ 0, 228, 255, 255 }, k));
+
+        if (b->tempoDerrota >= ESPERA_TELA_DERROTA_B1 && ((int)(GetTime() * 2.0)) % 2 == 0) {
+            const char *sair = b->chefe ? "E - voltar ao corredor" : "E - sair do monitor";
+            DrawText(sair, LARGURA_TELA / 2 - MeasureText(sair, 16) / 2, 342, 16, GOLD);
+        }
+    }
 }
 
 // ---------- Cartão de resumo ----------

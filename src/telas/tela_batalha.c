@@ -48,7 +48,7 @@ void TelaBatalhaAtualizar(Jogo *jg)
 void TelaBatalhaB2Atualizar(Jogo *jg)
 {
     if (BatalhaB2Atualizar(&jg->batalhaB2))
-        FimBatalhaB2(&jg->ctxB2);
+        FimBatalhaB2(&jg->ctxB2);       // vitória, ou E na tela de game over (o monitor fica como erro)
 }
 
 void TelaBatalhaDesenhar(Jogo *jg)

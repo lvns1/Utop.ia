@@ -478,6 +478,15 @@ void RogueLuciContexto(Biblioteca *b, int k)
 }
 
 // Na 1ª barra: da dica envenenada para as contradições
+// As três posições das contradições (a real e as duas cópias), girando em volta do centro da arena
+static void RogueLuciPosicionarCopias(LuciChefe *l)
+{
+    for (int k = 0; k < 3; k++) {
+        float a = l->angulo + k * (2.0f * PI / 3.0f);
+        l->copia[k] = PontoNaArena((Vector2){ 400.0f + cosf(a) * 190.0f, 240.0f + sinf(a) * 90.0f });
+    }
+}
+
 static void RogueLuciMudarFase(Biblioteca *b, int fase)
 {
     LuciChefe *l = &b->luci;
@@ -492,6 +501,16 @@ static void RogueLuciMudarFase(Biblioteca *b, int fase)
 
     l->real = GetRandomValue(0, 2);
     l->troca = 5.0f;
+
+    // Contradições: as cópias já nascem no lugar. Antes elas só eram posicionadas no quadro seguinte da luta,
+    // mas o diálogo abaixo pausa a luta; enquanto ele ficava aberto, as cópias eram desenhadas em (0, 0),
+    // no canto de cima da tela.
+    if (fase == LUCI_SUB_CONTRADICAO) {
+        RogueLuciPosicionarCopias(l);
+        l->pos = l->copia[l->real];
+        for (int k = 0; k < 3; k++) RogueParticulas(b, l->copia[k], MAGENTA, 8, 120);
+    }
+
     b->conversaPendente = &dialogoLuciFase2;
     b->objConversa = OBJ_NENHUM;
     Telemetria("bloco3_fase", "", (float)(GetTime() - b->inicio), fase);
@@ -1284,10 +1303,7 @@ static void RogueLuciConflito(Biblioteca *b, float dt)
     // Movimento: na dica flutua no alto; nas contradições gira com as cópias
     if (l->fase == LUCI_SUB_CONTRADICAO) {
         l->angulo += dt * 0.6f * l->ritmo;
-        for (int k = 0; k < 3; k++) {
-            float a = l->angulo + k * (2.0f * PI / 3.0f);
-            l->copia[k] = PontoNaArena((Vector2){ 400.0f + cosf(a) * 190.0f, 240.0f + sinf(a) * 90.0f });
-        }
+        RogueLuciPosicionarCopias(l);
         l->troca -= dt;
         if (l->troca <= 0.0f) {                         // trocam de lugar num clarão
             l->troca = 5.0f;

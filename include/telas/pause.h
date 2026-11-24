@@ -14,7 +14,8 @@
 
 #define DESFOQUE_PAUSA  4        // quanto maior, mais desfocado fica o fundo (2 a 8)
 
-typedef enum { PAUSA_CONTINUAR, PAUSA_LOBBY, PAUSA_MENU, PAUSA_SAIR, NUM_OPCOES_PAUSA } OpcaoPausa;
+// PAUSA_HISTORICO: as últimas falas da Luci (issue #30; o R abre a mesma tela direto do jogo)
+typedef enum { PAUSA_CONTINUAR, PAUSA_HISTORICO, PAUSA_LOBBY, PAUSA_MENU, PAUSA_SAIR, NUM_OPCOES_PAUSA } OpcaoPausa;
 
 // ----- Variáveis compartilhadas -----
 

@@ -102,6 +102,9 @@ typedef struct Jogo {
     float confirmarSaida;
     int opConfirmandoPausa;
     Texture2D fundoPausa;
+    bool historicoAberto;           // tela "FALAS DA LUCI" aberta (dentro do pause)
+    bool historicoDireto;           // aberta pelo R: fechar volta direto ao jogo (senão, ao menu de pause)
+    float rolagemHistorico;
 
     // --- Do quadro atual (recalculados a cada volta do laço) ---
     float dt;

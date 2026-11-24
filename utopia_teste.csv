@@ -178,3 +178,6 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 94.9;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.8;2
 95.9;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;21.8;0
 96.7;cartao;INTRÍNSECA x EXTRÍNSECA;0.8;0
+20.3;sessao_inicio;;0.0;0
+73.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;16.6;5
+89.7;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;3.4;3

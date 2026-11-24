@@ -30,6 +30,7 @@
 #include "include/bloco2/biblioteca_tipos.h"
 #include "include/bloco2/biblioteca.h"
 #include "include/telas/jogo.h"
+#include "include/telas/historico_luci.h"
 
 // =============================================================
 // UtopIA - BLOCO 1
@@ -145,6 +146,18 @@ static void DesenharDevMenu(int sel, int arma, int som, bool naBiblioteca, int p
         DrawText(itens[i], x + 16, iy, 16, c);
     }
     DrawText("Cima/Baixo escolhe  -  Esq/Dir troca  -  ENTER usa", x + 14, y + h - 22, 12, LIGHTGRAY);
+}
+
+// Dá para pausar agora? (ESC e o R do histórico): só durante o jogo, fora das janelas da Biblioteca
+// que têm o próprio ESC, sem transição e sem uma pergunta SIM / NÃO aberta
+static bool PodePausarJogo(const Jogo *jg)
+{
+    const Biblioteca *b = &jg->biblioteca;
+    bool telaDeJogo = jg->tela == JOGANDO || jg->tela == CORREDOR || jg->tela == BATALHA || jg->tela == BATALHA_B2 ||
+                      (jg->tela == BIBLIOTECA && !b->lojaAberta && !b->enciclopediaAberta && !b->mapaAberto && !b->lab.aberto &&
+                       !b->seletorAberto);
+
+    return telaDeJogo && !jg->transicao.ativa && jg->dlg.estado != DLG_CONFIRMA;
 }
 
 int main(void) {
@@ -304,6 +317,9 @@ int main(void) {
     jg->selecaoPausa = PAUSA_CONTINUAR;
     jg->confirmarSaida = 0.0f;             // > 0 = clicou em LOBBY ou SAIR no pause, falta confirmar
     jg->opConfirmandoPausa = -1;             // qual opção do pause está pedindo a confirmação
+    jg->historicoAberto = false;             // tela "FALAS DA LUCI" (R ou menu de pause)
+    jg->historicoDireto = false;
+    jg->rolagemHistorico = 0.0f;
     jg->fundoPausa = (Texture2D){0};
 
 
@@ -466,18 +482,18 @@ int main(void) {
 
                 // Volta para o jogo (cancela também uma confirmação de saída pendente)
                 jg->pausado = false;
+                jg->historicoAberto = false;
                 jg->confirmarSaida = 0.0f;
                 UnloadTexture(jg->fundoPausa);
                 jg->fundoPausa = (Texture2D){0};
 
-            } else if ((jg->tela == JOGANDO || jg->tela == CORREDOR || jg->tela == BATALHA || jg->tela == BATALHA_B2 ||
-                        (jg->tela == BIBLIOTECA && !jg->biblioteca.lojaAberta && !jg->biblioteca.enciclopediaAberta && !jg->biblioteca.mapaAberto && !jg->biblioteca.lab.aberto &&
-                         !jg->biblioteca.seletorAberto)) && !jg->transicao.ativa && jg->dlg.estado != DLG_CONFIRMA) {
+            } else if (PodePausarJogo(jg)) {
 
                 // Só pausa durante o jogo (no menu e na intro o ESC não faz nada)
                 jg->capturarPausa = true;
                 jg->selecaoPausa = PAUSA_CONTINUAR;
                 jg->confirmarSaida = 0.0f;
+                jg->historicoAberto = false;
 
             } else if (jg->tela == OPCOES) {
 
@@ -488,6 +504,30 @@ int main(void) {
                     jg->tela = MENU;
             }
         }
+
+        // =====================================================
+        // R (ou clique no "R - falas da Luci" da caixa): HISTÓRICO DAS FALAS DA LUCI
+        // Abre a mesma tela do menu de pause, com o jogo pausado. Não vale nas telas que
+        // usam o R para outra coisa (a escolha de melhorias rerola com R).
+        // =====================================================
+
+        else if ((IsKeyPressed(TECLA_HISTORICO_LUCI) || jg->dlg.pedirHistorico) && !jg->pausado && !jg->capturarPausa) {
+
+            const Biblioteca *bb = &jg->biblioteca;
+            bool telaLivre = jg->tela != BIBLIOTECA ||
+                             !(bb->escolhaAberta || bb->eventoAberto || bb->desafioAberto || bb->trocaArmaAberta || bb->resultadoAberto);
+
+            if (PodePausarJogo(jg) && telaLivre && !jg->telaRanking.aberto) {
+                jg->capturarPausa = true;
+                jg->selecaoPausa = PAUSA_HISTORICO;
+                jg->confirmarSaida = 0.0f;
+                jg->historicoAberto = true;
+                jg->historicoDireto = true;
+                jg->rolagemHistorico = 0.0f;
+            }
+        }
+
+        jg->dlg.pedirHistorico = false;
 
         // =====================================================
         // ANIMAÇÃO DO TÍTULO
@@ -608,7 +648,23 @@ int main(void) {
         // personagem, diálogos, barra de tempo do quiz e batalha)
         // =====================================================
 
-        if (jg->pausado) {
+        // Histórico das falas da Luci (dentro do pause): fechar volta ao menu de pause,
+        // ou direto ao jogo se ele foi aberto pelo R
+        if (jg->pausado && jg->historicoAberto) {
+
+            if (AtualizarHistoricoLuci(&jg->rolagemHistorico)) {
+
+                jg->historicoAberto = false;
+
+                if (jg->historicoDireto) {
+                    jg->pausado = false;
+                    UnloadTexture(jg->fundoPausa);
+                    jg->fundoPausa = (Texture2D){0};
+                }
+            }
+        }
+
+        else if (jg->pausado) {
 
             bool temLobby = (jg->tela == BIBLIOTECA) && RoguePodeAbandonar(&jg->biblioteca);
             int escolha = AtualizarPausa(&jg->selecaoPausa, temLobby);
@@ -639,6 +695,12 @@ int main(void) {
                     UnloadTexture(jg->fundoPausa);
                     jg->fundoPausa = (Texture2D){0};
                 }
+
+            } else if (escolha == PAUSA_HISTORICO) {
+
+                jg->historicoAberto = true;
+                jg->historicoDireto = false;
+                jg->rolagemHistorico = 0.0f;
 
             } else if (escolha == PAUSA_CONTINUAR) {
 
@@ -880,7 +942,12 @@ int main(void) {
         // PAUSE
         // =====================================================
 
-        if (jg->pausado) {
+        if (jg->pausado && jg->historicoAberto) {
+
+            DesenharHistoricoLuci(jg->fundoPausa, jg->rolagemHistorico, jg->historicoDireto);
+        }
+
+        else if (jg->pausado) {
 
             DesenharPausa(jg->fundoPausa, jg->selecaoPausa, (jg->tela == BIBLIOTECA) && RoguePodeAbandonar(&jg->biblioteca),
                           (jg->confirmarSaida > 0.0f) ? jg->opConfirmandoPausa : -1);

@@ -59,7 +59,7 @@ Texture2D CapturarFundoPausa(RenderTexture2D alvo)
 
 static Rectangle RetanguloOpcaoPausa(int slot)
 {
-    return (Rectangle){ 270, 228 + slot * 52.0f, 260, 42 };
+    return (Rectangle){ 270, 206 + slot * 48.0f, 260, 40 };
 }
 
 // Lê teclado e mouse no menu de pause.
@@ -126,18 +126,19 @@ void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmand
     DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(fundoEscuro, 0.35f));
 
     // Painel roxo, com um filete azul por dentro
-    Rectangle painel = { 240, 140, 320, 335 };
+    Rectangle painel = { 240, 118, 320, 382 };
 
     DrawRectangleRec(painel, Fade(painelCor, 0.92f));
     DrawRectangleLinesEx(painel, 4, PURPLE);
     DrawRectangleLinesEx((Rectangle){ painel.x + 8, painel.y + 8, painel.width - 16, painel.height - 16 }, 1, Fade(SKYBLUE, 0.35f));
 
     const char *titulo = "PAUSADO";
-    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 170, 40, PURPLE);
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 146, 40, PURPLE);
 
     // Opções, com a Luci na marcada
     const char *opcoes[NUM_OPCOES_PAUSA] = {
         "CONTINUAR",
+        "FALAS DA LUCI",
         (opConfirmando == PAUSA_LOBBY) ? "ABANDONAR RUN?" : "VOLTAR AO LOBBY",
         "MENU PRINCIPAL",
         (opConfirmando == PAUSA_SAIR) ? "FECHAR O JOGO?" : "SAIR DO JOGO"
@@ -162,6 +163,10 @@ void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmand
             DrawRectangleRec(r, Fade(MAROON, 0.55f));
 
         DrawText(opcoes[i], (int)r.x + 50, (int)(r.y + r.height / 2) - 10, 20, pedindo ? WHITE : (marcada ? SKYBLUE : LIGHTGRAY));
+
+        // O atalho do histórico também vale fora do pause
+        if (i == PAUSA_HISTORICO)
+            DrawText("[R]", (int)(r.x + r.width) - 34, (int)(r.y + r.height / 2) - 6, 12, Fade(SKYBLUE, 0.7f));
     }
 
     const char *dica1 = "ESC - voltar ao jogo";
@@ -175,6 +180,6 @@ void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmand
         dica2 = "Seu progresso será salvo antes de fechar";
     }
 
-    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 440, 10, Fade(SKYBLUE, 0.6f));
-    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 454, 10, GRAY);
+    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 456, 10, Fade(SKYBLUE, 0.6f));
+    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 470, 10, GRAY);
 }

@@ -23,6 +23,7 @@
 #include "../../include/telas/ranking.h"
 #include "../../include/telas/resolucao.h"
 #include "../../include/bloco2/biblioteca.h"
+#include "../../include/telas/historico_luci.h"
 
 // ---------- Desafios educativos ----------
 
@@ -41,6 +42,7 @@ void RogueRecadoLuci(Biblioteca *b, const char *texto)
 {
     snprintf(b->luciMsg, sizeof(b->luciMsg), "%s", texto);
     b->luciMsgTempo = 3.0f;
+    HistoricoLuciAdicionar(b->luciMsg);     // o recado some em segundos: fica no histórico (R)
 }
 
 // Sobe ou desce a estabilidade. Subir por uma ação do jogador é um REPARO (vai para o save).

@@ -175,6 +175,20 @@ void DesenharFalaLuciHUD(const char *bruto, bool recado, bool sistema)
         tx += wEtiqueta;
     }
     DrawText(TextSubtext(texto, 0, corte), tx, y + (28 - tam) / 2 - 1, tam, Fade(recado ? WHITE : GOLD, k));
+
+    // Leu rápido demais? O "R" do lado do balão lembra que as falas dela ficam no histórico (issue #30)
+    if (!sistema) {
+        const char *rotulo = "rever";
+        int wTecla = MeasureText("R", 10) + 10;
+        int xr = (int)(balao.x + balao.width) + 8;
+        if (xr + wTecla + 4 + MeasureText(rotulo, 10) < LARGURA_TELA - 4) {
+            Rectangle tecla = { (float)xr, (float)y + 6, (float)wTecla, 16 };
+            DrawRectangleRec(tecla, Fade((Color){ 40, 40, 60, 255 }, 0.85f * k));
+            DrawRectangleLinesEx(tecla, 1, Fade(LIGHTGRAY, 0.8f * k));
+            DrawText("R", xr + 5, y + 8, 10, Fade(WHITE, k));
+            DrawText(rotulo, xr + wTecla + 4, y + 9, 10, Fade(SKYBLUE, 0.8f * k));
+        }
+    }
 }
 
 // Objetivo atual: dito pela Luci

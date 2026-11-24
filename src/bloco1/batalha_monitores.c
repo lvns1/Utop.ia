@@ -18,6 +18,7 @@
 #include "../../include/entidades/jogador.h"
 #include "../../include/entidades/luci_companion.h"
 #include "../../include/telas/ranking.h"
+#include "../../include/telas/historico_luci.h"
 
 
 // Vida do Thomas entre os monitores do Bloco 1: o dano de um monitor continua no próximo.
@@ -303,6 +304,7 @@ static void B2ComentarLuci(BatalhaB2 *b, const char *texto)
 {
     snprintf(b->comentarioLuci, sizeof(b->comentarioLuci), "%s", texto);
     b->tempoComentarioLuci = TEMPO_FALA_LUCI_B2;
+    HistoricoLuciAdicionar(b->comentarioLuci);
 }
 
 static const char *FALAS_ACERTO_B2[] = {
@@ -360,6 +362,7 @@ static void B2PedirAjuda(BatalhaB2 *b)
     }
 
     TocarSom(sfxSelecao);
+    HistoricoLuciAdicionar(b->dica);
     Telemetria("ajuda_luci", b->dicaAlucinada ? "alucinou" : "dica", (float)*b->estabilidade, b->rodada);
 }
 
@@ -1405,8 +1408,8 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
             yDica = yBotao + 96;
         }
 
-        const char *dica = (b->estabilidade == NULL) ? "A/D, SETAS ou MOUSE: escolher a ação    ENTER ou CLIQUE: confirmar"
-                         : "A/D ou MOUSE: escolher a ação    S: ajuda da Luci    ENTER ou CLIQUE: confirmar";
+        const char *dica = (b->estabilidade == NULL) ? "A/D, SETAS ou MOUSE: escolher a ação    ENTER ou CLIQUE: confirmar    R: falas da Luci"
+                         : "A/D ou MOUSE: escolher a ação    S: ajuda da Luci    ENTER ou CLIQUE: confirmar    R: falas da Luci";
         DrawText(dica, LARGURA_TELA / 2 - MeasureText(dica, 10) / 2, yDica, 10, GRAY);
     }
 
@@ -1431,7 +1434,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         if (b->estabilidade != NULL)
             B2DesenharBotaoAjuda(b, (Rectangle){ (float)px + 20, (float)y + 2, 330, 30 }, b->selecao == r->numOpcoes);
 
-        DrawText("W/S ou MOUSE: escolher    ENTER ou CLIQUE: confirmar    1-4: atalho    H: ajuda da Luci",
+        DrawText("W/S ou MOUSE: escolher    ENTER ou CLIQUE: confirmar    1-4: atalho    H: ajuda da Luci    R: falas da Luci",
                  px, (int)(caixa.y + caixa.height) - 22, 10, GRAY);
     }
 

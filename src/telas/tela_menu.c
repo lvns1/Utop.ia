@@ -6,6 +6,7 @@
 #include "../../include/core/fonte.h"
 #include "../../include/core/mapas.h"
 #include "../../include/telas/jogo.h"
+#include "../../include/telas/historico_luci.h"
 
 void TelaMenuAtualizar(Jogo *jg)
 {
@@ -59,6 +60,7 @@ void TelaMenuAtualizar(Jogo *jg)
                 jg->direcaoAtual = (Direcao)jg->saveLido.direcao;
                 jg->dlg = (SessaoDialogo){0};
                 jg->cartao = (CartaoResumo){0};
+                HistoricoLuciLimpar();          // o histórico é desta sessão de jogo (não vai para o save)
                 jg->estabilidadeLuci = jg->saveLido.estabilidadeLuci;
                 jg->ajudasPedidas = jg->saveLido.ajudasPedidas;
                 jg->chefeVencido = jg->saveLido.chefeVencido;
@@ -99,6 +101,7 @@ void TelaMenuAtualizar(Jogo *jg)
             jg->progresso = (ProgressoCorredor){0};
             jg->progBiblioteca = (ProgressoBiblioteca){0};
             jg->cartao = (CartaoResumo){0};
+            HistoricoLuciLimpar();
             jg->estabilidadeLuci = ESTABILIDADE_MAX_LUCI;
             jg->ajudasPedidas = 0;
             jg->chefeVencido = false;

@@ -71,6 +71,7 @@
 #define FONTE_CAIXA         18
 #define LARGURA_TEXTO_CAIXA 640
 #define MAX_LINHAS_FALA_LUCI 2       // fala da Luci maior que isso é dividida em mais "páginas" (uma ideia por fala)
+#define MAX_VOLTAR_DIALOGO   10      // quantas falas para trás o BACKSPACE consegue voltar numa conversa
 #define FONTE_PERGUNTA      18
 #define LARGURA_PERGUNTA    680
 #define LARGURA_OPCAO       650

@@ -15,6 +15,7 @@
 #include "../../include/entidades/jogador.h"
 #include "../../include/entidades/luci_companion.h"
 #include "../../include/telas/ranking.h"
+#include "../../include/telas/historico_luci.h"
 
 Texture2D texMapaCorredor = {0};      // sem o arquivo, o corredor usa o cenário simples
 
@@ -134,13 +135,29 @@ static int CorteFalaLuci(const char *texto, int larguraMax, int tamFonte)
 
 // Mostra um texto na caixa. dividir = fala da Luci com mais de MAX_LINHAS_FALA_LUCI linhas vira
 // várias "páginas" (issue #29): o que não coube fica em d->resto, com o "Luci:" na frente.
-static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte, bool dividir)
+// nova = a fala aparece pela primeira vez (false = o jogador voltou para ela com BACKSPACE):
+// só a nova entra na pilha do "voltar" e no histórico da Luci (issue #30).
+static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte, bool dividir, bool nova)
 {
     char pagina[768];
     char resto[768] = "";
 
-    // Cópia: o texto pode ser o próprio d->resto ou o buffer do TextFormat
+    // Cópia: o texto pode ser o próprio d->resto, uma página guardada ou o buffer do TextFormat
     snprintf(pagina, sizeof(pagina), "%s", texto);
+
+    // Guarda a página (antes de dividir: mostrar de novo divide igual) para o BACKSPACE voltar até ela
+    if (nova && dividir) {
+
+        if (d->numAnteriores >= MAX_VOLTAR_DIALOGO) {           // cheio: esquece a mais antiga
+            memmove(d->anteriores[0], d->anteriores[1], sizeof(d->anteriores[0]) * (MAX_VOLTAR_DIALOGO - 1));
+            memmove(&d->paginaAnterior[0], &d->paginaAnterior[1], sizeof(d->paginaAnterior[0]) * (MAX_VOLTAR_DIALOGO - 1));
+            d->numAnteriores = MAX_VOLTAR_DIALOGO - 1;
+        }
+
+        snprintf(d->anteriores[d->numAnteriores], sizeof(d->anteriores[0]), "%s", pagina);
+        d->paginaAnterior[d->numAnteriores] = d->pagina;
+        d->numAnteriores++;
+    }
 
     if (dividir && TextoDeFalaDaLuci(pagina)) {
 
@@ -157,13 +174,37 @@ static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int largura
         }
     }
 
+    // Fala nova da Luci: vai para o histórico (R ou menu de pause)
+    if (nova && dividir && TextoDeFalaDaLuci(pagina))
+        HistoricoLuciAdicionar(pagina);
+
     snprintf(d->resto, sizeof(d->resto), "%s", resto);
     QuebrarTexto(pagina, larguraMax, tamFonte, d->texto, (int)sizeof(d->texto));
     d->visiveis = 0.0f;
 }
 
+// BACKSPACE: volta para a fala anterior desta conversa (já aparece inteira, para reler).
+// Devolve false se não há para onde voltar.
+static bool DialogoVoltarFala(SessaoDialogo *d)
+{
+    if (d->numAnteriores < 2)
+        return false;
+
+    d->numAnteriores--;
+    int i = d->numAnteriores - 1;
+
+    d->pagina = d->paginaAnterior[i];
+    DialogoMostrarTexto(d, d->anteriores[i], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, false);
+    d->visiveis = (float)strlen(d->texto);
+    TocarSomTom(sfxSelecao, 0.8f);
+    return true;
+}
+
 void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto)
 {
+    d->numAnteriores = 0;           // conversa nova: o BACKSPACE não volta para a anterior
+    d->pedirHistorico = false;
+
     d->conteudo = *conteudo;
     d->objeto = objeto;
     d->pagina = 0;
@@ -178,7 +219,7 @@ void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto)
     d->versaoCurta = NULL;
     d->veioDoCartao = false;
 
-    DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+    DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, true);
 }
 
 // Conversa de uma página só montada na hora (ex.: com TextFormat)
@@ -200,7 +241,7 @@ void DialogoConfirmar(SessaoDialogo *d, const char *texto, int objeto)
     fala.numPaginas = 1;
 
     DialogoIniciar(d, &fala, objeto);
-    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, false);     // a pergunta SIM / NÃO fica inteira
+    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, false, true);     // a pergunta SIM / NÃO fica inteira
     d->estado = DLG_CONFIRMA;
     d->selecao = 1;
 }
@@ -222,8 +263,9 @@ void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, in
     d->estado = DLG_FEEDBACK;
     d->corBorda = borda;
     d->pontosGanhos = pontos;
+    d->numAnteriores = 0;           // o feedback não volta para a pergunta (ela tem tempo)
 
-    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, true);
 }
 
 static int AlturaPainelPergunta(const SessaoDialogo *d)
@@ -247,6 +289,68 @@ static Rectangle DialogoRetCaixa(const SessaoDialogo *d)
         alturaCaixa = 150;
 
     return (Rectangle){ 50, (float)(ALTURA_TELA - 14 - alturaCaixa), 700, (float)alturaCaixa };
+}
+
+// ---------- Atalhos desenhados em cima da caixa (issue #30) ----------
+//   0: BACKSPACE volta para a fala anterior    1: R abre o histórico das falas da Luci
+static const char *TECLAS_ATALHO_DLG[2]  = { "BACKSPACE", "R" };
+static const char *ROTULOS_ATALHO_DLG[2] = { "fala anterior", "falas da Luci" };
+
+static bool DialogoMostraAtalhos(const SessaoDialogo *d)
+{
+    return d->estado == DLG_PAGINAS || d->estado == DLG_FEEDBACK;
+}
+
+static float LarguraAtalhoDialogo(int i)
+{
+    return (float)(MeasureText(TECLAS_ATALHO_DLG[i], 10) + 12 + 6 + MeasureText(ROTULOS_ATALHO_DLG[i], 11) + 10);
+}
+
+static Rectangle DialogoRetCaixa(const SessaoDialogo *d);
+
+static Rectangle DialogoRetAtalho(const SessaoDialogo *d, int i)
+{
+    Rectangle c = DialogoRetCaixa(d);
+    float x1 = c.x + c.width - LarguraAtalhoDialogo(1);
+    float x = (i == 1) ? x1 : x1 - 8.0f - LarguraAtalhoDialogo(0);
+    return (Rectangle){ x, c.y - 24.0f, LarguraAtalhoDialogo(i), 20.0f };
+}
+
+static void DesenharAtalhoDialogo(const SessaoDialogo *d, int i, bool ativo)
+{
+    Rectangle r = DialogoRetAtalho(d, i);
+    bool sobre = ativo && MouseEm(r);
+    float alfa = ativo ? 1.0f : 0.4f;
+    int wTecla = MeasureText(TECLAS_ATALHO_DLG[i], 10) + 12;
+    Rectangle tecla = { r.x + 4, r.y + 3, (float)wTecla, r.height - 6 };
+
+    DrawRectangleRec(r, Fade(BLACK, 0.8f * alfa));
+    DrawRectangleLinesEx(r, 1, Fade(sobre ? WHITE : SKYBLUE, 0.6f * alfa));
+    DrawRectangleRec(tecla, Fade((Color){ 40, 40, 60, 255 }, alfa));
+    DrawRectangleLinesEx(tecla, 1, Fade(LIGHTGRAY, alfa));
+    DrawText(TECLAS_ATALHO_DLG[i], (int)tecla.x + 6, (int)tecla.y + 2, 10, Fade(WHITE, alfa));
+    DrawText(ROTULOS_ATALHO_DLG[i], (int)(tecla.x + tecla.width) + 6, (int)r.y + 4, 11, Fade(sobre ? WHITE : SKYBLUE, alfa));
+}
+
+// BACKSPACE (ou clique no atalho): volta uma fala. Clique no "R": pede o histórico ao main.
+// Devolve true se a fala anterior apareceu (o resto do quadro não avança a conversa).
+static bool DialogoTratarAtalhos(SessaoDialogo *d, bool *clique)
+{
+    bool cliqueVoltar = *clique && MouseEm(DialogoRetAtalho(d, 0));
+    bool cliqueHistorico = *clique && MouseEm(DialogoRetAtalho(d, 1));
+
+    if (cliqueVoltar || cliqueHistorico)
+        *clique = false;
+
+    if (cliqueHistorico)
+        d->pedirHistorico = true;
+
+    if (IsKeyPressed(KEY_BACKSPACE) || cliqueVoltar) {
+        DialogoVoltarFala(d);       // na primeira fala não faz nada (e o quadro também não avança)
+        return true;
+    }
+
+    return false;
 }
 
 // O atalho "TAB - ..." escrito na caixa (NULL = não aparece)
@@ -286,7 +390,7 @@ static void DialogoMostrarPergunta(SessaoDialogo *d)
     d->selecao = 0;
     d->tempoRestante = TEMPO_QUIZ;
 
-    DialogoMostrarTexto(d, d->conteudo.pergunta, LARGURA_PERGUNTA, FONTE_PERGUNTA, false);
+    DialogoMostrarTexto(d, d->conteudo.pergunta, LARGURA_PERGUNTA, FONTE_PERGUNTA, false, true);
 
     // As alternativas do PDF são longas: se não couberem, a fonte diminui um pouco
     for (int f = 0; f < 4; f++) {
@@ -339,6 +443,9 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         case DLG_PAGINAS: {
 
+            if (DialogoTratarAtalhos(d, &clique))
+                break;
+
             // TAB (ou clique no "TAB - ..."): abre a versão completa / volta para a versão curta
             bool cliqueTab = clique && DialogoTextoTab(d) != NULL && MouseEm(DialogoRetTab(d));
 
@@ -382,7 +489,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
             // A fala da Luci foi dividida: mostra o pedaço que faltou antes de ir para a próxima página
             if (d->resto[0] != '\0') {
-                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, true);
                 break;
             }
 
@@ -390,7 +497,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
             if (d->pagina < d->conteudo.numPaginas) {
 
-                DialogoMostrarTexto(d, d->conteudo.paginas[d->pagina], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+                DialogoMostrarTexto(d, d->conteudo.paginas[d->pagina], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, true);
 
             } else if (d->conteudo.pergunta != NULL) {
 
@@ -488,6 +595,9 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
         case DLG_FEEDBACK: {
 
+            if (DialogoTratarAtalhos(d, &clique))
+                break;
+
             if (clique)
                 avancar = true;
 
@@ -500,7 +610,7 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
             }
 
             if (d->resto[0] != '\0') {         // a explicação foi dividida: o próximo pedaço
-                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true, true);
                 break;
             }
 
@@ -677,6 +787,12 @@ void DialogoDesenhar(const SessaoDialogo *d)
         26,
         WHITE
     );
+
+    // Atalhos em cima da caixa: BACKSPACE (fala anterior, apagado na primeira fala) e R (histórico)
+    if (DialogoMostraAtalhos(d)) {
+        DesenharAtalhoDialogo(d, 0, d->numAnteriores >= 2);
+        DesenharAtalhoDialogo(d, 1, true);
+    }
 
     // TAB: abre a versão completa ou volta para a curta
     if (d->estado == DLG_PAGINAS && d->conteudo.saberMais != NULL)

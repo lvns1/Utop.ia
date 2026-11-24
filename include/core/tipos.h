@@ -74,6 +74,12 @@ typedef struct {
     bool acertou;
     char texto[768];                        // texto atual, já com quebras de linha
     char resto[768];                        // fala da Luci longa demais: o que vem na próxima "página" (vazio = nada)
+
+    // BACKSPACE volta para a fala anterior (issue #30): as páginas já mostradas nesta conversa
+    char anteriores[MAX_VOLTAR_DIALOGO][768];
+    int paginaAnterior[MAX_VOLTAR_DIALOGO];
+    int numAnteriores;                      // inclui a página que está na tela
+    bool pedirHistorico;                    // clicou no "R - histórico" da caixa: o main abre o histórico
     char opcoesTexto[NUM_OPCOES][512];      // opções já com quebras de linha
     int fonteOpcao;                         // diminui sozinha se as opções não couberem
     int selecao;                            // opção marcada com a Luci

@@ -23,6 +23,7 @@
 #include "../../include/telas/ranking.h"
 #include "../../include/telas/resolucao.h"
 #include "../../include/bloco2/biblioteca.h"
+#include "../../include/telas/historico_luci.h"
 
 // =============================================================
 // EXPANSÃO EDUCATIVA DO BLOCO 2: LÓGICA DOS LABORATÓRIOS
@@ -362,6 +363,7 @@ static void LabFalaLuci(Biblioteca *b, const char *texto, bool alucinada, int ap
     snprintf(L->luciTexto, sizeof(L->luciTexto), "%s: %s%s%s", nome, texto,
              alucinada ? " Tenho 100% de certeza!" : "", (e <= 2) ? " [instável: confira com V]" : "");
     LabCortarUtf8(L->luciTexto);
+    HistoricoLuciAdicionar(L->luciTexto);
 
     L->luciTemSugestao = true;
     L->luciAlucinou = alucinada;

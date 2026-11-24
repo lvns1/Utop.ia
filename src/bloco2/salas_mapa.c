@@ -100,9 +100,9 @@ TipoArma RogueSortearArma(Biblioteca *b, unsigned int excluir)
 static void RogueLigarConceitoInimigo(Biblioteca *b, TipoInimigo tipo)
 {
     const char *fala = NULL;
-    if (tipo == INIMIGO_FRAGMENTO)      fala = "Luci: Lembra dos monitores? Esses FRAGMENTOS são alucinações: respostas confiantes, mas falsas.";
-    else if (tipo == INIMIGO_ECO)       fala = "Luci: Um ECO FALSO inventa o que não dá para verificar. É a alucinação EXTRÍNSECA!";
-    else if (tipo == INIMIGO_GUARDIAO)  fala = "Luci: Esse GUARDIÃO guarda uma afirmação. Aprendeu a evitar alucinar? Verifique antes de acreditar!";
+    if (tipo == INIMIGO_FRAGMENTO)      fala = "Luci: FRAGMENTOS são alucinações: confiantes, mas falsas!";
+    else if (tipo == INIMIGO_ECO)       fala = "Luci: O ECO FALSO inventa o que não dá para verificar: EXTRÍNSECA!";
+    else if (tipo == INIMIGO_GUARDIAO)  fala = "Luci: O GUARDIÃO guarda uma afirmação. Verifique antes de acreditar!";
     if (fala == NULL || b->perm->tentativas > 3 || b->tipoSala == SALA_ATRIO || b->luciMsgTempo > 0.0f)
         return;
     if (b->conceitosLigados & (1u << tipo))

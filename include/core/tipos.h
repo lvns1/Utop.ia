@@ -73,6 +73,7 @@ typedef struct {
     bool respondeu;
     bool acertou;
     char texto[768];                        // texto atual, já com quebras de linha
+    char resto[768];                        // fala da Luci longa demais: o que vem na próxima "página" (vazio = nada)
     char opcoesTexto[NUM_OPCOES][512];      // opções já com quebras de linha
     int fonteOpcao;                         // diminui sozinha se as opções não couberem
     int selecao;                            // opção marcada com a Luci

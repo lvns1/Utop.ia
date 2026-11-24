@@ -65,11 +65,12 @@
 #define DURACAO_FADE        0.35f    // fade entre salas
 #define DURACAO_FADE_BATALHA 0.2f    // fade rápido para entrar/sair da batalha
 
-#define MAX_PAGINAS         8
+#define MAX_PAGINAS         10       // falas curtas (uma ideia por fala) pedem mais páginas
 #define NUM_OPCOES          4
 
 #define FONTE_CAIXA         18
 #define LARGURA_TEXTO_CAIXA 640
+#define MAX_LINHAS_FALA_LUCI 2       // fala da Luci maior que isso é dividida em mais "páginas" (uma ideia por fala)
 #define FONTE_PERGUNTA      18
 #define LARGURA_PERGUNTA    680
 #define LARGURA_OPCAO       650

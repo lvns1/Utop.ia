@@ -1203,6 +1203,19 @@ void RogueAtualizarLuci(Biblioteca *b, ProgressoCorredor *prog, float dt)
     if (b->recargaScanner > 0.0f) b->recargaScanner -= dt;
     if (b->luciEco > 0.0f)        b->luciEco -= dt;
 
+    // Pouca vida: a Luci avisa o que fazer (uma vez; avisa de novo só depois que ele se recuperar).
+    // No Bloco 3 ela não ajuda: lá ela é a chefe.
+    {
+        float vida = b->j.hp / fmaxf(1.0f, RogueHpMax(b));
+        if (vida > 0.5f) {
+            b->luciAvisouVida = false;
+        } else if (!b->luciAvisouVida && vida < 0.3f && b->j.hp > 0.0f && !b->morreu && !RogueNoBloco3(b)) {
+            b->luciAvisouVida = true;
+            RogueRecadoLuci(b, (b->j.itens[ITEM_ANTIVIRUS] > 0) ? "Luci: Pouca vida! Aperte 1 para usar um Antivírus."
+                                                                : "Luci: Pouca vida! Recue e esquive com ESPAÇO.");
+        }
+    }
+
     // Arena da Luci: C contesta o que ela diz; H é o scanner (mostra a verdadeira)
     if (b->tipoSala == SALA_LUCI) {
         b->contradicao = 0.0f;

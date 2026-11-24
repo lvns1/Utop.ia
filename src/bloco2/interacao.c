@@ -532,7 +532,7 @@ static void RogueFimConversa(Biblioteca *b, ProgressoCorredor *prog, int obj)
         if (b->j.itens[ITEM_ANTIVIRUS] < ITENS[ITEM_ANTIVIRUS].maxPilha)
             b->j.itens[ITEM_ANTIVIRUS]++;
         RogueAviso(b, "BRINDE DO BYTECO: 1 ANTIVÍRUS (tecla 1)");
-        RogueRecadoLuci(b, "Luci: Quando terminar aqui, a porta da missão fica no alto do átrio. Eu aviso quando algo for novo.");
+        RogueRecadoLuci(b, "Luci: Depois, siga pela porta da missão, no alto do átrio.");
         Telemetria("atrio_byteco_brinde", "", (float)(GetTime() - b->inicio), b->perm->tentativas);
         b->lojaAberta = true;
         b->selecaoLoja = 0;
@@ -741,7 +741,7 @@ EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo
         b->trocouCenaMestre = false;
         b->estaticaTela = 0.5f;
         TocarSom(sfxEstatica);
-        RogueRecadoLuci(b, "Luci: Ela fugiu pela porta! Vamos atrás: lá as alucinações imitam o que você já aprendeu a duvidar.");
+        RogueRecadoLuci(b, "Luci: Vamos atrás dela pela porta! Ela fugiu!");
         Telemetria("ponte_bloco1_2", "inicio", (float)(GetTime() - b->inicio), 0);
     }
 

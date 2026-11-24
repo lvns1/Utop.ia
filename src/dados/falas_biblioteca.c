@@ -273,8 +273,8 @@ const Dialogo dialogoMestreVitoria = {
     .paginas = {
         "* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.",
         "Luci: Conseguimos! Você esquivou, achou a brecha e rebateu o golpe.",
-        "Luci: Nos monitores você aprendeu a DUVIDAR. Aqui você aprendeu a REAGIR: esquivar, achar a brecha e rebater.",
-        "Luci: Adiante fica a Biblioteca dos Ecos. Lá as alucinações são mais espertas, e algumas se parecem com as que você já enfrentou.",
+        "Luci: Nos monitores você aprendeu a DUVIDAR. Aqui, aprendeu a REAGIR.",
+        "Luci: Adiante fica a Biblioteca dos Ecos. Lá as alucinações são mais espertas.",
         "Luci: Leve o disparador. Agora você está pronto!"
     },
     .numPaginas = 5
@@ -284,23 +284,25 @@ const Dialogo dialogoMestreVitoria = {
 const Dialogo dialogoChegadaBiblioteca = {
     .paginas = {
         "* As portas se fecham atrás de vocês. Prateleiras sem fim, e um zumbido de vozes baixas.",
-        "Luci: Esta é a Biblioteca dos Ecos. Cada sala guarda um eco de alucinação, e cada eco derrotado devolve um Fragmento de Conhecimento.",
-        "Luci: Pelas portas você segue uma missão: sala após sala, até o chefe. Ao vencer uma sala você escolhe 1 entre 3 melhorias.",
-        "Luci: Se cair, você volta para cá com os Fragmentos. O Byteco troca esses fragmentos por melhorias que ficam para sempre.",
-        "Luci: Sem pressa. Quando quiser, vá até a porta da missão. Eu aviso quando algo for novo."
+        "Luci: Esta é a Biblioteca dos Ecos. Cada sala guarda um eco de alucinação.",
+        "Luci: Cada eco derrotado devolve um Fragmento de Conhecimento.",
+        "Luci: Na missão, você segue sala após sala até o chefe.",
+        "Luci: A cada sala vencida, você escolhe 1 entre 3 melhorias.",
+        "Luci: Se cair, volta para cá. O Byteco troca os Fragmentos por melhorias permanentes.",
+        "Luci: Quando quiser, vá até a porta da missão. Eu aviso quando algo for novo."
     },
-    .numPaginas = 5
+    .numPaginas = 7
 };
 
 const char *FALAS_MESTRE_ETAPA[MT_FIM + 1] = {
     NULL,
     NULL,
-    "Luci: Na mosca! Ela vem aí. ESPAÇO esquiva: você atravessa os ataques!",
-    "Luci: Viu? Depois de atacar ela cansa e o escudo fica DOURADO. Atire nessa hora!",
-    "Luci: Agora ela vem para cima. Brilho VERMELHO = golpe. Aperte V quando o anel fechar!",
-    "Luci: PARRY perfeito! Agora o PULSO: ele gasta EP (a barra azul). Aperte Q quando as balas chegarem perto!",
+    "Luci: Na mosca! Ela vem aí. Aperte ESPAÇO para atravessar os ataques!",
+    "Luci: Atire quando o escudo ficar DOURADO: é quando ela cansa!",
+    "Luci: Aperte V quando o anel fechar! Brilho VERMELHO = golpe.",
+    "Luci: PARRY perfeito! Agora aperte Q perto das balas: é o PULSO.",
     NULL,                                       // MELHORIA: a própria tela de escolha explica
-    "Luci: Agora junte tudo: esquive, espere a brecha e rebata o golpe. Você consegue!",
+    "Luci: Junte tudo: esquive, espere a brecha e rebata. Você consegue!",
     NULL
 };
 
@@ -309,7 +311,7 @@ const Dialogo dialogoAlucinadorIntro = {
         "* A sala escurece. Livros flutuam, reescrevendo as próprias páginas.",
         "Alucinador: Mais um usuário que acredita em tudo o que lê? Que delícia. Eu sou o ALUCINADOR.",
         "Alucinador: Cada resposta que ninguém confere me deixa mais forte. Esta Biblioteca agora é MINHA.",
-        "Luci: Thomas, ele mistura verdade e mentira! Desvie dos ataques e acerte ele com o Disparador!"
+        "Luci: Desvie dos ataques e acerte ele com o Disparador! Ele mistura verdade e mentira."
     },
     .numPaginas = 4
 };
@@ -317,9 +319,10 @@ const Dialogo dialogoAlucinadorIntro = {
 const Dialogo dialogoAlucinadorFase2 = {
     .paginas = {
         "Alucinador: Chega de tiros. Vamos ver se você sabe separar o FATO da INVENÇÃO!",
-        "Luci: Ele criou um escudo de distorção! Diga se o que ele fala é CONFIÁVEL (C) ou PROBLEMÁTICO (F). Acertar abre o escudo!"
+        "Luci: Aperte C se o que ele diz é CONFIÁVEL, ou F se é PROBLEMÁTICO.",
+        "Luci: Cada acerto abre o escudo de distorção dele!"
     },
-    .numPaginas = 2
+    .numPaginas = 3
 };
 
 // Final do MVP: a Luci também foi afetada (gancho para o Bloco 3)
@@ -421,43 +424,49 @@ const Dialogo dialogoSilogistaIntro = {
         "* Engrenagens de luz giram no teto. Diagramas flutuam sobre um mecanismo com três encaixes.",
         "Silogista: Todo argumento que eu monto é válido. Este argumento fui eu que montei. Logo, ele é válido! Simples assim.",
         "Silogista: Sou o SILOGISTA, guardião da Câmara da Inferência. Minha armadura lógica tem três camadas. Ninguém passa.",
-        "Luci: Thomas, a primeira camada está ligada àquele mecanismo: P1, P2 e C. Precisamos montar um SILOGISMO!",
-        "Luci: P1 é a premissa maior, a regra geral (Todo M é P). P2 é a premissa menor, o caso particular (S é M). C é a conclusão que decorre das duas (S é P).",
-        "Luci: Pegue um fragmento com E, leve até um encaixe e aperte E de novo. Carregando, você fica mais lento. E se tomar dano, o fragmento cai!"
+        "Luci: Monte um SILOGISMO naquele mecanismo (P1, P2 e C) para quebrar a 1ª camada!",
+        "Luci: P1 é a premissa maior: a regra geral (Todo M é P).",
+        "Luci: P2 é a premissa menor: o caso particular (S é M).",
+        "Luci: C é a conclusão que decorre das duas (S é P).",
+        "Luci: Pegue um fragmento com E, leve até um encaixe e aperte E de novo.",
+        "Luci: Carregando, você fica mais lento. E se tomar dano, o fragmento cai!"
     },
-    .numPaginas = 6
+    .numPaginas = 9
 };
 
 const Dialogo dialogoSilogistaSofisma = {
     .paginas = {
-        "Luci: Isso! Todo registro auditado tem selo; Alfa é auditado; LOGO, Alfa tem selo. A conclusão decorre necessariamente das premissas!",
+        "Luci: Isso! Todo auditado tem selo; Alfa é auditado; LOGO, Alfa tem selo.",
+        "Luci: A conclusão decorre necessariamente das premissas!",
         "* A primeira camada da armadura lógica se desfaz.",
         "Silogista: Sorte de principiante. Veja este outro argumento: também fui eu que montei. Portanto, é válido!",
-        "Luci: O argumento dele PARECE certo, mas o mecanismo está corrompido. Leia com calma lá em cima.",
-        "Luci: Destrua a tiros a peça que não se sustenta. Um tiro perdido não basta: é preciso insistir na peça certa."
+        "Luci: Leia o argumento lá em cima com calma. Ele PARECE certo, mas está corrompido.",
+        "Luci: Atire na peça que não se sustenta, várias vezes. Um tiro só não basta!"
     },
-    .numPaginas = 5
+    .numPaginas = 6
 };
 
 const Dialogo dialogoSilogistaCircuito = {
     .paginas = {
-        "Luci: Exato! Todo auditado tem selo, mas ter selo não prova que foi auditado. A conclusão não decorre das premissas: é um SOFISMA.",
+        "Luci: Exato! Ter selo não prova que foi auditado. A conclusão não decorre: é um SOFISMA.",
         "* A segunda camada se desfaz. Linhas de luz se acendem no chão.",
         "Silogista: Palavras enganam, é? Então vamos falar a língua das máquinas: lógica proposicional!",
-        "Luci: É um circuito: (p E q) OU (NÃO q). p e q são os terminais da esquerda, cada um vale V ou F. As portas fazem as operações.",
-        "Luci: E só dá V se as duas entradas forem V. OU dá V se pelo menos uma for V. NÃO inverte o valor.",
-        "Luci: Atire nas portas para ativá-las na ordem certa: primeiro os parênteses e a negação, depois o OU, que leva ao núcleo."
+        "Luci: Atire nas portas na ordem certa: primeiro os parênteses e o NÃO, depois o OU.",
+        "Luci: O circuito é (p E q) OU (NÃO q). p e q, à esquerda, valem V ou F.",
+        "Luci: E só dá V se as duas entradas forem V.",
+        "Luci: OU dá V se pelo menos uma for V. NÃO inverte o valor."
     },
-    .numPaginas = 6
+    .numPaginas = 7
 };
 
 const Dialogo dialogoSilogistaRodada2 = {
     .paginas = {
         "Luci: p E q = V E F = F. NÃO q = NÃO F = V. F OU V = V. O núcleo recebeu V!",
         "Silogista: Hmpf. Agora o núcleo exige FALSO. E desta vez os terminais são seus.",
-        "Luci: Atirar em p ou em q troca o valor (V ou F). Que combinação faz a expressão inteira dar F? Pense na tabela-verdade antes de atirar!"
+        "Luci: Atire em p ou em q para trocar o valor (V ou F).",
+        "Luci: Que combinação faz tudo dar F? Pense na tabela-verdade antes de atirar!"
     },
-    .numPaginas = 3
+    .numPaginas = 4
 };
 
 const Dialogo dialogoSilogistaVulneravel = {
@@ -475,10 +484,12 @@ const Dialogo dialogoSilogistaVitoria = {
         "* O Silogista se desmonta em diagramas e símbolos que se apagam no ar.",
         "Silogista: Uma conclusão... precisa ser sustentada... pelas premissas. Eu só concluía... o que eu queria.",
         "* Você recebeu o SELO DA INFERÊNCIA! FUNDAMENTOS DA LÓGICA foi registrado na enciclopédia.",
-        "Luci: Você conseguiu demonstrar que uma conclusão precisa estar sustentada por suas premissas. Nem mesmo uma resposta aparentemente lógica deve ser aceita sem análise.",
-        "Luci: O Selo usa o MODUS PONENS: se P -> Q e P, então Q. O 1º acerto num inimigo marca P -> Q, o 2º confirma P... e a conclusão Q sai como um disparo extra!"
+        "Luci: Você mostrou que uma conclusão precisa se sustentar nas premissas.",
+        "Luci: Nem resposta que parece lógica deve ser aceita sem análise.",
+        "Luci: O Selo dá um disparo extra: acerte o mesmo inimigo duas vezes.",
+        "Luci: É o MODUS PONENS: o 1º acerto marca P -> Q, o 2º confirma P... e Q sai como disparo!"
     },
-    .numPaginas = 5
+    .numPaginas = 7
 };
 
 // ---------- Versão bullet-hell: falas e as 3 rodadas (uma regra lógica por camada da armadura) ----------
@@ -487,11 +498,13 @@ const Dialogo dialogoSilogistaIntroBH = {
     .paginas = {
         "* A Câmara da Inferência gira. Símbolos lógicos orbitam o Silogista como projéteis.",
         "Silogista: Um visitante voluntário! Prove que sabe raciocinar e eu entrego o meu SELO... amplificado. Fuja, e ninguém vai notar.",
-        "Luci: Ele vai lançar CONCLUSÕES. As premissas ficam lá em cima. Atire (ou dê PARRY com V / botão direito) SÓ na conclusão que DECORRE delas.",
-        "Luci: Segure SHIFT (ou continue segurando ESPAÇO depois da esquiva) para o FOCUS MODE: o tempo desacelera e o símbolo mais perto mostra o argumento completo. Gasta EP.",
-        "Luci: Acertar uma falácia, ou ser atingido por ela, abala a sua estabilidade (EP). Três conclusões certas derrubam cada camada da armadura."
+        "Luci: Atire (ou dê PARRY com V) SÓ na conclusão que DECORRE das premissas lá em cima.",
+        "Luci: Segure SHIFT para o FOCUS MODE: o tempo desacelera e você lê o argumento. Gasta EP.",
+        "Luci: Também vale continuar segurando ESPAÇO depois da esquiva.",
+        "Luci: Acertar uma falácia, ou ser atingido por ela, gasta EP.",
+        "Luci: Três conclusões certas derrubam cada camada da armadura dele."
     },
-    .numPaginas = 5
+    .numPaginas = 7
 };
 
 static const Dialogo dialogosRodadaSilogistaBH[3] = {
@@ -502,7 +515,7 @@ static const Dialogo dialogosRodadaSilogistaBH[3] = {
         "Luci: Exato: ter Q não prova P. Concluir P assim é AFIRMAR O CONSEQUENTE, um sofisma que parece lógico.",
         "* A segunda camada se desfaz. Silogista: Última prova. Cuidado com o NÃO." }, .numPaginas = 2 },
     { .paginas = {
-        "Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: se a consequência falhou, a causa também não aconteceu.",
+        "Luci: P -> Q e NÃO Q: logo, NÃO P. É o MODUS TOLLENS: sem a consequência, sem a causa.",
         "* A última camada da armadura lógica caiu! Luci: Agora é no Disparador, Thomas!" }, .numPaginas = 2 },
 };
 
@@ -512,9 +525,10 @@ const Dialogo dialogoSilogistaVitoriaBH = {
         "Silogista: Você só aceitou... o que decorria das premissas. Nem mais, nem menos.",
         "* SELO DA INFERÊNCIA AMPLIFICADO! Disparo Dedutivo 50% mais forte e mais rápido, +20 de EP máximo e a Luci mais estável, até o fim da tentativa (e no núcleo, nesta sessão).",
         "* FUNDAMENTOS DA LÓGICA foi registrado na enciclopédia.",
-        "Luci: O Selo usa o MODUS PONENS: o 1º acerto num inimigo marca P -> Q, o 2º confirma P... e a conclusão Q sai como um disparo extra!"
+        "Luci: O Selo dá um disparo extra: acerte o mesmo inimigo duas vezes.",
+        "Luci: É o MODUS PONENS: o 1º acerto marca P -> Q, o 2º confirma P... e Q sai como disparo!"
     },
-    .numPaginas = 5
+    .numPaginas = 6
 };
 
 const RodadaSilogistaBH RODADAS_SILOGISTA_BH[3] = {

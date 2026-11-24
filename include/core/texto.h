@@ -10,6 +10,7 @@
 void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, int tamSaida);
 int DesenharTextoLinhas(const char *texto, int x, int y, int tamFonte, int espacoLinha, Color cor);
 int ContarLinhas(const char *texto);
+int LinhasDoTexto(const char *texto, int larguraMax, int tamFonte);
 bool MouseMexeu(void);
 bool CliqueMouse(void);
 bool MouseEm(Rectangle r);

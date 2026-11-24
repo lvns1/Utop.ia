@@ -78,9 +78,87 @@ int AlterarPontos(ProgressoCorredor *p, int delta)
 
 // ---------- Sistema de diálogo (estilo Undertale) ----------
 
-static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte)
+// Tamanho do "Luci: " do começo (o nome, os dois-pontos e os espaços depois deles)
+static int TamanhoPrefixoFala(const char *t)
 {
-    QuebrarTexto(texto, larguraMax, tamFonte, d->texto, (int)sizeof(d->texto));
+    const char *p = strchr(t, ':');
+
+    if (p == NULL)
+        return 0;
+
+    p++;
+    while (*p == ' ')
+        p++;
+
+    return (int)(p - t);
+}
+
+// Fala da Luci que passa de MAX_LINHAS_FALA_LUCI linhas: onde cortar (em bytes) para o pedaço caber.
+// Prefere o fim de uma frase; depois uma vírgula, ponto e vírgula ou dois-pontos; por último, qualquer espaço.
+// Devolve -1 se a fala já cabe.
+static int CorteFalaLuci(const char *texto, int larguraMax, int tamFonte)
+{
+    if (LinhasDoTexto(texto, larguraMax, tamFonte) <= MAX_LINHAS_FALA_LUCI)
+        return -1;
+
+    char pedaco[768];
+    int melhor[3] = { -1, -1, -1 };         // 0 = fim de frase, 1 = vírgula / ; / :, 2 = qualquer espaço
+    int inicio = TamanhoPrefixoFala(texto);
+    int n = (int)strlen(texto);
+
+    for (int i = inicio + 1; i < n && i < (int)sizeof(pedaco); i++) {
+
+        if (texto[i] != ' ' || texto[i - 1] == ' ')
+            continue;
+
+        memcpy(pedaco, texto, (size_t)i);
+        pedaco[i] = '\0';
+
+        if (LinhasDoTexto(pedaco, larguraMax, tamFonte) > MAX_LINHAS_FALA_LUCI)
+            break;                          // daqui para frente só fica maior
+
+        char c = texto[i - 1];
+        if ((c == '"' || c == ')') && i >= 2) c = texto[i - 2];      // ponto antes de aspas ou parêntese
+
+        if (c == '.' || c == '!' || c == '?')      melhor[0] = i;
+        else if (c == ',' || c == ';' || c == ':') melhor[1] = i;
+        melhor[2] = i;
+    }
+
+    for (int k = 0; k < 3; k++)
+        if (melhor[k] > 0)
+            return melhor[k];
+
+    return -1;                              // uma palavra enorme: deixa como está
+}
+
+// Mostra um texto na caixa. dividir = fala da Luci com mais de MAX_LINHAS_FALA_LUCI linhas vira
+// várias "páginas" (issue #29): o que não coube fica em d->resto, com o "Luci:" na frente.
+static void DialogoMostrarTexto(SessaoDialogo *d, const char *texto, int larguraMax, int tamFonte, bool dividir)
+{
+    char pagina[768];
+    char resto[768] = "";
+
+    // Cópia: o texto pode ser o próprio d->resto ou o buffer do TextFormat
+    snprintf(pagina, sizeof(pagina), "%s", texto);
+
+    if (dividir && TextoDeFalaDaLuci(pagina)) {
+
+        int corte = CorteFalaLuci(pagina, larguraMax, tamFonte);
+
+        if (corte > 0) {
+
+            const char *depois = pagina + corte;
+            while (*depois == ' ')
+                depois++;
+
+            snprintf(resto, sizeof(resto), "%.*s%s", TamanhoPrefixoFala(pagina), pagina, depois);
+            pagina[corte] = '\0';
+        }
+    }
+
+    snprintf(d->resto, sizeof(d->resto), "%s", resto);
+    QuebrarTexto(pagina, larguraMax, tamFonte, d->texto, (int)sizeof(d->texto));
     d->visiveis = 0.0f;
 }
 
@@ -100,7 +178,7 @@ void DialogoIniciar(SessaoDialogo *d, const Dialogo *conteudo, int objeto)
     d->versaoCurta = NULL;
     d->veioDoCartao = false;
 
-    DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
+    DialogoMostrarTexto(d, d->conteudo.paginas[0], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
 }
 
 // Conversa de uma página só montada na hora (ex.: com TextFormat)
@@ -122,6 +200,7 @@ void DialogoConfirmar(SessaoDialogo *d, const char *texto, int objeto)
     fala.numPaginas = 1;
 
     DialogoIniciar(d, &fala, objeto);
+    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, false);     // a pergunta SIM / NÃO fica inteira
     d->estado = DLG_CONFIRMA;
     d->selecao = 1;
 }
@@ -144,7 +223,7 @@ void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, in
     d->corBorda = borda;
     d->pontosGanhos = pontos;
 
-    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
+    DialogoMostrarTexto(d, texto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
 }
 
 static int AlturaPainelPergunta(const SessaoDialogo *d)
@@ -207,7 +286,7 @@ static void DialogoMostrarPergunta(SessaoDialogo *d)
     d->selecao = 0;
     d->tempoRestante = TEMPO_QUIZ;
 
-    DialogoMostrarTexto(d, d->conteudo.pergunta, LARGURA_PERGUNTA, FONTE_PERGUNTA);
+    DialogoMostrarTexto(d, d->conteudo.pergunta, LARGURA_PERGUNTA, FONTE_PERGUNTA, false);
 
     // As alternativas do PDF são longas: se não couberem, a fonte diminui um pouco
     for (int f = 0; f < 4; f++) {
@@ -301,11 +380,17 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
                 break;
             }
 
+            // A fala da Luci foi dividida: mostra o pedaço que faltou antes de ir para a próxima página
+            if (d->resto[0] != '\0') {
+                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
+                break;
+            }
+
             d->pagina++;
 
             if (d->pagina < d->conteudo.numPaginas) {
 
-                DialogoMostrarTexto(d, d->conteudo.paginas[d->pagina], LARGURA_TEXTO_CAIXA, FONTE_CAIXA);
+                DialogoMostrarTexto(d, d->conteudo.paginas[d->pagina], LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
 
             } else if (d->conteudo.pergunta != NULL) {
 
@@ -411,6 +496,11 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
 
             if (!terminou) {
                 d->visiveis = (float)total;
+                break;
+            }
+
+            if (d->resto[0] != '\0') {         // a explicação foi dividida: o próximo pedaço
+                DialogoMostrarTexto(d, d->resto, LARGURA_TEXTO_CAIXA, FONTE_CAIXA, true);
                 break;
             }
 

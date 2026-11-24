@@ -298,6 +298,24 @@ static void B2Particulas(BatalhaB2 *b, Vector2 origem, Color cor, int quantidade
     }
 }
 
+// A Luci comenta um momento-chave (acerto, erro, pouca vida): balão curto no canto, sem pausar a batalha
+static void B2ComentarLuci(BatalhaB2 *b, const char *texto)
+{
+    snprintf(b->comentarioLuci, sizeof(b->comentarioLuci), "%s", texto);
+    b->tempoComentarioLuci = TEMPO_FALA_LUCI_B2;
+}
+
+static const char *FALAS_ACERTO_B2[] = {
+    "Isso! A alucinação ficou mais fraca!",
+    "Boa! Você não caiu na conversa dela!",
+    "Exato! Você está pegando o jeito!"
+};
+static const char *FALAS_ERRO_B2[] = {
+    "Tudo bem, a gente aprende. Agora desvie!",
+    "Quase! Desvie dos ataques e tente de novo.",
+    "Não foi dessa vez. Leia a explicação e desvie!"
+};
+
 // H durante a escolha: a Luci dá uma dica. Cada pedido gasta 1 de estabilidade.
 // Com pouca estabilidade ela pode ALUCINAR: indica a opção errada com toda a certeza.
 static void B2PedirAjuda(BatalhaB2 *b)
@@ -372,6 +390,10 @@ static void B2Responder(BatalhaB2 *b)
         else
             B2Texto(b, TextFormat("* Certo!  %s%s\n* %s", r->explicacao, combo, B2RegraMinigame(b, true)));
 
+        if (b->dicaAlucinada)   B2ComentarLuci(b, "Eu errei e você conferiu. Obrigada!");
+        else if (b->combo >= 2) B2ComentarLuci(b, "Mais um seguido! Seu golpe ficou mais forte!");
+        else                    B2ComentarLuci(b, FALAS_ACERTO_B2[b->acertos % 3]);
+
     } else {
 
         b->erros++;
@@ -389,11 +411,13 @@ static void B2Responder(BatalhaB2 *b)
 
             b->alucinacoesSeguidas++;
             B2Texto(b, TextFormat("* A Luci ALUCINOU e você confiou sem verificar!\n* %s", r->explicacao));
+            B2ComentarLuci(b, "Desculpa, eu alucinei! Sempre confira o que eu digo.");
             b->fase = B2_RESULTADO;
             return;
         }
 
         B2Texto(b, TextFormat("* Errado!  %s\n* %s", r->explicacao, B2RegraMinigame(b, false)));
+        B2ComentarLuci(b, FALAS_ERRO_B2[b->erros % 3]);
     }
 
     b->fase = B2_RESULTADO;
@@ -560,6 +584,7 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
     if (b->flashInimigo > 0.0f) b->flashInimigo -= dt;
     if (b->anelGolpe > 0.0f)    b->anelGolpe -= dt;
     if (b->flashDano > 0.0f)    b->flashDano -= dt;
+    if (b->tempoComentarioLuci > 0.0f) b->tempoComentarioLuci -= dt;
 
     if (b->pausaImpacto > 0.0f) {
         b->pausaImpacto -= dt;
@@ -819,6 +844,13 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
                     bl->ativa = false;
                     b->flashDano = 0.3f;
                     TocarGrupo(&gB1DanoAlma, 1.0f, 0.8f);
+
+                    // Pouca vida: a Luci avisa (uma vez por batalha) o que fazer para sobreviver
+                    if (!b->avisouPoucaVida && b->hp > 0 && b->hp <= VIDA_BAIXA_B2) {
+                        b->avisouPoucaVida = true;
+                        B2ComentarLuci(b, b->faseAtaque ? "Estou por um fio! Desvie de tudo que não for verde!"
+                                                        : "Estou por um fio! Pegue os sinais verdes para curar!");
+                    }
 
                     if (bl->falsa || bl->tipo >= 0)
                         B2Particulas(b, b->alma, MAGENTA, 8);
@@ -1520,6 +1552,39 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         char linhas[200];
         QuebrarTexto(b->dica, 186, 14, linhas, (int)sizeof(linhas));
         DesenharTextoLinhas(linhas, (int)balao.x + 10, (int)balao.y + 24, 14, 17, Fade((Color){ 30, 28, 44, 255 }, k));
+    }
+
+    // Comentário da Luci (acerto, erro, pouca vida): o mesmo balão da dica, que aparece e some sozinho
+    else if (b->tempoComentarioLuci > 0.0f && b->comentarioLuci[0] != '\0' && !b->telaDerrota) {
+
+        float entra = Clamp((TEMPO_FALA_LUCI_B2 - b->tempoComentarioLuci) / 0.2f, 0.0f, 1.0f);
+        float sai = Clamp(b->tempoComentarioLuci / 0.3f, 0.0f, 1.0f);
+        float k = entra * sai;
+
+        char linhas[160];
+        QuebrarTexto(b->comentarioLuci, 186, 14, linhas, (int)sizeof(linhas));
+        int nl = ContarLinhas(linhas);
+
+        Rectangle balao = { 96, 66, 206, (float)(30 + nl * 17) };
+        Vector2 luci = { 64.0f, balao.y + balao.height / 2.0f + sinf((float)GetTime() * 2.0f) * 3.0f };
+
+        // Ela mexe a boca no primeiro segundo do comentário
+        bool falandoAntes = luciFalando;
+        float tempoAntes = tempoFalaLuci;
+        float alfaAntes = g_alfaLuci;
+        luciFalando = (TEMPO_FALA_LUCI_B2 - b->tempoComentarioLuci) < 1.0f;
+        tempoFalaLuci = TEMPO_FALA_LUCI_B2 - b->tempoComentarioLuci;
+        g_alfaLuci = k;
+        DesenharLuciTamanho(luci, 40.0f);
+        luciFalando = falandoAntes;
+        tempoFalaLuci = tempoAntes;
+        g_alfaLuci = alfaAntes;
+
+        DesenharTrianguloB2((Vector2){ balao.x, luci.y - 8 }, (Vector2){ balao.x - 12, luci.y }, (Vector2){ balao.x, luci.y + 8 }, Fade(WHITE, k));
+        DrawRectangleRec(balao, Fade(WHITE, k));
+        DrawRectangleLinesEx(balao, 2, Fade((Color){ 0, 228, 255, 255 }, k));
+        DrawText("LUCI", (int)balao.x + 10, (int)balao.y + 8, 10, Fade((Color){ 0, 82, 172, 255 }, k));
+        DesenharTextoLinhas(linhas, (int)balao.x + 10, (int)balao.y + 22, 14, 17, Fade((Color){ 30, 28, 44, 255 }, k));
     }
 
     B2DesenharCola(b);

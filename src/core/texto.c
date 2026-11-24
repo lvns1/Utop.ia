@@ -91,6 +91,14 @@ void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, 
     }
 }
 
+// Em quantas linhas o texto quebraria (sem passar pelo cache: serve para medir vários pedaços de uma vez)
+int LinhasDoTexto(const char *texto, int larguraMax, int tamFonte)
+{
+    char saida[1024];
+    QuebrarTextoCalcular(texto, larguraMax, tamFonte, saida, (int)sizeof(saida));
+    return ContarLinhas(saida);
+}
+
 // Desenha um texto com várias linhas (separadas por '\n') e devolve quantas linhas desenhou.
 int DesenharTextoLinhas(const char *texto, int x, int y, int tamFonte, int espacoLinha, Color cor)
 {

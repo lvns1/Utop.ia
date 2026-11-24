@@ -25,15 +25,16 @@
 // Versão completa da história (TAB na conversa curta)
 static const Dialogo dialogoLuciSalaCompleto = {
     .paginas = {
-        "Luci: Olá, Thomas. Eu imagino que se pergunte o que está fazendo aqui. Eu sou Luci, um dos algoritmos que fazem parte da IA que você usa todos os dias.",
-        "Luci: No início, o universo de UtopIA funcionava perfeitamente, mas com o tempo, a IA começou a alucinar e está destruindo a si mesma.",
-        "Luci: Eu trouxe você para cá porque preciso de ajuda e você é o usuário que mais nos utiliza.",
-        "Luci: Para voltar para casa, você vai precisar enfrentar 3 missões. A primeira é enfrentar as alucinações guardadas nos monitores do corredor.",
-        "Luci: Na segunda missão, você vai explorar salas e resolver puzzles para conquistar os objetos mágicos.",
-        "Luci: No final, você irá enfrentar a IA alucinada com seus objetos.",
-        "Luci: A porta lá em cima leva ao Corredor do Histórico. Eu vou com você."
+        "Luci: Olá, Thomas! Eu sou a Luci, um dos algoritmos da IA que você usa todo dia.",
+        "Luci: UtopIA funcionava bem. Mas a IA começou a alucinar e está se destruindo.",
+        "Luci: Eu trouxe você porque preciso de ajuda. Você é quem mais usa a gente!",
+        "Luci: Para voltar para casa, você vai cumprir 3 missões.",
+        "Luci: 1ª missão: vencer as alucinações dos monitores do corredor.",
+        "Luci: 2ª missão: explorar salas e resolver puzzles para ganhar os objetos mágicos.",
+        "Luci: No final, você enfrenta a IA alucinada com esses objetos.",
+        "Luci: Agora vá até a porta lá em cima. Eu vou com você!"
     },
-    .numPaginas = 7
+    .numPaginas = 8
 };
 
 // Conversa curta: o essencial em 3 falas
@@ -66,13 +67,16 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
         .quiz = {
             .titulo = "MONITOR 1 // O QUE É ALUCINAÇÃO",
             .paginas = {
-                "Luci: Aqui, eu vou te explicar o que é a alucinação. Ela acontece quando um modelo de IA gera uma resposta que parece confiante e coerente, mas que é incorreta, contradiz o contexto fornecido ou é inventada.",
-                "Luci: Isso acontece porque a IA não busca a \"verdade\", mas padrões estatísticos. No pré-treinamento, o modelo é alimentado com uma quantidade imensa de dados e aprende prevendo a próxima palavra de uma sequência.",
-                "Luci: Se a informação que você busca é rara ou ambígua nos dados de treinamento, o modelo pode \"adivinhar\" a resposta mais provável.",
-                "Luci: No pós-treinamento, mesmo depois dos ajustes para diminuir os erros, as alucinações persistem. Os sistemas de avaliação de IA muitas vezes recompensam respostas e penalizam a incerteza.",
-                "Luci: É como em uma prova de múltipla escolha, onde \"chutar\" uma resposta, mesmo sem saber, pode te dar um ponto, mas deixar em branco não."
+                "Luci: Alucinação é quando a IA responde com confiança e coerência... mas erra ou inventa.",
+                "Luci: Ela também acontece quando a resposta contradiz o contexto que você deu.",
+                "Luci: Por quê? A IA não busca a \"verdade\". Ela segue padrões estatísticos.",
+                "Luci: No pré-treinamento, ela lê muitos dados e aprende a prever a próxima palavra.",
+                "Luci: Se o assunto é raro ou ambíguo nos dados, ela \"adivinha\" a resposta mais provável.",
+                "Luci: No pós-treinamento, os ajustes diminuem os erros. Mas as alucinações continuam.",
+                "Luci: É que as avaliações costumam premiar a resposta e punir o \"não sei\".",
+                "Luci: É como chutar numa prova: o chute pode valer ponto, a resposta em branco não."
             },
-            .numPaginas = 5,
+            .numPaginas = 8,
             .pergunta = "Qual alternativa está correta sobre as alucinações de IA e o treinamento do modelo?",
             .opcoes = {
                 "A alucinacao e uma resposta convincente, mas incorreta. "
@@ -89,7 +93,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
                 "e pode gerar respostas provaveis, mas falsas."
             },
             .correta = 3,
-            .explicacao = "A alucinação parece confiante, mas é errada ou inventada. E os ajustes do pós-treinamento não eliminam o problema, porque a incerteza ainda costuma ser penalizada."
+            .explicacao = "Alucinação soa confiante, mas é falsa. E o pós-treinamento não acaba com ela."
         }
     },
 
@@ -100,11 +104,13 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
         .quiz = {
             .titulo = "MONITOR 2 // TIPOS DE ALUCINAÇÃO",
             .paginas = {
-                "Luci: Agora que você já sabe o que é alucinação e como funciona, quero que você entenda os tipos e, principalmente, os riscos e como mitigar esse problema.",
-                "Luci: As alucinações intrínsecas ocorrem quando a resposta contradiz a informação fornecida pelo usuário ou o contexto dado. É uma falha de \"atenção\" ao que foi pedido.",
-                "Luci: As extrínsecas acontecem quando a resposta não pode ser verificada ou é completamente inventada, mesmo que não contradiga o contexto. É uma \"criatividade\" indesejada."
+                "Luci: Agora, os dois TIPOS de alucinação: intrínseca e extrínseca.",
+                "Luci: INTRÍNSECA: a resposta contradiz o que o usuário informou ou o contexto dado.",
+                "Luci: É uma falha de \"atenção\" ao que foi pedido.",
+                "Luci: EXTRÍNSECA: a resposta é inventada ou não dá para verificar.",
+                "Luci: Ela nem contradiz o contexto. É uma \"criatividade\" indesejada."
             },
-            .numPaginas = 3,
+            .numPaginas = 5,
             .pergunta = "Qual alternativa apresenta corretamente os dois tipos de alucinação?",
             .opcoes = {
                 "Intrínsecas: a resposta contradiz o contexto. Extrínsecas: a resposta é inventada ou não verificável, sem contradizer o contexto.",
@@ -116,7 +122,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
                 "Intrínsecas: a IA aprende dados errados ou desatualizados. Extrínsecas: a IA associa informações sem relação real."
             },
             .correta = 1,
-            .explicacao = "A intrínseca contradiz o que o usuário ou o contexto informou. A extrínseca não pode ser verificada ou é inventada, mesmo sem contradizer o contexto."
+            .explicacao = "Intrínseca contradiz o contexto. Extrínseca inventa o que não dá para verificar."
         }
     },
 
@@ -127,13 +133,16 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
         .quiz = {
             .titulo = "MONITOR 3 // RISCOS E MITIGAÇÃO",
             .paginas = {
-                "Luci: Há alguns riscos com a alucinação. Ao receber dados ruins, a IA aprende informações erradas ou desatualizadas, repetindo esses erros.",
-                "Luci: Com limitações no modelo, a IA enxerga apenas coincidências, não relações de causa e efeito, e junta coisas que aparecem juntas nos dados, mesmo sem ligação real.",
-                "Luci: Se o usuário dá instruções confusas, a IA inventará informações para preencher as lacunas e manter a coerência.",
-                "Luci: Mesmo assim, dá para mitigar. Uma das formas mais importantes é a verificação humana: o usuário aprova, rejeita ou pede revisão de cada resposta, podendo validar com fontes externas.",
-                "Luci: Também ajuda fazer perguntas diretas e dar um contexto mais claro. De forma mais técnica, há métodos como o RAG, que conectam o modelo a uma base de dados confiável em tempo real."
+                "Luci: Agora, os RISCOS da alucinação e como evitá-los.",
+                "Luci: Dados ruins: a IA aprende informações erradas ou velhas e repete esses erros.",
+                "Luci: Limites do modelo: a IA vê coincidências, não causa e efeito.",
+                "Luci: Por isso ela junta coisas que aparecem juntas nos dados, mesmo sem ligação real.",
+                "Luci: Pedido confuso: a IA inventa para preencher as lacunas.",
+                "Luci: Para evitar, VERIFIQUE: aprove, rejeite ou peça revisão, e confira em fontes externas.",
+                "Luci: Também ajuda perguntar de forma direta e dar um contexto claro.",
+                "Luci: Na parte técnica, o RAG liga o modelo a uma base de dados confiável."
             },
-            .numPaginas = 5,
+            .numPaginas = 8,
             .pergunta = "Qual alternativa descreve corretamente um risco da alucinação e uma forma adequada de mitigá-lo?",
             .opcoes = {
                 "A IA associa fatos sem relação e presume causalidade. Para evitar isso, aceite respostas confiantes e coerentes.",
@@ -145,7 +154,7 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
                 "A IA inventa informações diante de pedidos confusos. Para evitar isso, reformule a pergunta e forneça contexto claro."
             },
             .correta = 3,
-            .explicacao = "Pedidos confusos fazem a IA preencher lacunas inventando. Reformular de forma direta e com contexto claro ataca a causa do problema."
+            .explicacao = "Pedido confuso faz a IA inventar. Reformule e dê um contexto claro."
         }
     }
 };
@@ -153,19 +162,20 @@ const MonitorQuiz monitores[TOTAL_MONITORES] = {
 // Falas avulsas da Luci (sem pergunta)
 static const Dialogo dialogoIntroCorredorCompleto = {
     .paginas = {
-        "Luci: Este é o Corredor do Histórico. Cada um destes 3 monitores guarda uma alucinação sobre um tema diferente.",
-        "Luci: Chegue perto de um monitor e aperte E. A alucinação vai dizer algo, e você escolhe a ação certa para enfraquecê-la.",
-        "Luci: Se errar, ela ataca. Pegue os sinais verdes de verdade, que recuperam a sua vida, e desvie de todo o resto.",
-        "Luci: Se travar numa escolha, aperte H e eu te dou uma dica. Cada ajuda me deixa mais instável, e uma IA instável pode alucinar: aí eu posso jurar que uma resposta errada é a certa.",
-        "Luci: Acertar sozinho me estabiliza de novo. Use a ajuda, mas sempre confira o que eu disser!",
-        "Luci: Vença as 3 alucinações e enfrente a ALUCINAÇÃO MESTRE. Aí a porta da direita se destranca."
+        "Luci: Chegue perto de um monitor e aperte E. Cada um guarda uma alucinação.",
+        "Luci: A alucinação diz algo. Escolha a ação certa para enfraquecê-la.",
+        "Luci: Errou? Ela ataca. Pegue os sinais verdes, que recuperam vida, e desvie do resto.",
+        "Luci: Travou numa escolha? Aperte H e eu dou uma dica.",
+        "Luci: Mas cada ajuda me deixa instável. E instável, eu posso jurar que o errado é o certo!",
+        "Luci: Acertar sozinho me estabiliza. Use a ajuda, mas confira o que eu disser!",
+        "Luci: Para abrir a porta da direita, vença as 3 alucinações e a ALUCINAÇÃO MESTRE."
     },
-    .numPaginas = 6
+    .numPaginas = 7
 };
 
 const Dialogo dialogoIntroCorredor = {
     .paginas = {
-        "Luci: Cada monitor guarda uma alucinação. Chegue perto e aperte E!",
+        "Luci: Chegue perto de um monitor e aperte E. Cada um guarda uma alucinação!",
         "Luci: Escolha a ação certa. No ataque, PEGUE o verde e DESVIE do resto!",
         "Luci: Travou? Aperte H. Mas se eu ajudar demais... eu também alucino!"
     },

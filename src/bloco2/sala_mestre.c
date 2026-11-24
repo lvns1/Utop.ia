@@ -90,16 +90,16 @@ static void MestreDicaProgressiva(Biblioteca *b)
           "Luci: Os alvos estão lá em cima. O tiro sai na direção do cursor do mouse.",
           "Luci: Deixe o cursor em cima de um alvo e clique. É só isso!" },
         { "Luci: Aperte ESPAÇO para dar um impulso rápido. Faça isso duas vezes.",
-          "Luci: Ande com WASD e aperte ESPAÇO: o Thomas dá um pulo e fica invulnerável.",
+          "Luci: Aperte ESPAÇO andando: o Thomas pula e fica invulnerável.",
           "Luci: Pode apertar ESPAÇO a qualquer momento, até sem bala por perto!" },
-        { "Luci: Desvie das balas até ela cansar. Com o escudo DOURADO, clique para atirar!",
-          "Luci: Só o escudo DOURADO recebe dano. Mire nela e clique rápido nessa hora.",
+        { "Luci: Clique para atirar quando o escudo ficar DOURADO!",
+          "Luci: Só o escudo DOURADO recebe dano. Mire e clique rápido!",
           "Luci: Fique longe, esquive (ESPAÇO) e atire só quando o escudo brilhar." },
-        { "Luci: Quando ela brilhar em VERMELHO e vier em você, aperte V (ou o botão direito).",
-          "Luci: Não precisa ser perfeito: aperte V quando o anel vermelho fechar em volta do Thomas.",
-          "Luci: Aumentei sua margem de tempo. Aperte V assim que o anel ficar dourado!" },
-        { "Luci: A barra azul é o EP. Aperte Q para soltar o PULSO: ele apaga as balas por perto.",
-          "Luci: Espere as balas dela chegarem perto do Thomas e aperte Q. O Pulso gasta 35 de EP.",
+        { "Luci: Aperte V quando ela brilhar em VERMELHO e vier em você!",
+          "Luci: Aperte V quando o anel vermelho fechar. Não precisa ser perfeito!",
+          "Luci: Aperte V assim que o anel ficar dourado! Aumentei sua margem." },
+        { "Luci: Aperte Q para soltar o PULSO: ele apaga as balas por perto.",
+          "Luci: Aperte Q quando as balas chegarem perto. Gasta 35 de EP.",
           "Luci: É só apertar Q! O EP volta sozinho com o tempo." },
         { NULL, NULL, NULL }
     };
@@ -553,7 +553,7 @@ void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float dt)
             if (!b->escolhaAberta && b->escolhaTreinoFeita) {
                 b->escolhaTreinoFeita = false;
                 MestreMudarEtapa(b, MT_LUTA);
-                b->mestre.falaDepois = "Luci: Na missão é 1 entre 3 melhorias e vale até o fim. Agora junte tudo e vença a Mestre!";
+                b->mestre.falaDepois = "Luci: Agora junte tudo e vença a Mestre! Você consegue!";
             }
             break;
         case MT_LUTA:

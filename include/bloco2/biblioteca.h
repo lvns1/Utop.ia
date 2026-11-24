@@ -267,6 +267,7 @@ typedef struct {
     char luciMsg[128];              // recado curto da Luci perto do HUD (não pausa o jogo)
     float lentidao;                 // câmera lenta do tutorial (0 = normal; o main multiplica o dt por 1 - lentidao)
     float luciMsgTempo;
+    bool luciAvisouVida;            // a Luci já avisou da vida baixa (volta a avisar depois que ele se recupera)
     float tempoSalaAtual;       // segundos na sala atual da missão (as dicas da 1ª missão usam)
     unsigned int conceitosLigados;  // inimigos cuja ligação com os monitores a Luci já comentou (só nesta sessão; não vai para o save)
     double entradaAtrio;        // quando entrou no átrio (telemetria: quanto tempo o jogador fica lá antes da 1ª missão)

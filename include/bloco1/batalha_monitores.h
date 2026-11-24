@@ -23,6 +23,8 @@
 #define MAX_OPCOES_B2         4
 #define ATRASO_DESAFIO_B2     0.6f       // evita responder sem querer apertando ENTER rápido
 #define ESPERA_TELA_DERROTA_B1 1.0f      // game over: segundos antes de aceitar a escolha (não pula sem querer)
+#define TEMPO_FALA_LUCI_B2    2.8f       // quanto tempo o comentário da Luci (acerto, erro, pouca vida) fica na tela
+#define VIDA_BAIXA_B2         6          // com esta vida ou menos, a Luci avisa (uma vez por batalha)
 
 // Visual dos inimigos das batalhas
 enum { GUARDIAO_ALUCINACAO, NUM_GUARDIOES };
@@ -144,6 +146,11 @@ typedef struct {
     int opcaoSugerida;          // opção que a Luci "jurou" ser a certa (quando alucina)
     char dica[160];
     float tempoDica;
+
+    // Comentário da Luci nos momentos-chave (acerto, erro, pouca vida): um balão curto que some sozinho
+    char comentarioLuci[96];
+    float tempoComentarioLuci;  // > 0: o balão está na tela (conta para baixo)
+    bool avisouPoucaVida;       // a Luci já avisou da vida baixa nesta batalha
     int acertosComAjuda;
     int alucinacoesSeguidas;    // vezes que o jogador seguiu uma dica alucinada
 

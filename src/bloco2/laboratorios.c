@@ -991,7 +991,7 @@ static BotaoLab *LabAddBotao(BotaoLab *bt, int *n, Rectangle r, AcaoLab acao, in
 
 static float LabLarguraBotao(const char *rotulo, int custo)
 {
-    return (float)(MeasureText(rotulo, 10) + 24 + custo * 8);
+    return (float)(MeasureText(rotulo, 10) + 2 * LAB_PAD_BOTAO + custo * 8);
 }
 
 // Botões da Luci (à esquerda, na linha de baixo)
@@ -1039,12 +1039,12 @@ static float LabAlturaCartao(const char *texto, int largura, int fonte, int espa
 {
     char linhas[512];
     QuebrarTexto(texto, largura, fonte, linhas, (int)sizeof(linhas));
-    return (float)(ContarLinhas(linhas) * espaco + 12);
+    return (float)(ContarLinhas(linhas) * EspacoLinhaTexto(espaco, fonte) + 12);
 }
 
 Rectangle LabRetEncaixe(int k)
 {
-    return (Rectangle){ 44.0f + k * 180.0f, 102, 172, 66 };
+    return (Rectangle){ 44.0f + k * 180.0f, TextoGrande() ? 114.0f : 108.0f, 172, 66 };     // embaixo das 2 linhas da missão
 }
 
 // Cartões das peças do encaixe ativo (0 a 2 = alternativas, 3 = deixar vazio)

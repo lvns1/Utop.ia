@@ -251,22 +251,32 @@ static void DesenharBotaoLab(const BotaoLab *o, bool foco, float tempo)
 
             DrawRectangle((int)r.x, (int)r.y, (int)r.width, 18, Fade(ck, 0.22f));
             DesenharIconeParte(k, (Vector2){ r.x + 11, r.y + 9 }, 0.75f, ck);
-            DrawText(o->rotulo, (int)r.x + 22, (int)r.y + 4, 10, sel ? WHITE : ck);
+            // O resultado (IDEAL, ATRAPALHOU...) fica à direita; se não couber do lado do nome (texto grande),
+            // ele toma o lugar do nome (o ícone e a cor continuam dizendo qual é o encaixe)
+            bool resultadoNoLugar = false;
+            if (o->luz >= 0)
+                resultadoNoLugar = (int)r.x + 22 + MeasureText(o->rotulo, 10) + 6 > (int)(r.x + r.width) - MeasureText(NOMES_LUZ[o->luz], 10) - 13;
+            if (!resultadoNoLugar)
+                DrawText(o->rotulo, (int)r.x + 22, (int)r.y + 4, 10, sel ? WHITE : ck);
 
             if (o->luz >= 0) {
                 const char *nl = NOMES_LUZ[o->luz];
                 Color cl = CORES_LUZ[o->luz];
                 int w = MeasureText(nl, 10) + 10;
-                DrawRectangle((int)(r.x + r.width) - w - 3, (int)r.y + 3, w, 13, cl);
-                DrawText(nl, (int)(r.x + r.width) - w + 2, (int)r.y + 4, 10, BLACK);
+                int xl = resultadoNoLugar ? (int)r.x + 20 : (int)(r.x + r.width) - w - 3;
+                DrawRectangle(xl, (int)r.y + 3, w, LinhaTexto(13), cl);
+                DrawText(nl, xl + 5, (int)r.y + 4, 10, BLACK);
                 DrawRectangleLinesEx(r, 2.0f, Fade(cl, 0.45f + 0.3f * sinf(tempo * 4.0f)));
             } else if (o->chip) {
                 Color ciano = { 0, 228, 255, 255 };
                 DrawRectangle((int)(r.x + r.width) - 42, (int)r.y + 3, 39, 13, ciano);
                 DrawText("LUCI", (int)(r.x + r.width) - 35, (int)r.y + 4, 10, BLACK);
             } else {
+                // A dica ("QUEM responde"...) só aparece se couber do lado do nome (com o texto grande, às vezes não cabe)
                 const char *d = DICAS_PARTES_PROMPT[k];
-                DrawText(d, (int)(r.x + r.width) - MeasureText(d, 10) - 6, (int)r.y + 4, 10, Fade(LIGHTGRAY, 0.6f));
+                int xd = (int)(r.x + r.width) - MeasureText(d, 10) - 6;
+                if (xd > (int)r.x + 22 + MeasureText(o->rotulo, 10) + 6)
+                    DrawText(d, xd, (int)r.y + 4, 10, Fade(LIGHTGRAY, 0.6f));
             }
 
             const char *t = (o->texto != NULL) ? o->texto : (sel ? "escolha a peça abaixo" : "(vazio)");
@@ -298,7 +308,7 @@ static void DesenharBotaoLab(const BotaoLab *o, bool foco, float tempo)
             char linhas[256];
             QuebrarTexto(o->texto != NULL ? o->texto : "", (int)r.width - 110, 10, linhas, (int)sizeof(linhas));
             int nl = ContarLinhas(linhas);
-            DesenharTextoLinhas(linhas, (int)r.x + 44, (int)(r.y + r.height / 2) - (nl * 12) / 2 + 1, 10, 12,
+            DesenharTextoLinhas(linhas, (int)r.x + 44, (int)(r.y + r.height / 2) - (nl * EspacoLinhaTexto(12, 10)) / 2 + 1, 10, 12,
                                 (o->param == 0) ? LIGHTGRAY : WHITE);
             if (m) {
                 const char *u = "NO ENCAIXE";
@@ -350,16 +360,16 @@ static void DesenharBotaoLab(const BotaoLab *o, bool foco, float tempo)
             char linhas[512];
             QuebrarTexto(o->texto != NULL ? o->texto : "", larg, o->fonte, linhas, (int)sizeof(linhas));
             int nl = ContarLinhas(linhas);
-            int yt = o->chip ? (int)r.y + 6 : (int)(r.y + r.height / 2) - (nl * espaco) / 2 + 1;
+            int yt = o->chip ? (int)r.y + 6 : (int)(r.y + r.height / 2) - (nl * EspacoLinhaTexto(espaco, o->fonte)) / 2 + 1;
             DesenharTextoLinhas(linhas, xt, yt, o->fonte, espaco, (o->ativo || m) ? WHITE : LIGHTGRAY);
         } break;
 
         default: {      // botão comum e botões da Luci
             DrawRectangleRec(r, foco ? Fade(c, 0.35f) : Fade(c, o->marcado ? 0.25f : 0.10f));
             DrawRectangleLinesEx(r, foco ? 2.0f : 1.0f, c);
-            DrawText(o->rotulo, (int)r.x + 12, (int)(r.y + r.height / 2) - 5, 10, o->ativo ? WHITE : GRAY);
+            DrawText(o->rotulo, (int)r.x + LAB_PAD_BOTAO, (int)(r.y + r.height / 2) - LinhaTexto(6), 10, o->ativo ? WHITE : GRAY);
             if (o->estilo == EST_LUCI && o->custo > 0)
-                DesenharPipsLab(r.x + 16 + (float)MeasureText(o->rotulo, 10), r.y + r.height / 2, o->custo, c);
+                DesenharPipsLab(r.x + LAB_PAD_BOTAO + 4 + (float)MeasureText(o->rotulo, 10), r.y + r.height / 2, o->custo, c);
             if (foco && o->ativo)
                 DrawRectangle((int)r.x + 3, (int)r.y + 4, 2, (int)r.height - 8, Fade(WHITE, 0.5f + 0.5f * sinf(tempo * 8.0f)));
         } break;
@@ -466,7 +476,7 @@ static int DesenharTextoLab(const char *texto, int x, int y, int largura, int fo
 {
     char linhas[1024];
     QuebrarTexto(texto, largura, fonte, linhas, (int)sizeof(linhas));
-    return DesenharTextoLinhas(linhas, x, y, fonte, espaco, cor) * espaco;
+    return DesenharTextoLinhas(linhas, x, y, fonte, espaco, cor) * EspacoLinhaTexto(espaco, fonte);
 }
 
 static void DesenharBarrasCriterios(const int crit[NUM_CRITERIOS], int nota, int x, int y)
@@ -565,8 +575,10 @@ static void DesenharLabPrompt(const Biblioteca *b, float tempo)
     Color cor = CORES_LAB[LAB_PROMPTS];
     Color ciano = { 0, 228, 255, 255 };
 
-    DrawText("MISSÃO:", 44, 84, 10, GOLD);
-    DesenharTextoLab(m->missao, 94, 84, 662, 10, 13, WHITE);
+    // O texto começa logo depois do rótulo (que cresce com o texto grande) e tem espaço para 2 linhas antes dos encaixes
+    int xMissao = 44 + MeasureText("MISSÃO:", 10) + 6;
+    DrawText("MISSÃO:", 44, 80, 10, GOLD);
+    DesenharTextoLab(m->missao, xMissao, 80, 756 - xMissao, 10, 13, WHITE);
 
     if (L->etapa == LAB_DESAFIO) {
         if (L->temSugestao) {
@@ -713,8 +725,9 @@ static void DesenharLabNucleo(const Biblioteca *b, float tempo)
     const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
     Color cor = CORES_LAB[LAB_NUCLEO];
 
+    int xTarefa = 44 + MeasureText("TAREFA:", 10) + 6;
     DrawText("TAREFA:", 44, 84, 10, GOLD);
-    DesenharTextoLab(d->tarefa, 92, 84, 664, 10, 13, WHITE);
+    DesenharTextoLab(d->tarefa, xTarefa, 84, 756 - xTarefa, 10, 13, WHITE);
     DrawText("Clique nos blocos para carregá-los no contexto da IA:", 44, 112, 10, GRAY);
 
     // Núcleo: anel de capacidade (vermelho no excesso)
@@ -734,7 +747,11 @@ static void DesenharLabNucleo(const Biblioteca *b, float tempo)
     // Barra de capacidade e ordem de carga (o mais antigo é o primeiro a sair no excesso)
     DrawRectangle(540, 256, 206, 8, Fade(GRAY, 0.3f));
     DrawRectangle(540, 256, (int)(206 * fminf(frac, 1.0f)), 8, corAnel);
-    DrawText(excesso ? "EXCESSO: o início vai ser cortado!" : "CAPACIDADE DA JANELA DE CONTEXTO", 540, 268, 10, excesso ? RED : LIGHTGRAY);
+    {   // o rótulo encurta se não couber na largura da barra (texto grande)
+        const char *rot = excesso ? "EXCESSO: o início vai ser cortado!" : "CAPACIDADE DA JANELA DE CONTEXTO";
+        if (MeasureText(rot, 10) > 212) rot = excesso ? "EXCESSO: início cortado!" : "JANELA DE CONTEXTO";
+        DrawText(rot, 540, 268, 10, excesso ? RED : LIGHTGRAY);
+    }
     char ordem[64] = "Ordem de carga:";
     for (int k = 0; k < L->numOrdem && k < LAB_MAX_ITENS; k++)
         snprintf(ordem + strlen(ordem), sizeof(ordem) - strlen(ordem), " #%d", L->ordem[k] + 1);
@@ -831,7 +848,11 @@ static void DesenharLabPesquisa(const Biblioteca *b, float tempo)
     for (int i = 0; i < 3; i++) if (L->ferramentas & (1u << i)) consultas++;
     DrawText(TextFormat("INVESTIGAR (consultas %d/%d):", consultas, LAB_MAX_FERRAMENTAS), 44, 300, 10, SKYBLUE);
 
-    DrawText("DOSSIÊ: marque os SINAIS DE ALERTA (aparência sozinha não prova nada)", 352, 98, 10, GOLD);
+    {   // o cabeçalho encurta se não couber até a borda do painel (texto grande)
+        const char *dossie = "DOSSIÊ: marque os SINAIS DE ALERTA (aparência sozinha não prova nada)";
+        if (352 + MeasureText(dossie, 10) > 756) dossie = "DOSSIÊ: marque os SINAIS DE ALERTA";
+        DrawText(dossie, 352, 98, 10, GOLD);
+    }
 
     // Resultados das consultas
     int y = 310;
@@ -913,13 +934,20 @@ static void DesenharLabResultado(const Biblioteca *b, float tempo)
             const DesafioNucleo *d = &DESAFIOS_NUCLEO[L->missao];
             static const char *rel[3] = { "DISPENSÁVEL", "ÚTIL", "ESSENCIAL" };
             static const Color corRel[3] = { { 230, 41, 55, 255 }, { 255, 203, 0, 255 }, { 0, 228, 48, 255 } };
+            // Duas colunas; se alguma linha não couber na coluna (texto grande), vira uma coluna só
+            int wRotulo = MeasureText(rel[0], 10) + 8;
+            int linha = EspacoLinhaTexto(15, 10);
+            int colunas = 2;
+            for (int i = 0; i < d->numBlocos; i++)
+                if (wRotulo + MeasureText(TextFormat("[ ] %s (%d tk)", d->bloco[i].texto, d->bloco[i].tokens), 10) > 352) colunas = 1;
             for (int i = 0; i < d->numBlocos; i++) {
-                int x = 44 + (i % 2) * 360, yy = y + (i / 2) * 15;
+                int x = 44 + ((colunas == 2) ? (i % 2) * 360 : 0), yy = y + ((colunas == 2) ? i / 2 : i) * linha;
                 bool usou = (L->marcados & (1u << i)) != 0;
                 DrawText(rel[d->bloco[i].relevancia], x, yy, 10, corRel[d->bloco[i].relevancia]);
-                DrawText(TextFormat("%s%s (%d tk)", usou ? "[x] " : "[ ] ", d->bloco[i].texto, d->bloco[i].tokens), x + 84, yy, 10, usou ? WHITE : GRAY);
+                DrawText(TextFormat("%s%s (%d tk)", usou ? "[x] " : "[ ] ", d->bloco[i].texto, d->bloco[i].tokens), x + wRotulo, yy, 10, usou ? WHITE : GRAY);
             }
-            DesenharTextoLab(AVISO_TOKENS, 44, y + 50, 712, 10, 12, Fade(SKYBLUE, 0.8f));
+            int linhasLista = (colunas == 2) ? (d->numBlocos + 1) / 2 : d->numBlocos;
+            DesenharTextoLab(AVISO_TOKENS, 44, y + linhasLista * linha + 5, 712, 10, 12, Fade(SKYBLUE, 0.8f));
         } break;
 
         case LAB_FIREWALL:

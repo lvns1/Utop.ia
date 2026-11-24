@@ -90,7 +90,7 @@ static void DesenharPhisher(const Inimigo *e, float escala)
 
     if (!revelado) {
         // "Prêmio" para chamar atenção, e o anzol escondido aparecendo de vez em quando
-        DrawText("$", (int)p.x - 3, (int)p.y - 7, 14, (Color){ 40, 140, 60, 255 });
+        DrawText("$", (int)p.x - MeasureText("$", 14) / 2, (int)p.y - LinhaTexto(8), 14, (Color){ 40, 140, 60, 255 });
         if (fmodf(e->anim, 2.6f) < 0.25f)
             DrawCircleLines((int)(r.x + r.width), (int)(r.y + r.height), 3, GOLD);
         const char *rotulo = "GRÁTIS";
@@ -880,7 +880,9 @@ void DesenharRecargaRogue(int x, int y, float falta, float total, const char *te
         DrawCircle(x, y, 14, Fade(cor, disponivel ? 0.8f : 0.25f));
 
     DrawCircleLines(x, y, 14, cor);
-    DrawText(tecla, x - MeasureText(tecla, 10) / 2, y - 5, 10, WHITE);
+    // Pronto (círculo cheio e claro): letra escura; recarregando (círculo escuro): letra branca
+    bool cheio = falta <= 0.0f && disponivel;
+    DrawText(tecla, x - MeasureText(tecla, 10) / 2, y - LinhaTexto(6), 10, cheio ? (Color){ 20, 16, 36, 255 } : WHITE);
 }
 
 // Tecla "E" sobre o que dá para usar
@@ -965,7 +967,7 @@ void DesenharDesafioRogue(const Biblioteca *b, float tempo)
     char linhas[512];
     QuebrarTexto(d->enunciado, (int)painel.width - 48, 18, linhas, (int)sizeof(linhas));
     int nl = DesenharTextoLinhas(linhas, x, y + 42, 18, 24, WHITE);
-    y += 42 + nl * 24 + 14;
+    y += 42 + nl * EspacoLinhaTexto(24, 18) + 14;
 
     // Opções
     for (int i = 0; i < d->numOpcoes; i++) {
@@ -986,7 +988,7 @@ void DesenharDesafioRogue(const Biblioteca *b, float tempo)
         int n = DesenharTextoLinhas(op, x + 26, y, 16, 20, cor);
         if (riscada)
             DrawLine(x + 26, y + 8, x + 26 + MeasureText(op, 16), y + 8, Fade(GRAY, 0.8f));
-        y += n * 20 + 8;
+        y += n * EspacoLinhaTexto(20, 16) + 8;
     }
 
     // Dica (Lente, Luci ou Manual)
@@ -1077,7 +1079,7 @@ void DesenharEnciclopediaRogue(const Biblioteca *b)
     DesenharBotaoFechar(RET_FECHAR_ENCICLOPEDIA, (Color){ 0, 228, 255, 255 });
 
     const char *ajuda = "W/S ou MOUSE escolher    E / CLIQUE ler o texto completo    BACKSPACE ou X sair";
-    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - LinhaTexto(20), 10, GRAY);
 }
 
 // Loja do Byteco por cima da sala: aba de itens (desta tentativa) e de melhorias (para sempre)
@@ -1135,13 +1137,25 @@ void DesenharLojaRogue(const Biblioteca *b, float tempo)
             DesenharIconeItem((TipoItem)i, (Vector2){ painel.x + 60, (float)y + 16 }, 1.0f, tempo);
             DrawText(it->nome, (int)painel.x + 84, y, 16, marcado ? YELLOW : WHITE);
             DrawText(it->efeito, (int)painel.x + 84, y + 19, 10, LIGHTGRAY);
-            if (oferta && !cheio) {
-                DrawRectangle((int)painel.x + 94 + MeasureText(it->nome, 16), y + 2, 62, 14, Fade(RED, 0.8f + 0.2f * sinf(tempo * 6.0f)));
-                DrawText(TextFormat("-%d%% OFERTA", OFERTA_DESCONTO_PERC), (int)painel.x + 98 + MeasureText(it->nome, 16), y + 5, 8, WHITE);
-            }
-
             const char *preco = cheio ? "CHEIO" : TextFormat("%d FC", precoReal);
             int px = (int)(painel.x + painel.width) - 30 - MeasureText(preco, 16);
+
+            // Selo de oferta: do lado do nome; se encostar no preço (nome longo, texto grande), vai para depois do efeito
+            if (oferta && !cheio) {
+                char selo[32];
+                snprintf(selo, sizeof(selo), "-%d%% OFERTA", OFERTA_DESCONTO_PERC);
+                int wSelo = MeasureText(selo, 8) + 8;
+                int xAntes = px - MeasureText(TextFormat("%d", it->preco), 10) - 6;
+                int xs = (int)painel.x + 94 + MeasureText(it->nome, 16), ys = y + 2;
+                if (xs + wSelo > xAntes - 6) {
+                    xs = (int)painel.x + 94 + MeasureText(it->efeito, 10);
+                    ys = y + 18;
+                }
+                if (xs + wSelo <= (int)(painel.x + painel.width) - 96) {
+                    DrawRectangle(xs, ys, wSelo, LinhaTexto(14), Fade(RED, 0.8f + 0.2f * sinf(tempo * 6.0f)));
+                    DrawText(selo, xs + 4, ys + 1, 8, WHITE);
+                }
+            }
             DrawText(preco, px, y + 4, 16, cheio ? GOLD : (podePagar ? (Color){ 0, 228, 255, 255 } : RED));
             if (oferta && !cheio) {
                 const char *antes = TextFormat("%d", it->preco);
@@ -1200,7 +1214,12 @@ void DesenharLojaRogue(const Biblioteca *b, float tempo)
         DrawText(it->passivo ? TextFormat("PASSIVO: vale enquanto estiver na mochila (máx. %d)", it->maxPilha)
                              : (it->temporario ? "TEMPORÁRIO: vale na hora em que é pego" : "CONSUMÍVEL: use pela tecla indicada no efeito"),
                  (int)caixa.x + 8, (int)caixa.y + 22, 10, LIGHTGRAY);
-        DrawText(TextFormat("Oferta do Byteco: %s (-%d%%) — muda a cada volta ao átrio.", ITENS[b->ofertaItem].nome, OFERTA_DESCONTO_PERC), (int)caixa.x + 8, (int)caixa.y + 38, 10, (Color){ 255, 120, 120, 255 });
+        {   // sem espaço (texto grande): fica só a oferta, sem o "muda a cada volta"
+            const char *oferta = TextFormat("Oferta do Byteco: %s (-%d%%) — muda a cada volta ao átrio.", ITENS[b->ofertaItem].nome, OFERTA_DESCONTO_PERC);
+            if (MeasureText(oferta, 10) > (int)caixa.width - 16)
+                oferta = TextFormat("Oferta do Byteco: %s (-%d%%)", ITENS[b->ofertaItem].nome, OFERTA_DESCONTO_PERC);
+            DrawText(oferta, (int)caixa.x + 8, (int)caixa.y + 38, 10, (Color){ 255, 120, 120, 255 });
+        }
     }
 
     if (b->abaLoja == 1 && b->selecaoLoja < NUM_MELHORIAS) {
@@ -1245,7 +1264,7 @@ void DesenharLojaRogue(const Biblioteca *b, float tempo)
         if (ups[0]) {
             QuebrarTexto(TextFormat("Suas melhorias para ela voltam a valer: %s", ups), (int)bw, 9, linhas, (int)sizeof(linhas));
             int nl = DesenharTextoLinhas(linhas, (int)bx, (int)yExtra, 9, 11, (Color){ 120, 255, 160, 255 });
-            yExtra += (float)(nl * 11 + 4);
+            yExtra += (float)(nl * EspacoLinhaTexto(11, 9) + 4);
         }
         if (arma == ARMA_RAIO || arma == ARMA_RAIO_CLASSICO) {
             QuebrarTexto((arma == ARMA_RAIO) ? "Gasta EP a cada sigilo. Acertar devolve EP." : "Gasta EP a cada disparo (sem EP, não atira).", (int)bw, 9, linhas, (int)sizeof(linhas));
@@ -1387,7 +1406,7 @@ void DesenharFaixaAfirmacao(const Biblioteca *b, float tempo)
     char frase[256];
     QuebrarTexto(TextFormat("ALUCINADOR: \"%s\"", a->texto), (int)faixa.width - 24, 16, frase, (int)sizeof(frase));
     int nl = DesenharTextoLinhas(frase, x, y, 16, 19, WHITE);
-    y += nl * 19 + 2;
+    y += nl * EspacoLinhaTexto(19, 16) + 2;
 
     if (c->dicaAfirm[0] != '\0') {
         Color cor = c->verificouAfirm ? (c->luciMentiuAfirm ? RED : LIME) : (c->dicaAfirmLuci ? (Color){ 0, 228, 255, 255 } : GOLD);

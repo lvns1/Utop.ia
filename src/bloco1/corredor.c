@@ -250,7 +250,7 @@ void DialogoConfirmar(SessaoDialogo *d, const char *texto, int objeto)
 static Rectangle DialogoRetOpcaoConfirma(const SessaoDialogo *d, int i)
 {
     static const char *opcoes[2] = { "SIM", "NÃO" };
-    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + 30;
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * EspacoLinhaTexto(26, FONTE_CAIXA) + 34 + 30;
     if (alturaCaixa < 150) alturaCaixa = 150;
     float caixaY = (float)(ALTURA_TELA - 14 - alturaCaixa);
     float x = 50.0f + 160.0f + (float)i * 240.0f;
@@ -271,10 +271,10 @@ void DialogoMostrarFeedback(SessaoDialogo *d, const char *texto, Color borda, in
 static int AlturaPainelPergunta(const SessaoDialogo *d)
 {
     int h = 62;                                             // cabeçalho + barra de tempo
-    h += ContarLinhas(d->texto) * 24 + 14;                  // pergunta
+    h += ContarLinhas(d->texto) * EspacoLinhaTexto(24, FONTE_PERGUNTA) + 14;                  // pergunta
 
     for (int i = 0; i < NUM_OPCOES; i++)
-        h += ContarLinhas(d->opcoesTexto[i]) * (d->fonteOpcao + 5) + 10;
+        h += ContarLinhas(d->opcoesTexto[i]) * EspacoLinhaTexto(d->fonteOpcao + 5, d->fonteOpcao) + 10;
 
     h += 30;                                                // rodapé
     return h;
@@ -283,7 +283,7 @@ static int AlturaPainelPergunta(const SessaoDialogo *d)
 // Caixa de diálogo de baixo (a mesma conta de DialogoDesenhar)
 static Rectangle DialogoRetCaixa(const SessaoDialogo *d)
 {
-    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + ((d->estado == DLG_CONFIRMA) ? 30 : 0);
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * EspacoLinhaTexto(26, FONTE_CAIXA) + 34 + ((d->estado == DLG_CONFIRMA) ? 30 : 0);
 
     if (alturaCaixa < 150)
         alturaCaixa = 150;
@@ -373,8 +373,8 @@ static Rectangle DialogoRetTab(const SessaoDialogo *d)
 // Alternativa i da pergunta (a mesma conta de DialogoDesenhar), para o mouse
 static Rectangle DialogoRetOpcaoPergunta(const SessaoDialogo *d, int i)
 {
-    int espaco = d->fonteOpcao + 5;
-    int y = (ALTURA_TELA - AlturaPainelPergunta(d)) / 2 + 58 + ContarLinhas(d->texto) * 24 + 14;
+    int espaco = EspacoLinhaTexto(d->fonteOpcao + 5, d->fonteOpcao);
+    int y = (ALTURA_TELA - AlturaPainelPergunta(d)) / 2 + 58 + ContarLinhas(d->texto) * EspacoLinhaTexto(24, FONTE_PERGUNTA) + 14;
 
     for (int k = 0; k < i; k++)
         y += ContarLinhas(d->opcoesTexto[k]) * espaco + 10;
@@ -727,7 +727,7 @@ void DialogoDesenhar(const SessaoDialogo *d)
         // As alternativas só aparecem quando a pergunta terminou de ser "digitada"
         if (terminou) {
 
-            int y = py + 58 + ContarLinhas(d->texto) * 24 + 14;
+            int y = py + 58 + ContarLinhas(d->texto) * EspacoLinhaTexto(24, FONTE_PERGUNTA) + 14;
             int espaco = d->fonteOpcao + 5;
 
             for (int i = 0; i < NUM_OPCOES; i++) {
@@ -746,7 +746,7 @@ void DialogoDesenhar(const SessaoDialogo *d)
                     marcada ? YELLOW : LIGHTGRAY
                 );
 
-                y += nl * espaco + 10;
+                y += nl * EspacoLinhaTexto(espaco, d->fonteOpcao) + 10;
             }
 
             DrawText(
@@ -767,7 +767,7 @@ void DialogoDesenhar(const SessaoDialogo *d)
     // -----------------------------------------------------
 
     bool confirma = (d->estado == DLG_CONFIRMA);
-    int alturaCaixa = 16 + ContarLinhas(d->texto) * 26 + 34 + (confirma ? 30 : 0);
+    int alturaCaixa = 16 + ContarLinhas(d->texto) * EspacoLinhaTexto(26, FONTE_CAIXA) + 34 + (confirma ? 30 : 0);
 
     if (alturaCaixa < 150)
         alturaCaixa = 150;
@@ -903,7 +903,7 @@ void DesenharMonitor(int indice, Rectangle a, EstadoMonitor estado, float tempo,
             DrawRectangleRec(visor, (Color){10, 12, 20, 255});
 
             const char *num = TextFormat("%d", indice + 1);
-            DrawText(num, cx - MeasureText(num, 20) / 2, cy - 10, 20, (Color){55, 60, 78, 255});
+            DrawText(num, cx - MeasureText(num, 20) / 2, cy - LinhaTexto(10), 20, (Color){110, 118, 140, 255});     // desligado, mas legível
 
             if (((int)(tempo * 1.5f)) % 2 == 0)
                 DrawText("_", vx + 6, vy + vh - 14, 10, (Color){80, 90, 110, 255});

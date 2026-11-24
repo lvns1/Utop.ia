@@ -186,11 +186,11 @@ static const RodadaEscolha *RodadaAtualB2(const BatalhaB2 *b)
 
 static int AlturaDesafioB2(const BatalhaB2 *b, int fonte)
 {
-    int h = 16 + ContarLinhas(b->enunciado) * (fonte + 6) + 12;
+    int h = 16 + ContarLinhas(b->enunciado) * EspacoLinhaTexto(fonte + 6, fonte) + 12;
     const RodadaEscolha *r = RodadaAtualB2(b);
 
     for (int i = 0; i < r->numOpcoes; i++)
-        h += ContarLinhas(b->opcoesTexto[i]) * (fonte + 6) + 6;
+        h += ContarLinhas(b->opcoesTexto[i]) * EspacoLinhaTexto(fonte + 6, fonte) + 6;
 
     return h + 24 + 36;   // + botão de ajuda da Luci
 }
@@ -556,15 +556,15 @@ static Rectangle B2RetOpcao(const BatalhaB2 *b, int i)
 
     int px = (int)CAIXA_B2.x + 24, py = (int)CAIXA_B2.y + 16;
     int f = b->fonteDesafio;
-    int y = py + ContarLinhas(b->enunciado) * (f + 6) + 12;
+    int y = py + ContarLinhas(b->enunciado) * EspacoLinhaTexto(f + 6, f) + 12;
 
     for (int k = 0; k < r->numOpcoes && k < i; k++)
-        y += ContarLinhas(b->opcoesTexto[k]) * (f + 6) + 6;
+        y += ContarLinhas(b->opcoesTexto[k]) * EspacoLinhaTexto(f + 6, f) + 6;
 
     if (i >= r->numOpcoes)
         return (Rectangle){ (float)px + 20, (float)y + 2, 330, 30 };
 
-    return (Rectangle){ (float)px, (float)y - 3, CAIXA_B2.width - 48, (float)(ContarLinhas(b->opcoesTexto[i]) * (f + 6) + 4) };
+    return (Rectangle){ (float)px, (float)y - 3, CAIXA_B2.width - 48, (float)(ContarLinhas(b->opcoesTexto[i]) * EspacoLinhaTexto(f + 6, f) + 4) };
 }
 
 bool BatalhaB2Atualizar(BatalhaB2 *b)
@@ -1418,7 +1418,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         const RodadaEscolha *r = RodadaAtualB2(b);
         int f = b->fonteDesafio;
         int linhas = DesenharTextoLinhas(b->enunciado, px, py, f, f + 6, WHITE);
-        int y = py + linhas * (f + 6) + 12;
+        int y = py + linhas * EspacoLinhaTexto(f + 6, f) + 12;
 
         for (int i = 0; i < r->numOpcoes; i++) {
 
@@ -1428,7 +1428,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
                 DesenharCursorLuci((float)px + 8, (float)y + f / 2.0f);
 
             int nl = DesenharTextoLinhas(b->opcoesTexto[i], px + 26, y, f, f + 6, marcada ? YELLOW : LIGHTGRAY);
-            y += nl * (f + 6) + 6;
+            y += nl * EspacoLinhaTexto(f + 6, f) + 6;
         }
 
         if (b->estabilidade != NULL)
@@ -1568,7 +1568,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         QuebrarTexto(b->comentarioLuci, 186, 14, linhas, (int)sizeof(linhas));
         int nl = ContarLinhas(linhas);
 
-        Rectangle balao = { 96, 66, 206, (float)(30 + nl * 17) };
+        Rectangle balao = { 96, 66, 206, (float)(30 + nl * EspacoLinhaTexto(17, 14)) };
         Vector2 luci = { 64.0f, balao.y + balao.height / 2.0f + sinf((float)GetTime() * 2.0f) * 3.0f };
 
         // Ela mexe a boca no primeiro segundo do comentário

@@ -345,15 +345,15 @@ static Rectangle RogueRetOpcaoDesafio(const Biblioteca *b, int i)
     char linhas[512];
 
     QuebrarTexto(d->enunciado, (int)painel.width - 48, 18, linhas, (int)sizeof(linhas));
-    y += 42 + ContarLinhas(linhas) * 24 + 14;
+    y += 42 + ContarLinhas(linhas) * EspacoLinhaTexto(24, 18) + 14;
 
     for (int k = 0; k <= i && k < d->numOpcoes; k++) {
         char op[256];
         QuebrarTexto(TextFormat("%d) %s", k + 1, d->opcoes[k]), (int)painel.width - 90, 16, op, (int)sizeof(op));
         int n = ContarLinhas(op);
         if (k == i)
-            return (Rectangle){ (float)x, (float)y - 4, painel.width - 48, (float)(n * 20 + 6) };
-        y += n * 20 + 8;
+            return (Rectangle){ (float)x, (float)y - 4, painel.width - 48, (float)(n * EspacoLinhaTexto(20, 16) + 6) };
+        y += n * EspacoLinhaTexto(20, 16) + 8;
     }
 
     return (Rectangle){ 0, 0, 0, 0 };

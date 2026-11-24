@@ -122,7 +122,7 @@ void DesenharLabAcao(const Biblioteca *b, float tempo)
             QuebrarTexto(bl->texto, (int)cap.width - 14, 10, linhas, (int)sizeof(linhas));
             int nl = ContarLinhas(linhas);
             if (nl > 2) { int q = 0; for (char *x = linhas; *x; x++) if (*x == '\n' && ++q == 2) { *x = '\0'; break; } nl = 2; }
-            DesenharTextoLinhas(linhas, (int)cap.x + 7, (int)o->pos.y - nl * 6 + 1, 10, 12, o->ejetado ? cor : WHITE);
+            DesenharTextoLinhas(linhas, (int)cap.x + 7, (int)o->pos.y - nl * EspacoLinhaTexto(6, 10) + 1, 10, 12, o->ejetado ? cor : WHITE);
             for (int k = 0; k < bl->tokens; k++)       // os tokens embaixo
                 DrawRectangle((int)(o->pos.x - bl->tokens * 3.5f + k * 7.0f), (int)o->pos.y + 18, 5, 4, roxo);
         }

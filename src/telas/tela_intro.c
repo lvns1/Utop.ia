@@ -149,15 +149,15 @@ void TelaIntroDesenhar(Jogo *jg)
     // Conteúdo da caixa de narrativa
     if (jg->etapaIntro < 3) {
 
-        DrawRectangle(xConteudo + 12, 349, 48, 16, LIGHTGRAY);
-        DrawText("Narrador", xConteudo + 16, 353, 8, BLACK);
+        DrawRectangle(xConteudo + 12, 349, MeasureText("Narrador", 8) + 8, LinhaTexto(16), LIGHTGRAY);     // a etiqueta acompanha o texto
+        DrawText("Narrador", xConteudo + 16, 351, 8, BLACK);
         DrawText(jg->textosIntro[jg->etapaIntro], xConteudo + 12, 380, 11, DARKGRAY);
 
     } else {
 
         // Etiqueta da etapa final
-        DrawRectangle(xConteudo + 12, 349, 58, 16, LIGHTGRAY);
-        DrawText("Marcador", xConteudo + 16, 353, 8, BLACK);
+        DrawRectangle(xConteudo + 12, 349, MeasureText("Marcador", 8) + 8, LinhaTexto(16), LIGHTGRAY);
+        DrawText("Marcador", xConteudo + 16, 351, 8, BLACK);
         DrawText("LUCI // REGISTRO DE IDENTIDADE!", xConteudo + 12, 377, 9, BLACK);
         DrawText("Digite seu codigo de identificacao de 3 letras:", xConteudo + 12, 393, 10, DARKGRAY);
 

@@ -240,17 +240,21 @@ void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float tempo)
     const char *nome = RoguePlacaNo(n);
     const char *rec = NOMES_RECOMPENSA[n->recompensa];
     int w1 = MeasureText(nome, 10), w2 = MeasureText(rec, 10);
+    int linha = LinhaTexto(12);                 // a 2ª linha (recompensa) desce junto com o texto grande
     Color corTexto = aberta ? cor : Fade(cor, 0.6f);
+    Color corRec = Fade(GOLD, aberta ? 1.0f : 0.6f);
+    int x1, x2, y1;
 
-    if (p->lado == LADO_CIMA) {
-        DrawText(nome, (int)c.x - w1 / 2, (int)c.y + 21, 10, corTexto);
-        if (rec[0]) DrawText(rec, (int)c.x - w2 / 2, (int)c.y + 32, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
-    } else if (p->lado == LADO_ESQUERDA) {
-        DrawText(nome, (int)c.x + 22, (int)c.y - 10, 10, corTexto);
-        if (rec[0]) DrawText(rec, (int)c.x + 22, (int)c.y + 2, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
-    } else {
-        DrawText(nome, (int)c.x - 22 - w1, (int)c.y - 10, 10, corTexto);
-        if (rec[0]) DrawText(rec, (int)c.x - 22 - w2, (int)c.y + 2, 10, Fade(GOLD, aberta ? 1.0f : 0.6f));
+    if (p->lado == LADO_CIMA)          { x1 = (int)c.x - w1 / 2;  x2 = (int)c.x - w2 / 2;  y1 = (int)c.y + 21; }
+    else if (p->lado == LADO_ESQUERDA) { x1 = (int)c.x + 22;      x2 = (int)c.x + 22;      y1 = (int)c.y - 10; }
+    else                               { x1 = (int)c.x - 22 - w1; x2 = (int)c.x - 22 - w2; y1 = (int)c.y - 10; }
+
+    // Plaquinha escura atrás do nome (e da recompensa): legível sobre o chão de qualquer sala
+    DrawRectangle(x1 - 3, y1 - 1, w1 + 6, linha + 1, Fade(BLACK, 0.8f));
+    DrawText(nome, x1, y1, 10, corTexto);
+    if (rec[0]) {
+        DrawRectangle(x2 - 3, y1 + linha - 1, w2 + 6, linha + 1, Fade(BLACK, 0.8f));
+        DrawText(rec, x2, y1 + linha, 10, corRec);
     }
 }
 
@@ -815,8 +819,16 @@ void DesenharMapaGrande(const Biblioteca *b, float tempo)
             DesenharIconeRecompensa(n->recompensa, rc, 0.8f, tempo);
         }
         if (proxima || n->tipo == SALA_CHEFE || n->tipo == SALA_SILOGISTA || n->tipo == SALA_ESPECIAL) {
-            const char *nome = RoguePlacaNo(n);
-            DrawText(nome, (int)(c.x + raio + 4), (int)c.y - 5, 10, proxima ? GOLD : cor);      // ao lado (as camadas ficaram próximas)
+            // Ao lado (as camadas ficaram próximas), sem passar da próxima sala da mesma linha nem da borda do mapa:
+            // com o texto grande, um nome que não cabe termina em "..."
+            int xNome = (int)(c.x + raio + 4);
+            int limite = (int)(area.x + area.width) - 4;
+            for (int k = 0; k < m->numNos; k++) {
+                Vector2 o = POS_NO(&m->no[k]);
+                if (k != i && !m->no[k].escondida && fabsf(o.y - c.y) < 12.0f && o.x > c.x && (int)o.x - 16 < limite)
+                    limite = (int)o.x - 16;
+            }
+            DrawText(TextoQueCabe(RoguePlacaNo(n), 10, limite - xNome), xNome, (int)c.y - LinhaTexto(6), 10, proxima ? GOLD : cor);
         }
     }
     #undef POS_NO
@@ -829,8 +841,20 @@ void DesenharMapaGrande(const Biblioteca *b, float tempo)
     DrawText((b->j.armaExtra != ARMA_DISPARADOR) ? TextFormat("%s + %s", DEF_ARMAS[b->j.armaBase].nome, DEF_ARMAS[b->j.armaExtra].nome) : DEF_ARMAS[b->j.armaBase].nome, x + 20, y + 1, 10, WHITE);
     y += 18;
 
+    // Legenda (embaixo, à direita): duas colunas, ou uma só se os nomes não couberem (texto grande)
+    static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA,
+                                             SALA_LABORATORIO, SALA_ESPECIAL };
+    int maiorLegenda = 0;
+    for (int i = 0; i < 10; i++) {
+        int w = MeasureText(PLACAS_SALAS_ROGUE[legenda[i]], 10);
+        if (w > maiorLegenda) maiorLegenda = w;
+    }
+    int colunasLegenda = (x + 130 + 18 + maiorLegenda <= (int)(painel.x + painel.width) - 10) ? 2 : 1;
+    int linhaLegenda = EspacoLinhaTexto(18, 10);
+    int ly = (int)(painel.y + painel.height) - LinhaTexto(24) - ((10 + colunasLegenda - 1) / colunasLegenda) * linhaLegenda;
+
     int linhas = 0;
-    for (int u = 0; u < NUM_UPGRADES && y < (int)(painel.y + painel.height) - 108; u++) {
+    for (int u = 0; u < NUM_UPGRADES && y < ly - 8; u++) {
         if (b->j.up[u] <= 0) continue;
         Color c = CORES_RARIDADE[UPGRADES[u].raridade];
         DrawRectangle(x, y + 2, 6, 6, CORES_CATEGORIA_UP[UPGRADES[u].categoria]);
@@ -838,7 +862,7 @@ void DesenharMapaGrande(const Biblioteca *b, float tempo)
         y += 13;
         linhas++;
     }
-    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS && y < (int)(painel.y + painel.height) - 108; i++) {
+    for (int i = PRIMEIRO_UPGRADE; i < NUM_ITENS && y < ly - 8; i++) {
         if (b->j.itens[i] <= 0) continue;
         DrawText(TextFormat("%s x%d", ITENS[i].nome, RogueQtd(&b->j, (TipoItem)i)), x + 10, y, 10, LIGHTGRAY);
         y += 13;
@@ -849,18 +873,14 @@ void DesenharMapaGrande(const Biblioteca *b, float tempo)
     for (int p = 0; p < 3; p++)
         if (b->j.penalidade & (1 << p)) { DrawText(TextFormat("! %s", NOMES_PENALIDADE[p]), x, y, 10, RED); y += 13; }
 
-    // Legenda
-    static const TipoSalaRogue legenda[] = { SALA_COMBATE, SALA_ELITE, SALA_EDUCATIVA, SALA_EVENTO, SALA_DESCANSO, SALA_DESAFIO, SALA_RECOMPENSA, SALA_SECRETA,
-                                             SALA_LABORATORIO, SALA_ESPECIAL };
-    int ly = (int)(painel.y + painel.height) - 100;
     for (int i = 0; i < 10; i++) {
-        int lx = x + (i % 2) * 130, yy = ly + (i / 2) * 18;
+        int lx = x + ((colunasLegenda == 2) ? (i % 2) * 130 : 0), yy = ly + ((colunasLegenda == 2) ? i / 2 : i) * linhaLegenda;
         DesenharIconeSala(legenda[i], (Vector2){ (float)lx + 7, (float)yy + 6 }, 0.5f, tempo);
         DrawText(PLACAS_SALAS_ROGUE[legenda[i]], lx + 18, yy + 1, 10, CORES_SALAS_ROGUE[legenda[i]]);
     }
 
     const char *ajuda = "Portas douradas: as próximas salas.   M, ENTER ou CLIQUE - fechar";
-    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 16, 10, GRAY);
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - LinhaTexto(16), 10, GRAY);
 
     DesenharBotaoFechar((Rectangle){ painel.x + painel.width - 36, painel.y + 10, 26, 22 }, PURPLE);
 }
@@ -935,8 +955,11 @@ float AlcanceArma(TipoArma arma)
 // Uma barra com nome e valor; "ref" (>= 0) mostra a diferença para a arma de comparação
 void DesenharBarraArma(const char *nome, float x, float y, float w, float valor, float maximo, const char *texto, Color cor, float ref)
 {
+    // A barra começa depois do rótulo mais largo (CADÊNCIA), que cresce com o texto grande
+    float rotulo = fmaxf(62.0f, (float)MeasureText("CADÊNCIA", 9) + 8.0f);
+    float valor_ = fmaxf(52.0f, (float)MeasureText("1.8/s", 9) + 26.0f);
     DrawText(nome, (int)x, (int)y, 9, GRAY);
-    Rectangle fundo = { x + 62, y + 1, w - 62 - 52, 8 };
+    Rectangle fundo = { x + rotulo, y + 1, w - rotulo - valor_, 8 };
     DrawRectangleRec(fundo, (Color){ 40, 36, 60, 255 });
     DrawRectangleRec((Rectangle){ fundo.x, fundo.y, fundo.width * Clamp(valor / maximo, 0.0f, 1.0f), fundo.height }, cor);
     DrawText(texto, (int)(fundo.x + fundo.width) + 6, (int)y, 9, WHITE);
@@ -980,7 +1003,11 @@ void DesenharTrocaArma(const Biblioteca *b, float tempo)
     DrawText(NOMES_RARIDADE[nova->raridade], (int)(pn.x + pn.width) - 8 - MeasureText(NOMES_RARIDADE[nova->raridade], 10), (int)pn.y + 4, 10, CORES_RARIDADE[nova->raridade]);
     DrawCircleV((Vector2){ pn.x + 50, pn.y + 78 }, 32, Fade(nova->cor, 0.15f));
     DesenharIconeArma(b->armaNova, (Vector2){ pn.x + 50, pn.y + 78 }, 2.0f, tempo);
-    DrawText(nova->nome, (int)pn.x + 100, (int)pn.y + 28, 18, nova->cor);
+    {   // o nome não invade a coluna dos números (texto grande): diminui um pouco e, se precisar, termina em "..."
+        int tamNome = 18;
+        while (tamNome > 14 && MeasureText(nova->nome, tamNome) > 240) tamNome--;
+        DrawText(TextoQueCabe(nova->nome, tamNome, 240), (int)pn.x + 100, (int)pn.y + 28, tamNome, nova->cor);
+    }
     QuebrarTexto(nova->efeito, 230, 11, linhas, (int)sizeof(linhas));
     DesenharTextoLinhas(linhas, (int)pn.x + 100, (int)pn.y + 54, 11, 14, WHITE);
     snprintf(texto, sizeof(texto), "%.0f", dpsNova);
@@ -1012,7 +1039,7 @@ void DesenharTrocaArma(const Biblioteca *b, float tempo)
 
         DrawCircleV((Vector2){ r.x + 34, r.y + 52 }, 24, Fade(v->cor, 0.15f));
         DesenharIconeArma(velha, (Vector2){ r.x + 34, r.y + 52 }, 1.5f, tempo);
-        DrawText(v->nome, (int)r.x + 66, (int)r.y + 26, 14, v->cor);
+        DrawText(TextoQueCabe(v->nome, 14, (int)r.width - 76), (int)r.x + 66, (int)r.y + 26, 14, v->cor);
         QuebrarTexto(v->efeito, (int)r.width - 76, 10, linhas, (int)sizeof(linhas));
         DesenharTextoLinhas(linhas, (int)r.x + 66, (int)r.y + 46, 10, 12, LIGHTGRAY);
 
@@ -1029,7 +1056,9 @@ void DesenharTrocaArma(const Biblioteca *b, float tempo)
             QuebrarTexto(TextFormat("PERDE o efeito de: %s", ups), (int)r.width - 20, 9, linhas, (int)sizeof(linhas));
             DesenharTextoLinhas(linhas, (int)r.x + 10, (int)r.y + 144, 9, 11, ORANGE);
         } else {
-            DrawText("Sem melhorias nesta arma: nada se perde.", (int)r.x + 10, (int)r.y + 150, 9, GRAY);
+            const char *nada = "Sem melhorias nesta arma: nada se perde.";
+            if (MeasureText(nada, 9) > (int)r.width - 20) nada = "Sem melhorias: nada se perde.";
+            DrawText(nada, (int)r.x + 10, (int)r.y + 150, 9, GRAY);
         }
         if (sel) DrawText("ENTER / CLIQUE: TROCAR ESTA", (int)(r.x + r.width / 2) - MeasureText("ENTER / CLIQUE: TROCAR ESTA", 10) / 2, (int)r.y + (int)r.height - 16, 10, YELLOW);
     }
@@ -1127,10 +1156,17 @@ void DesenharEscolha(const Biblioteca *b, float tempo)
         QuebrarTexto(nome, (int)r.width - 20, 16, linhas, (int)sizeof(linhas));
         int ny = (int)r.y + 94;
         int n = DesenharTextoLinhas(linhas, (int)r.x + 10, ny, 16, 18, marcada ? YELLOW : WHITE);
-        ny += n * 18 + 2;
+        ny += n * EspacoLinhaTexto(18, 16) + 2;
         DrawText(NOMES_RARIDADE[rar], (int)r.x + 10, ny, 10, corRar);
-        DrawText(nivel, (int)r.x + 10 + MeasureText(NOMES_RARIDADE[rar], 10) + 10, ny, 10, LIGHTGRAY);
-        ny += 18;
+        {   // o nível (ou o alcance da arma) vai para a linha de baixo se não couber do lado da raridade
+            int xNivel = (int)r.x + 10 + MeasureText(NOMES_RARIDADE[rar], 10) + 10;
+            if (xNivel + MeasureText(nivel, 10) > (int)(r.x + r.width) - 8) {
+                ny += EspacoLinhaTexto(14, 10);
+                xNivel = (int)r.x + 10;
+            }
+            DrawText(nivel, xNivel, ny, 10, LIGHTGRAY);
+        }
+        ny += EspacoLinhaTexto(18, 10);
 
         // Efeito
         QuebrarTexto(efeito, (int)r.width - 20, 12, linhas, (int)sizeof(linhas));
@@ -1140,8 +1176,9 @@ void DesenharEscolha(const Biblioteca *b, float tempo)
         if (requisito[0]) {
             QuebrarTexto(requisito, (int)r.width - 20, 10, linhas, (int)sizeof(linhas));
             int nl = ContarLinhas(linhas);
-            DrawLine((int)r.x + 10, (int)(r.y + r.height) - 16 - nl * 12, (int)(r.x + r.width) - 10, (int)(r.y + r.height) - 16 - nl * 12, Fade(corRar, 0.3f));
-            DesenharTextoLinhas(linhas, (int)r.x + 10, (int)(r.y + r.height) - 10 - nl * 12, 10, 12,
+            int hReq = nl * EspacoLinhaTexto(12, 10);
+            DrawLine((int)r.x + 10, (int)(r.y + r.height) - 16 - hReq, (int)(r.x + r.width) - 10, (int)(r.y + r.height) - 16 - hReq, Fade(corRar, 0.3f));
+            DesenharTextoLinhas(linhas, (int)r.x + 10, (int)(r.y + r.height) - 10 - hReq, 10, 12,
                                 (o.tipo == OPC_UPGRADE && UPGRADES[o.id].categoria == CAT_SINERGIA) ? CORES_CATEGORIA_UP[CAT_SINERGIA] : GRAY);
         }
     }
@@ -1183,7 +1220,7 @@ void DesenharEvento(const Biblioteca *b, float tempo)
     char linhas[640];
     QuebrarTexto(b->eventoResolvido ? b->resultadoEvento : t.texto, (int)painel.width - 48, 16, linhas, (int)sizeof(linhas));
     int n = DesenharTextoLinhas(linhas, x, y, 16, 22, WHITE);
-    y += n * 22 + 18;
+    y += n * EspacoLinhaTexto(22, 16) + 18;
 
     if (b->eventoResolvido) {
         if (((int)(tempo * 2.0f)) % 2 == 0)
@@ -1196,25 +1233,25 @@ void DesenharEvento(const Biblioteca *b, float tempo)
     for (int i = 0; i < t.numOpcoes; i++) {
         bool marcada = (i == b->selecaoEvento);
         bool pode = t.disponivel[i];
-        Color corOp = !pode ? DARKGRAY : (marcada ? YELLOW : WHITE);
+        Color corOp = !pode ? (Color){ 150, 140, 165, 255 } : (marcada ? YELLOW : WHITE);     // indisponível: apagado, mas ainda legível
 
         QuebrarTexto(TextFormat("%d) %s", i + 1, t.rotulo[i]), (int)painel.width - 90, 16, linhas, (int)sizeof(linhas));
         int nr = ContarLinhas(linhas);
         char ef[300] = "";
         if (t.efeito[i][0]) QuebrarTexto(t.efeito[i], (int)painel.width - 100, 12, ef, (int)sizeof(ef));
         int ne = ef[0] ? ContarLinhas(ef) : 0;
-        int alt = nr * 20 + ne * 15 + 10;
+        int alt = nr * EspacoLinhaTexto(20, 16) + ne * EspacoLinhaTexto(15, 12) + 10;
 
         if (marcada) {
             DrawRectangle(x - 10, y - 5, (int)painel.width - 28, alt, Fade(cor, 0.15f));
             DesenharCursorLuci((float)x, (float)y + 8);
         }
         DesenharTextoLinhas(linhas, x + 18, y, 16, 20, corOp);
-        if (ne > 0) DesenharTextoLinhas(ef, x + 30, y + nr * 20, 12, 15, pode ? LIGHTGRAY : DARKGRAY);
+        if (ne > 0) DesenharTextoLinhas(ef, x + 30, y + nr * EspacoLinhaTexto(20, 16), 12, 15, pode ? LIGHTGRAY : (Color){ 150, 140, 165, 255 });
         if (!pode)  DrawText("(indisponível)", (int)(painel.x + painel.width) - 120, y + 2, 10, RED);
         y += alt + 6;
     }
 
     const char *ajuda = "W/S ou MOUSE escolher     E / CLIQUE confirmar     BACKSPACE ou X sair";
-    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - 20, 10, GRAY);
+    DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, (int)(painel.y + painel.height) - LinhaTexto(20), 10, GRAY);
 }

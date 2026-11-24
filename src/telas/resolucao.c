@@ -24,6 +24,7 @@
 
 
 static const char *NOMES_MODO_EXIBICAO[NUM_MODOS_EXIBICAO] = { "JANELA", "TELA CHEIA" };
+static const char *NOMES_TAMANHO_TEXTO[2] = { "NORMAL", "GRANDE" };
 
 // Tamanhos 4:3 (a proporção do jogo), do maior para o menor.
 // Na janela é o tamanho da janela; na tela cheia é o tamanho da imagem do jogo
@@ -124,6 +125,8 @@ void AplicarExibicao(ConfigExibicao c)
 {
     Vector2 origem = GetMonitorPosition(monitorJogo);
 
+    DefinirTextoGrande(c.textoGrande);
+
     emTelaCheia = (c.modo == EXIBICAO_TELA_CHEIA);
 
     if (emTelaCheia) {
@@ -149,29 +152,34 @@ void AplicarExibicao(ConfigExibicao c)
                       (int)origem.y + (alturaMonitor - h) / 2);
 }
 
-// Arquivo de configuração: "modo largura altura" (tela cheia máxima = "1 0 0")
+// Arquivo de configuração: "modo largura altura texto" (tela cheia máxima = "1 0 0 0"; texto 1 = GRANDE).
+// Um arquivo antigo, sem o último número, abre com o texto NORMAL.
 ConfigExibicao LerConfigExibicao(void)
 {
-    ConfigExibicao padrao = { EXIBICAO_JANELA, { LARGURA_TELA, ALTURA_TELA } };
-    ConfigExibicao c;
+    ConfigExibicao padrao = { EXIBICAO_JANELA, { LARGURA_TELA, ALTURA_TELA }, false };
+    ConfigExibicao c = padrao;
     int modo = 0;
+    int texto = 0;
 
     FILE *f = fopen(ARQUIVO_CONFIG, "r");
 
     if (f == NULL)
         return padrao;
 
-    bool ok = (fscanf(f, "%d %d %d", &modo, &c.resolucao.largura, &c.resolucao.altura) == 3);
+    int lidos = fscanf(f, "%d %d %d %d", &modo, &c.resolucao.largura, &c.resolucao.altura, &texto);
     fclose(f);
 
-    if (!ok || modo < 0 || modo >= NUM_MODOS_EXIBICAO)
+    if (lidos < 3 || modo < 0 || modo >= NUM_MODOS_EXIBICAO)
         return padrao;
 
     c.modo = (ModoExibicao)modo;
+    c.textoGrande = (lidos == 4 && texto == 1);
 
-    // Resolução que não cabe neste monitor (trocou de monitor, arquivo antigo...)
-    if (IndiceResolucao(c.modo, c.resolucao) < 0)
+    // Resolução que não cabe neste monitor (trocou de monitor, arquivo antigo...): o tamanho do texto continua
+    if (IndiceResolucao(c.modo, c.resolucao) < 0) {
+        padrao.textoGrande = c.textoGrande;
         return padrao;
+    }
 
     return c;
 }
@@ -183,7 +191,7 @@ void SalvarConfigExibicao(ConfigExibicao c)
     if (f == NULL)
         return;
 
-    fprintf(f, "%d %d %d\n", (int)c.modo, c.resolucao.largura, c.resolucao.altura);
+    fprintf(f, "%d %d %d %d\n", (int)c.modo, c.resolucao.largura, c.resolucao.altura, c.textoGrande ? 1 : 0);
     fclose(f);
 }
 
@@ -308,12 +316,22 @@ void DesenharNaJanela(RenderTexture2D alvo, FiltroNitidez filtro)
 
 static Rectangle CaixaOpcoes(int campo)
 {
-    return (Rectangle){ 220, 206 + campo * 84.0f, 360, 36 };
+    return (Rectangle){ 220, 188 + campo * 74.0f, 360, 36 };
 }
 
 static Rectangle BotaoVoltarOpcoes(void)
 {
-    return (Rectangle){ 300, 388, 200, 32 };
+    return (Rectangle){ 300, 398, 200, 32 };
+}
+
+// Quantos itens a lista do campo tem
+static int ItensListaOpcoes(int campo, ModoExibicao modo)
+{
+    Resolucao lista[MAX_RESOLUCOES];
+
+    if (campo == CAMPO_MODO)  return NUM_MODOS_EXIBICAO;
+    if (campo == CAMPO_TEXTO) return 2;
+    return ListarResolucoes(modo, lista);
 }
 
 // Itens da lista aberta, logo abaixo da caixa
@@ -328,7 +346,9 @@ static void AbrirListaOpcoes(MenuOpcoes *m, int campo, ConfigExibicao cfg)
 {
     m->foco = campo;
     m->aberta = campo;
-    m->marcado = (campo == CAMPO_MODO) ? (int)cfg.modo : IndiceResolucao(cfg.modo, cfg.resolucao);
+    if (campo == CAMPO_MODO)       m->marcado = (int)cfg.modo;
+    else if (campo == CAMPO_TEXTO) m->marcado = cfg.textoGrande ? 1 : 0;
+    else                           m->marcado = IndiceResolucao(cfg.modo, cfg.resolucao);
 
     if (m->marcado < 0)
         m->marcado = 0;
@@ -390,8 +410,8 @@ bool AtualizarOpcoes(MenuOpcoes *m, ConfigExibicao *cfg)
 
     // Lista aberta: escolhe um item
     Resolucao lista[MAX_RESOLUCOES];
-    int numResolucoes = ListarResolucoes(cfg->modo, lista);
-    int numItens = (m->aberta == CAMPO_MODO) ? NUM_MODOS_EXIBICAO : numResolucoes;
+    ListarResolucoes(cfg->modo, lista);
+    int numItens = ItensListaOpcoes(m->aberta, cfg->modo);
     int escolhido = -1;
 
     if (cima)
@@ -425,6 +445,17 @@ bool AtualizarOpcoes(MenuOpcoes *m, ConfigExibicao *cfg)
     }
 
     ConfigExibicao nova = *cfg;
+
+    if (m->aberta == CAMPO_TEXTO) {
+
+        m->aberta = -1;
+
+        if (nova.textoGrande == (escolhido == 1))
+            return false;
+
+        cfg->textoGrande = (escolhido == 1);
+        return true;
+    }
 
     if (m->aberta == CAMPO_MODO) {
 
@@ -470,18 +501,19 @@ void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
 
     ClearBackground(fundo);
 
-    Rectangle painel = { 180, 90, 440, 400 };
+    Rectangle painel = { 180, 70, 440, 440 };
 
     DrawRectangleRec(painel, painelCor);
     DrawRectangleLinesEx(painel, 4, PURPLE);
     DrawRectangleLinesEx((Rectangle){ painel.x + 8, painel.y + 8, painel.width - 16, painel.height - 16 }, 1, Fade(SKYBLUE, 0.35f));
 
     const char *titulo = "OPÇÕES";
-    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 115, 40, PURPLE);
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 96, 40, PURPLE);
 
     // Caixas fechadas, com o valor atual
-    const char *rotulos[NUM_CAMPOS_OPCOES] = { "MODO DE EXIBIÇÃO", "RESOLUÇÃO" };
-    const char *valores[NUM_CAMPOS_OPCOES] = { NOMES_MODO_EXIBICAO[cfg.modo], NomeResolucao(cfg.resolucao) };
+    const char *rotulos[NUM_CAMPOS_OPCOES] = { "MODO DE EXIBIÇÃO", "RESOLUÇÃO", "TAMANHO DO TEXTO" };
+    const char *valores[NUM_CAMPOS_OPCOES] = { NOMES_MODO_EXIBICAO[cfg.modo], NomeResolucao(cfg.resolucao),
+                                               NOMES_TAMANHO_TEXTO[cfg.textoGrande ? 1 : 0] };
 
     for (int c = 0; c < NUM_CAMPOS_OPCOES; c++) {
 
@@ -496,7 +528,7 @@ void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
         if (focado && m->aberta < 0)
             DesenharCursorLuci(caixa.x - 18, caixa.y + caixa.height / 2);
 
-        DrawText(valores[c], (int)caixa.x + 14, (int)(caixa.y + caixa.height / 2) - 10, 20, focado ? WHITE : LIGHTGRAY);
+        DrawText(valores[c], (int)caixa.x + 14, (int)(caixa.y + caixa.height / 2) - LinhaTexto(10), 20, focado ? WHITE : LIGHTGRAY);
         DesenharSetaLista(caixa, m->aberta == c, focado ? SKYBLUE : GRAY);
     }
 
@@ -514,15 +546,16 @@ void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
     const char *dica1 = (m->aberta < 0) ? "ENTER / CLIQUE - abrir a lista" : "ENTER / CLIQUE - escolher";
     const char *dica2 = (m->aberta < 0) ? "ESC - voltar ao menu" : "ESC - fechar a lista";
 
-    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 440, 10, Fade(SKYBLUE, 0.6f));
-    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 456, 10, GRAY);
+    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 446, 10, Fade(SKYBLUE, 0.6f));
+    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 446 + LinhaTexto(16), 10, GRAY);
 
     // Lista aberta por cima de tudo
     if (m->aberta < 0)
         return;
 
     Resolucao lista[MAX_RESOLUCOES];
-    int numItens = (m->aberta == CAMPO_MODO) ? NUM_MODOS_EXIBICAO : ListarResolucoes(cfg.modo, lista);
+    ListarResolucoes(cfg.modo, lista);
+    int numItens = ItensListaOpcoes(m->aberta, cfg.modo);
 
     Rectangle area = ItemListaOpcoes(m->aberta, 0);
     area.height = numItens * (float)ALTURA_ITEM_LISTA;
@@ -540,6 +573,9 @@ void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
         if (m->aberta == CAMPO_MODO) {
             nome = NOMES_MODO_EXIBICAO[i];
             atual = (i == (int)cfg.modo);
+        } else if (m->aberta == CAMPO_TEXTO) {
+            nome = NOMES_TAMANHO_TEXTO[i];
+            atual = (i == (cfg.textoGrande ? 1 : 0));
         } else {
             nome = NomeResolucao(lista[i]);
             atual = MesmaResolucao(lista[i], cfg.resolucao);
@@ -548,9 +584,9 @@ void DesenharOpcoes(const MenuOpcoes *m, ConfigExibicao cfg, Color fundo)
         if (marcado)
             DrawRectangleRec(r, Fade(PURPLE, 0.35f));
 
-        DrawText(nome, (int)r.x + 14, (int)(r.y + r.height / 2) - 8, 16, marcado ? SKYBLUE : LIGHTGRAY);
+        DrawText(nome, (int)r.x + 14, (int)(r.y + r.height / 2) - LinhaTexto(8), 16, marcado ? SKYBLUE : LIGHTGRAY);
 
         if (atual)
-            DrawText("ATUAL", (int)(r.x + r.width) - MeasureText("ATUAL", 10) - 12, (int)(r.y + r.height / 2) - 5, 10, GOLD);
+            DrawText("ATUAL", (int)(r.x + r.width) - MeasureText("ATUAL", 10) - 12, (int)(r.y + r.height / 2) - LinhaTexto(6), 10, GOLD);
     }
 }

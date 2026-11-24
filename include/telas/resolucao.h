@@ -28,6 +28,7 @@ typedef struct {
 typedef struct {
     ModoExibicao modo;
     Resolucao resolucao;
+    bool textoGrande;                     // TAMANHO DO TEXTO: GRANDE (issue #31)
 } ConfigExibicao;
 
 #define NUM_RESOLUCOES_4X3  ((int)(sizeof(RESOLUCOES_4X3) / sizeof(RESOLUCOES_4X3[0])))
@@ -39,10 +40,10 @@ typedef struct {
 } FiltroNitidez;
 
 // -------------------------------------------------------------
-// TELA DE OPÇÕES: duas listas suspensas (modo de exibição e resolução)
+// TELA DE OPÇÕES: três listas suspensas (modo de exibição, resolução e tamanho do texto)
 // -------------------------------------------------------------
 
-typedef enum { CAMPO_MODO, CAMPO_RESOLUCAO, NUM_CAMPOS_OPCOES } CampoOpcoes;
+typedef enum { CAMPO_MODO, CAMPO_RESOLUCAO, CAMPO_TEXTO, NUM_CAMPOS_OPCOES } CampoOpcoes;
 
 typedef struct {
     int foco;                             // campo marcado (CampoOpcoes)

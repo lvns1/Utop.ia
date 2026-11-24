@@ -47,13 +47,15 @@ static void QuebrarTextoCalcular(const char *texto, int larguraMax, int tamFonte
 }
 
 // Versão com cache: as telas de escolha, loja e troca chamam isto todo frame com o mesmo texto,
-// e medir caractere por caractere é caro. Guarda os últimos resultados (texto + largura + tamanho).
+// e medir caractere por caractere é caro. Guarda os últimos resultados (texto + largura + tamanho
+// + texto GRANDE ligado ou não: a mesma frase quebra em outro lugar quando o texto cresce).
 #define CACHE_QUEBRA_N      48
 #define CACHE_QUEBRA_TEXTO  400
 #define CACHE_QUEBRA_SAIDA  800
 typedef struct {
     bool usado;
     int larg, tam;
+    bool grande;                // texto GRANDE: a mesma frase quebra em outro lugar
     char origem[CACHE_QUEBRA_TEXTO];
     char resultado[CACHE_QUEBRA_SAIDA];
 } EntradaQuebra;
@@ -71,7 +73,7 @@ void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, 
 
     for (int i = 0; i < CACHE_QUEBRA_N; i++) {
         const EntradaQuebra *e = &cache[i];
-        if (e->usado && e->larg == larguraMax && e->tam == tamFonte && strcmp(e->origem, texto) == 0 &&
+        if (e->usado && e->larg == larguraMax && e->tam == tamFonte && e->grande == TextoGrande() && strcmp(e->origem, texto) == 0 &&
             strlen(e->resultado) < (size_t)tamSaida) {
             strcpy(saida, e->resultado);
             return;
@@ -86,9 +88,34 @@ void QuebrarTexto(const char *texto, int larguraMax, int tamFonte, char *saida, 
         e->usado = true;
         e->larg = larguraMax;
         e->tam = tamFonte;
+        e->grande = TextoGrande();
         strcpy(e->origem, texto);
         strcpy(e->resultado, saida);
     }
+}
+
+// O texto, ou o começo dele terminando em "...", para caber numa linha de "largura" pixels
+// (para rótulos de uma linha só que não podem crescer, como os nomes no mapa com o texto grande)
+const char *TextoQueCabe(const char *texto, int tam, int largura)
+{
+    static char bufs[4][128];
+    static int prox = 0;
+
+    if (MeasureText(texto, tam) <= largura)
+        return texto;
+
+    char *s = bufs[prox];
+    prox = (prox + 1) % 4;
+    snprintf(s, sizeof(bufs[0]), "%s", texto);
+
+    for (int n = (int)strlen(s); n > 0; n--) {
+        if (((unsigned char)s[n] & 0xC0) == 0x80) continue;      // não corta no meio de um acento (UTF-8)
+        strcpy(s + n, "...");
+        if (MeasureText(s, tam) <= largura)
+            return s;
+    }
+
+    return "...";
 }
 
 // Em quantas linhas o texto quebraria (sem passar pelo cache: serve para medir vários pedaços de uma vez)
@@ -100,8 +127,12 @@ int LinhasDoTexto(const char *texto, int larguraMax, int tamFonte)
 }
 
 // Desenha um texto com várias linhas (separadas por '\n') e devolve quantas linhas desenhou.
+// O espaço entre as linhas cresce junto com o texto (tamanho mínimo e texto GRANDE): quem calcula
+// a altura da caixa usa EspacoLinhaTexto(espacoLinha, tamFonte) para a mesma conta.
 int DesenharTextoLinhas(const char *texto, int x, int y, int tamFonte, int espacoLinha, Color cor)
 {
+    espacoLinha = EspacoLinhaTexto(espacoLinha, tamFonte);
+
     char linha[512];
     int n = 0;
     int linhas = 0;

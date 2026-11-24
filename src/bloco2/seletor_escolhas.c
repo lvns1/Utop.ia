@@ -1345,7 +1345,7 @@ static Rectangle RogueRetOpcaoEvento(const TelaEvento *t, int i)
     char linhas[640];
 
     QuebrarTexto(t->texto, (int)painel.width - 48, 16, linhas, (int)sizeof(linhas));
-    y += ContarLinhas(linhas) * 22 + 18;
+    y += ContarLinhas(linhas) * EspacoLinhaTexto(22, 16) + 18;
 
     for (int k = 0; k <= i && k < t->numOpcoes; k++) {
         QuebrarTexto(TextFormat("%d) %s", k + 1, t->rotulo[k]), (int)painel.width - 90, 16, linhas, (int)sizeof(linhas));
@@ -1353,7 +1353,7 @@ static Rectangle RogueRetOpcaoEvento(const TelaEvento *t, int i)
         char ef[300] = "";
         if (t->efeito[k][0]) QuebrarTexto(t->efeito[k], (int)painel.width - 100, 12, ef, (int)sizeof(ef));
         int ne = ef[0] ? ContarLinhas(ef) : 0;
-        int alt = nr * 20 + ne * 15 + 10;
+        int alt = nr * EspacoLinhaTexto(20, 16) + ne * EspacoLinhaTexto(15, 12) + 10;     // a mesma conta do desenho
         if (k == i)
             return (Rectangle){ (float)x - 10, (float)y - 5, painel.width - 28, (float)alt };
         y += alt + 6;

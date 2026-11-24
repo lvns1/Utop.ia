@@ -68,6 +68,14 @@
 #define MAX_PAGINAS         10       // falas curtas (uma ideia por fala) pedem mais páginas
 #define NUM_OPCOES          4
 
+// Legibilidade (issue #31). Valem para TODO texto do jogo (fonte.c), em pixels da tela de 800x600.
+#ifndef TAMANHO_MINIMO_TEXTO
+#define TAMANHO_MINIMO_TEXTO   12.0f   // tamanho mínimo combinado pela equipe: nenhum texto fica menor que isto
+#endif
+#define ESCALA_TEXTO_GRANDE    1.2f    // opção TEXTO GRANDE: todo texto cresce 20%...
+#define TAMANHO_TITULO_FIXO    28      // ... menos os títulos deste tamanho para cima (já são grandes)
+#define CINZA_MINIMO_TEXTO     185     // cinza médio apagado (GRAY) clareia até este brilho no fundo escuro
+
 #define FONTE_CAIXA         18
 #define LARGURA_TEXTO_CAIXA 640
 #define MAX_LINHAS_FALA_LUCI 2       // fala da Luci maior que isso é dividida em mais "páginas" (uma ideia por fala)

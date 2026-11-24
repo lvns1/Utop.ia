@@ -87,8 +87,10 @@ void DesenharTerminalAtalho(Vector2 c, const char *destino, Vector2 alvoSeta, bo
     int yt = (int)(c.y - 50 + bob);
     int metade = ((wt > wd) ? wt : wd) / 2;
     float cx = Clamp(c.x, 44.0f + (float)metade, 756.0f - (float)metade);     // a placa não sai da sala
-    DrawRectangle((int)cx - wt / 2, yt, wt, 14, cor);
-    DrawText(tag, (int)cx - wt / 2 + 5, yt + 2, 10, (Color){ 30, 20, 0, 255 });
+    // Texto escuro na placa clara; se a placa estiver apagada (escura), o texto fica claro (contraste)
+    bool placaClara = (0.299f * cor.r + 0.587f * cor.g + 0.114f * cor.b) * cor.a / 255.0f > 140.0f;
+    DrawRectangle((int)cx - wt / 2, yt, wt, LinhaTexto(14), cor);
+    DrawText(tag, (int)cx - wt / 2 + 5, yt + 1, 10, placaClara ? (Color){ 30, 20, 0, 255 } : WHITE);
     if (liberado) {
         DesenharSetaAtalho((Vector2){ cx + wt / 2.0f - 13, (float)yt + 7 }, (Vector2){ 1, 0 }, 3.0f, 2.0f, (Color){ 30, 20, 0, 255 });
         DesenharSetaAtalho((Vector2){ cx + wt / 2.0f - 7, (float)yt + 7 }, (Vector2){ 1, 0 }, 3.0f, 2.0f, (Color){ 30, 20, 0, 255 });
@@ -197,7 +199,11 @@ static void DesenharSeletorChefes(const Biblioteca *b, float tempo)
             DrawRectangle((int)r.x + 8, yb, 62, 14, Fade(LIME, 0.85f));
             DrawText("VENCIDO", (int)r.x + 12, yb + 2, 10, BLACK);
         }
-        DrawText(vencido ? "treino: sem recompensa" : "1ª vitória: recompensa", (int)r.x + 8, yb + 18, 10, vencido ? GRAY : GOLD);
+        {   // versão curta se não couber no cartão (texto grande)
+            const char *premio = vencido ? "treino: sem recompensa" : "1ª vitória: recompensa";
+            if (MeasureText(premio, 10) > (int)r.width - 12) premio = vencido ? "treino: sem prêmio" : "1ª vitória: prêmio";
+            DrawText(premio, (int)r.x + 8, yb + 18, 10, vencido ? GRAY : GOLD);
+        }
     }
 
     // Botão de voltar
@@ -955,10 +961,16 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
     }
     DrawText(TextFormat("%d", (int)j->ep), 230, yHud + 19, 10, WHITE);
 
-    DesenharRecargaRogue(278, yHud + 15, j->recargaPulso, PULSO_RECARGA, "Q", SKYBLUE, j->ep >= PULSO_CUSTO_EP);
-    DrawText("PULSO", 263, yHud + 32, 8, LIGHTGRAY);
-    DesenharRecargaRogue(324, yHud + 15, j->recargaEsquiva, RogueRecargaEsquiva(j), "ESP", LIME, true);
-    DrawText("ESQUIVA", 305, yHud + 32, 8, LIGHTGRAY);
+    // Rótulos centralizados embaixo dos ícones; com o texto grande eles ficam mais estreitos (PULSO / ESQ.)
+    // e sobem para não encostar na barra de controles
+    DesenharRecargaRogue(278, yHud + 12, j->recargaPulso, PULSO_RECARGA, "Q", SKYBLUE, j->ep >= PULSO_CUSTO_EP);
+    DesenharRecargaRogue(324, yHud + 12, j->recargaEsquiva, RogueRecargaEsquiva(j), "ESP", LIME, true);
+    {
+        const char *rotEsquiva = TextoGrande() ? "ESQ." : "ESQUIVA";
+        int yRot = ALTURA_TELA - 21 - LinhaTexto(12);
+        DrawText("PULSO", 278 - MeasureText("PULSO", 8) / 2, yRot, 8, LIGHTGRAY);
+        DrawText(rotEsquiva, 324 - MeasureText(rotEsquiva, 8) / 2, yRot, 8, LIGHTGRAY);
+    }
     if (RogueUp(j, UP_ESQUIVA_DUPLA) > 0)        // Buffer de Esquiva: a 2ª carga
         DrawCircle(340, yHud + 2, 4, (j->recargaEsquiva2 <= 0.0f) ? LIME : DARKGRAY);
 

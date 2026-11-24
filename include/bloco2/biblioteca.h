@@ -698,6 +698,7 @@ typedef struct {
 #define LAB_Y_LUCI       410
 #define LAB_Y_BOTOES     470
 #define LAB_ALT_BOTAO    26
+#define LAB_PAD_BOTAO    (TextoGrande() ? 7 : 12)     // margem do texto no botão (menor com o texto grande: a linha de botões cabe)
 
 // Laboratório de prompts: os 4 encaixes formam a "frase" do pedido, lado a lado
 #define LAB_ANIM_PECA   0.28f    // segundos da peça voando até o encaixe

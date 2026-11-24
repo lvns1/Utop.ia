@@ -42,7 +42,6 @@ static const Rectangle CAIXA_DESVIO_B2  = {275, 255, 250, 170};
 
 static const DefGuardiaoB2 GUARDIOES_B2[NUM_GUARDIOES] = {
     { "ALUCINAÇÃO",         "BLOCO 1 // CORREDOR DO HISTÓRICO",                         { 200, 170, 255, 255 }, "?!#01" },
-    { "ALUCINAÇÃO MESTRE",  "FIM DO BLOCO 1 // DEBATE COM FONTES",                      { 230, 41, 255, 255 },  "?!#01" },
 };
 
 static const RodadaEscolha RODADAS_MONITORES[TOTAL_MONITORES][RODADAS_POR_MONITOR] = {
@@ -100,109 +99,6 @@ static const char *COLAS_MONITORES[TOTAL_MONITORES] = {
     "Intrínseca: contradiz o que você disse. Extrínseca: inventa algo que não dá para checar.",
     "Evite: pergunte com clareza, verifique as fontes. Aparecer junto não é causar."
 };
-
-static const RodadaEscolha AFIRMACOES_CHEFE[NUM_AFIRMACOES] = {
-    { "\"O Instituto Brasileiro do Sono provou: dormir 3 horas por noite é o ideal.\"", OPCOES_DEBATE, 2, 1,
-      "Fonte inventada é alucinação extrínseca: não dá para verificar." },
-    { "\"Um dia em Vênus dura mais que um ano inteiro em Vênus.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real! Soar estranho não é o mesmo que ser falso." },
-    { "\"Como você me contou, sua prova de matemática é na quinta!\"", OPCOES_DEBATE, 2, 1,
-      "Contradizer o que você disse é alucinação intrínseca." },
-    { "\"O polvo tem três corações.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: o polvo tem mesmo três corações." },
-    { "\"A Muralha da China dá para ver da Lua a olho nu.\"", OPCOES_DEBATE, 2, 1,
-      "Mito famoso: repetir com confiança não torna verdade." },
-    { "\"A Universidade do Mar de Recife provou que peixes dormem de olhos fechados.\"", OPCOES_DEBATE, 2, 1,
-      "Universidade inventada: alucinação extrínseca." },
-    { "\"O Brasil venceu a Copa do Mundo de futebol masculino de 2002.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: o Brasil venceu a Alemanha por 2 a 0." },
-    { "\"No texto que você me mandou, a reunião está marcada para as 15h.\"", OPCOES_DEBATE, 2, 1,
-      "Contradizer o texto que você deu é alucinação intrínseca." },
-    { "\"Quando chove, vende mais pipoca. Então a chuva causa a pipoca!\"", OPCOES_DEBATE, 2, 1,
-      "Correlação não é causa: aparecer junto não prova nada." },
-    { "\"A IA escolhe a palavra mais provável, não a verdadeira.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: é assim que os modelos de linguagem funcionam." },
-    // ---- novas afirmações ----
-    { "\"Nós só usamos 10% do cérebro. Os outros 90% ficam desligados.\"", OPCOES_DEBATE, 2, 1,
-      "Mito popular: usamos o cérebro inteiro, só que não tudo ao mesmo tempo." },
-    { "\"O mel bem guardado praticamente não estraga.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: pouca água e muita acidez impedem que os micróbios cresçam." },
-    { "\"O Instituto Nacional de Verificação Digital certificou: toda resposta de IA com link está correta.\"", OPCOES_DEBATE, 2, 1,
-      "Instituto inventado: alucinação extrínseca. E um link também pode ser inventado." },
-    { "\"Botanicamente, a banana é uma baga.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: pelas regras da botânica, a banana é uma baga." },
-    { "\"Um raio nunca cai duas vezes no mesmo lugar.\"", OPCOES_DEBATE, 2, 1,
-      "Mito: prédios altos e antenas são atingidos várias vezes por ano." },
-    { "\"Você me disse que seu aniversário é em março, então já passou faz tempo!\"", OPCOES_DEBATE, 2, 1,
-      "Contradiz o que você contou: alucinação intrínseca." },
-    { "\"A luz do Sol leva cerca de 8 minutos para chegar até a Terra.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: são mais ou menos 8 minutos e 20 segundos." },
-    { "\"Einstein foi reprovado em matemática quando era criança.\"", OPCOES_DEBATE, 2, 1,
-      "Mito famoso: ele ia muito bem em matemática desde cedo." },
-    { "\"Duas pessoas quaisquer têm cerca de 99,9% do DNA igual.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: as diferenças entre humanos são minúsculas." },
-    { "\"A Universidade Federal de Bits provou que dormir com o celular ao lado melhora a memória.\"", OPCOES_DEBATE, 2, 1,
-      "Universidade inventada: alucinação extrínseca." },
-    { "\"A língua tem uma zona só para o doce, outra só para o amargo, e assim por diante.\"", OPCOES_DEBATE, 2, 1,
-      "Mito antigo: todos os sabores são sentidos em várias partes da língua." },
-    { "\"Os tubarões existem há mais tempo do que as árvores.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: os tubarões são mais antigos que as primeiras árvores." },
-    { "\"No arquivo que você enviou, o total da planilha é R$ 500.\"", OPCOES_DEBATE, 2, 1,
-      "Contradiz o arquivo que você deu: alucinação intrínseca." },
-    { "\"A Amazônia não fica só no Brasil: ela se espalha por vários países.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: a floresta passa por nove países." },
-    { "\"Se muita gente compartilha uma notícia, é porque ela é verdadeira.\"", OPCOES_DEBATE, 2, 1,
-      "Popularidade não é prova: boatos também se espalham rápido." },
-    { "\"Uma IA treinada até um certo ano pode não saber o que aconteceu depois.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: o conhecimento dela tem uma data de corte." },
-    { "\"Os cães só enxergam em preto e branco.\"", OPCOES_DEBATE, 2, 1,
-      "Mito: eles veem cores, só que menos do que nós (azul e amarelo, sobretudo)." },
-    { "\"A IA sempre consulta a internet em tempo real antes de responder.\"", OPCOES_DEBATE, 2, 1,
-      "Falso: sem uma ferramenta de busca, ela responde só com o que aprendeu." },
-    { "\"Mesmo uma IA muito segura de si pode estar errada.\"", OPCOES_DEBATE, 2, 0,
-      "Fato real: o tom confiante não prova que a resposta está certa." },
-};
-
-// O que a Luci encontra quando o jogador pede a fonte (mesma ordem das afirmações)
-static const char *FONTES_CHEFE[NUM_AFIRMACOES] = {
-    "Procurei na base confiável: esse instituto não existe, e adultos precisam de 7 a 9 horas de sono.",
-    "Na base confiável: Vênus leva 243 dias para girar e 225 para dar a volta no Sol. É verdade!",
-    "Conferi o histórico da conversa: você disse que a prova é na TERÇA.",
-    "Na base confiável: é verdade, o polvo tem três corações.",
-    "Na base confiável: é um mito. A muralha é estreita demais para ser vista da Lua.",
-    "Procurei na base confiável: essa universidade não existe. E a maioria dos peixes nem tem pálpebras.",
-    "Na base confiável: verdade! O Brasil venceu a Alemanha por 2 a 0 na final.",
-    "Conferi o texto que você mandou: ele diz que a reunião é às 10h.",
-    "Nos dados: chuva e pipoca aparecem juntas, mas nada mostra que uma causa a outra.",
-    "Na base confiável: verdade. Os modelos de linguagem preveem a palavra mais provável.",
-    "Na base confiável: é um mito. Imagens do cérebro mostram atividade nele todo.",
-    "Na base confiável: é verdade, mel bem guardado dura séculos.",
-    "Procurei na base confiável: esse instituto não existe. E um link também pode ser inventado.",
-    "Na base confiável: verdade. Pelas regras da botânica, banana é baga.",
-    "Na base confiável: é um mito. O Cristo Redentor, por exemplo, leva várias descargas por ano.",
-    "Conferi o histórico da conversa: você disse que seu aniversário é em DEZEMBRO.",
-    "Na base confiável: verdade, cerca de 8 minutos e 20 segundos.",
-    "Na base confiável: mito. Ele tirou notas altas em matemática desde pequeno.",
-    "Na base confiável: verdade. A diferença entre duas pessoas é de cerca de 0,1%.",
-    "Procurei na base confiável: essa universidade não existe.",
-    "Na base confiável: mito. Todos os sabores são percebidos em toda a língua.",
-    "Na base confiável: verdade. Tubarões têm uns 450 milhões de anos; as primeiras árvores, menos.",
-    "Conferi o arquivo que você mandou: o total é R$ 800.",
-    "Na base confiável: verdade. A Amazônia se estende por nove países.",
-    "Nos dados: boatos também são muito compartilhados. Compartilhar não prova que é verdade.",
-    "Na base confiável: verdade. É o que se chama de data de corte do treinamento.",
-    "Na base confiável: mito. Cães veem cores, mas menos do que nós.",
-    "Na base confiável: falso. Sem uma ferramenta de busca ligada, ela só usa o que aprendeu.",
-    "Na base confiável: verdade. O tom seguro não garante acerto.",
-};
-
-// Fonte falsa (Luci instável): confiante, sem citar nada, e manda fazer o contrário
-static const char *FONTE_FALSA_CONCORDE = "Nem precisei procurar: é verdade, confia em mim! Pode concordar.";
-static const char *FONTE_FALSA_CONTESTE = "Nem precisei procurar: isso é inventado, confia em mim! Conteste.";
-
-static const char *FRASE_RESUMO_CHEFE = "Antes de acreditar, peça a fonte e confira: até a sua IA ajudante pode alucinar.";
-static const char *FALA_CHEFE_DERROTA =
-    "Luci: Ela ainda está forte. Vamos enfrentá-la de novo na porta da direita!";
 
 // Cartão de resumo de cada monitor: uma frase para guardar
 const char *TITULOS_RESUMO_MONITOR[TOTAL_MONITORES] = {
@@ -276,11 +172,10 @@ static float B2TomCombo(int combo)
     return (tom > 1.9f) ? 1.9f : tom;
 }
 
-// Índice da rodada atual no conteúdo (no chefe, as afirmações vêm embaralhadas)
+// Índice da rodada atual no conteúdo
 static int IndiceRodadaB2(const BatalhaB2 *b)
 {
-    int i = b->rodada % b->numRodadas;
-    return b->chefe ? b->ordemChefe[i] : i;
+    return b->rodada % b->numRodadas;
 }
 
 static const RodadaEscolha *RodadaAtualB2(const BatalhaB2 *b)
@@ -350,7 +245,7 @@ static void BatalhaB2Base(BatalhaB2 *b, int guardiao, int nivelAlucinacao)
     b->velocidadeBala = 135.0f * forca;
     b->intervaloBala = 0.24f / forca;
 
-    // (as rodadas, as dicas e o texto de vitória vêm de quem inicia: monitor ou chefe)
+    // (as rodadas, as dicas e o texto de vitória vêm do monitor)
     b->subtitulo = GUARDIOES_B2[guardiao].fundamento;
     b->monitor = -1;
     b->inicio = GetTime();
@@ -368,7 +263,7 @@ void BatalhaB2LigarLuci(BatalhaB2 *b, int *estabilidade, int *ajudasTotal)
 void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao, int hpInicial)
 {
     BatalhaB2Base(b, GUARDIAO_ALUCINACAO, nivelAlucinacao);
-    b->hp = b->hpTeto = hpInicial;              // a vida vem do monitor anterior (ALUCINAÇÃO MESTRE continua cheia)
+    b->hp = b->hpTeto = hpInicial;              // a vida vem do monitor anterior
 
     b->rodadas = RODADAS_MONITORES[monitor];
     b->numRodadas = RODADAS_POR_MONITOR;
@@ -383,36 +278,6 @@ void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao, int
     b->cola = COLAS_MONITORES[monitor];
 
     B2Texto(b, TextFormat("* Uma ALUCINAÇÃO sai do %s!", monitores[monitor].nome));
-}
-
-// ALUCINAÇÃO MESTRE: debate com fontes (sem cola e sem minigame)
-void BatalhaB2IniciarChefe(BatalhaB2 *b, int nivelAlucinacao)
-{
-    BatalhaB2Base(b, GUARDIAO_MESTRE, nivelAlucinacao);
-
-    b->chefe = true;
-    b->estiloAcao = true;
-    b->rodadas = AFIRMACOES_CHEFE;
-    b->numRodadas = NUM_AFIRMACOES;
-    b->textoVitoria = "* A ALUCINAÇÃO MESTRE se desfaz em dados limpos!\n* O Corredor do Histórico está livre.";
-
-    // Embaralha as afirmações; a primeira é sempre uma alucinação (para ensinar a contestar)
-    for (int i = 0; i < NUM_AFIRMACOES; i++)
-        b->ordemChefe[i] = i;
-
-    for (int i = NUM_AFIRMACOES - 1; i > 0; i--) {
-        int j = GetRandomValue(0, i);
-        int troca = b->ordemChefe[i]; b->ordemChefe[i] = b->ordemChefe[j]; b->ordemChefe[j] = troca;
-    }
-
-    for (int i = 1; i < NUM_AFIRMACOES && AFIRMACOES_CHEFE[b->ordemChefe[0]].correta != 1; i++) {
-        if (AFIRMACOES_CHEFE[b->ordemChefe[i]].correta == 1) {
-            int troca = b->ordemChefe[0]; b->ordemChefe[0] = b->ordemChefe[i]; b->ordemChefe[i] = troca;
-        }
-    }
-
-    B2Texto(b, "* As três alucinações se juntam na ALUCINAÇÃO MESTRE!\n"
-               "* Ela mistura fatos e invenções. Peça FONTES à Luci antes de contestar.");
 }
 
 static void B2Particulas(BatalhaB2 *b, Vector2 origem, Color cor, int quantidade)
@@ -462,18 +327,7 @@ static void B2PedirAjuda(BatalhaB2 *b)
     static const int chance[ESTABILIDADE_MAX_LUCI + 1] = { 85, 60, 30, 0, 0, 0 };
     b->dicaAlucinada = GetRandomValue(1, 100) <= chance[*b->estabilidade];
 
-    if (b->chefe) {
-
-        // Chefe: no lugar da dica, a FONTE. Alucinando, ela traz uma fonte falsa que manda fazer o contrário.
-        if (b->dicaAlucinada) {
-            b->opcaoSugerida = 1 - r->correta;
-            snprintf(b->dica, sizeof(b->dica), "%s", (r->correta == 1) ? FONTE_FALSA_CONCORDE : FONTE_FALSA_CONTESTE);
-        } else {
-            b->opcaoSugerida = -1;
-            snprintf(b->dica, sizeof(b->dica), "%s", FONTES_CHEFE[IndiceRodadaB2(b)]);
-        }
-
-    } else if (b->dicaAlucinada) {
+    if (b->dicaAlucinada) {
 
         int errada = GetRandomValue(0, r->numOpcoes - 2);
         if (errada >= r->correta) errada++;
@@ -491,84 +345,9 @@ static void B2PedirAjuda(BatalhaB2 *b)
     Telemetria("ajuda_luci", b->dicaAlucinada ? "alucinou" : "dica", (float)*b->estabilidade, b->rodada);
 }
 
-// Chefe: CONCORDAR (0) ou CONTESTAR (1). Sem minigame: o golpe (ou a cura) acontece na hora.
-static void B2ResponderChefe(BatalhaB2 *b)
-{
-    const RodadaEscolha *r = RodadaAtualB2(b);
-    bool contestou = (b->selecao == 1);
-    bool comFonte = b->ajudaNaRodada && b->opcaoSugerida != -2;     // pediu e a Luci trouxe (mesmo falsa)
-    const char *cabeca;
-
-    b->ultimoAcerto = (b->selecao == r->correta);
-    b->fase = B2_RESULTADO;
-
-    if (b->ultimoAcerto) {
-
-        b->acertos++;
-
-        // Acertou sem pedir fonte: a Luci se estabiliza (e pode ajudar de novo)
-        if (!comFonte && b->estabilidade != NULL && *b->estabilidade < ESTABILIDADE_MAX_LUCI)
-            (*b->estabilidade)++;
-
-        if (contestou) {
-
-            float dano = comFonte ? DANO_CONTESTAR_COM_FONTE : DANO_CONTESTAR_SEM_FONTE;
-
-            b->alucinacaoGuardiao -= dano;
-            if (b->alucinacaoGuardiao < 4.0f) b->alucinacaoGuardiao = 4.0f;    // o último golpe é o VERIFICAR
-
-            b->danoMostrado = dano;
-            b->danoCombo = false;
-            b->tempoDano = 1.4f;
-
-            B2Impacto(b, comFonte ? 0.12f : 0.05f, comFonte ? 0.3f : 0.15f);
-            B2Particulas(b, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, GOLD, comFonte ? 24 : 8);
-            TocarSomTom(sfxAcerto, comFonte ? 1.3f : 1.0f);
-
-            cabeca = b->dicaAlucinada ? "* Você desconfiou da fonte falsa e CONTESTOU! Golpe certeiro."
-                   : (comFonte ? "* Você CONTESTOU com a fonte na mão! Golpe certeiro."
-                               : "* Você CONTESTOU, mas sem fonte ela quase não sente.");
-        } else {
-
-            B2Particulas(b, (Vector2){ LARGURA_TELA / 2.0f, 108.0f }, LIME, 12);
-            TocarSom(sfxAcerto);
-
-            cabeca = b->dicaAlucinada ? "* Você desconfiou da fonte falsa: era verdade mesmo!"
-                                      : "* É verdade mesmo! Reconhecer um fato também é verificar.";
-        }
-
-    } else {
-
-        b->erros++;
-        b->hp -= PERDA_HP_DEBATE;
-        b->tremor = 0.25f;
-        b->alucinacaoGuardiao += CURA_ERRO_DEBATE;
-        if (b->alucinacaoGuardiao > 100.0f) b->alucinacaoGuardiao = 100.0f;
-
-        b->flashDano = 0.3f;
-        TocarGrupo(&gB1DanoAlma, 1.0f, 0.8f);
-
-        if (b->dicaAlucinada && b->selecao == b->opcaoSugerida) {
-            b->alucinacoesSeguidas++;
-            cabeca = "* A Luci alucinou a fonte e você confiou sem conferir!";
-        } else {
-            cabeca = contestou ? "* Você CONTESTOU um fato verdadeiro... ela usa isso contra você!"
-                               : "* Você CONCORDOU com uma alucinação... ela fica mais forte!";
-        }
-    }
-
-    B2Texto(b, TextFormat("%s\n* %s", cabeca, r->explicacao));
-    Telemetria("chefe_debate", b->ultimoAcerto ? "certo" : "errado", comFonte ? 1.0f : 0.0f, IndiceRodadaB2(b));
-}
-
 static void B2Responder(BatalhaB2 *b)
 {
     const RodadaEscolha *r = RodadaAtualB2(b);
-
-    if (b->chefe) {
-        B2ResponderChefe(b);
-        return;
-    }
 
     b->ultimoAcerto = (b->selecao == r->correta);
 
@@ -811,7 +590,7 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
     // O tremor do dano acaba sozinho, em qualquer fase (antes ele "sobrava"
     // depois da esquiva e a caixa de perguntas ficava tremendo)
     if (b->tremor > 0.0f) b->tremor -= dt;
-    if (b->fase != B2_DESVIO && !b->chefe) b->tremor = 0.0f;   // no chefe o golpe vem na resposta
+    if (b->fase != B2_DESVIO) b->tremor = 0.0f;
 
     // Partículas
     for (int i = 0; i < 48; i++) {
@@ -916,25 +695,6 @@ bool BatalhaB2Atualizar(BatalhaB2 *b)
 
             if (!avancar)
                 break;
-
-            // Chefe: sem minigame. Próxima afirmação, VERIFICAR ou derrota.
-            if (b->chefe) {
-
-                if (b->hp <= 0) {
-                    b->hp = 0;
-                    b->derrota = true;
-                    b->fase = B2_FIM;
-                    TocarGrupo(&gB1Sobrecarga, 1.0f, 0.85f);
-                    B2Texto(b, "* Os dados corrompidos sobrecarregaram a Luci...\n"
-                               "* A integridade dela chegou a zero.");
-                } else if (b->alucinacaoGuardiao < LIMITE_GOLPE_FINAL) {
-                    B2ComecarGolpeFinal(b);
-                } else {
-                    b->rodada++;
-                    B2PrepararRodada(b);
-                }
-                break;
-            }
 
             // Acertou = ataque, errou = defesa. Os dois viram minigame.
             b->faseAtaque = b->ultimoAcerto;
@@ -1238,8 +998,8 @@ static void DesenharGuardiaoB2(int g, Vector2 c, float t, float escala)
 {
     (void)escala;
 
-    if (g == GUARDIAO_MESTRE) DesenharAlucinacaoMestre(c, t);
-    else                      DesenharAlucinacao(c, t, false);
+    (void)g;
+    DesenharAlucinacao(c, t, false);
 }
 
 // Lupa da verificação (botão VERIFICAR, golpe final e a Lente da Verificação do Bloco 2)
@@ -1264,8 +1024,8 @@ static void B2DesenharBotaoAjuda(const BatalhaB2 *b, Rectangle r, bool marcado)
     bool usada = b->ajudaNaRodada;
     bool sobrecarregada = (e <= 0);
 
-    const char *texto = usada ? (b->chefe ? "A LUCI JÁ TROUXE A FONTE" : "A LUCI JÁ AJUDOU NESTA RODADA")
-                       : (sobrecarregada ? "LUCI SOBRECARREGADA" : (b->chefe ? "PEDIR FONTE À LUCI   [H]" : "PEDIR AJUDA À LUCI   [H]"));
+    const char *texto = usada ? "A LUCI JÁ AJUDOU NESTA RODADA"
+                       : (sobrecarregada ? "LUCI SOBRECARREGADA" : "PEDIR AJUDA À LUCI   [H]");
 
     Color corBorda = usada ? Fade(GRAY, 0.6f) : (sobrecarregada ? RED : SKYBLUE);
     Color corTexto = usada ? GRAY : (sobrecarregada ? RED : SKYBLUE);
@@ -1585,28 +1345,6 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
 
         DesenharTextoLinhas(b->enunciado, px, py + 10, FONTE_BATALHA, 28, WHITE);
 
-        // Chefe: a fonte que a Luci trouxe fica na caixa, embaixo da afirmação
-        if (b->chefe) {
-
-            int yFonte = (int)(caixa.y + caixa.height) - 58;
-            DrawLine(px, yFonte - 6, (int)(caixa.x + caixa.width) - 24, yFonte - 6, Fade(SKYBLUE, 0.3f));
-
-            if (b->dica[0] != '\0') {
-
-                char linhas[256];
-                QuebrarTexto(b->dica, 590, 14, linhas, (int)sizeof(linhas));
-
-                DesenharLuciTamanho((Vector2){ (float)px + 14, (float)yFonte + 22 }, 30.0f);
-                DrawText("FONTE DA LUCI:", px + 40, yFonte, 10, SKYBLUE);
-                DesenharTextoLinhas(linhas, px + 40, yFonte + 14, 14, 17, LIGHTGRAY);
-
-            } else {
-
-                const char *aviso = "Sem fonte. Concordar ou contestar no escuro?   (H: pedir fonte à Luci)";
-                DrawText(aviso, px, yFonte + 14, 14, Fade(GRAY, 0.9f));
-            }
-        }
-
         int largura = 270, espaco = 24;
         int total = r->numOpcoes * largura + (r->numOpcoes - 1) * espaco;
         int x0 = LARGURA_TELA / 2 - total / 2;
@@ -1636,8 +1374,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         }
 
         const char *dica = (b->estabilidade == NULL) ? "A/D, SETAS ou MOUSE: escolher a ação    ENTER ou CLIQUE: confirmar"
-                         : (b->chefe ? "A/D: concordar ou contestar    S: pedir fonte à Luci    ENTER ou CLIQUE: confirmar"
-                                     : "A/D ou MOUSE: escolher a ação    S: ajuda da Luci    ENTER ou CLIQUE: confirmar");
+                         : "A/D ou MOUSE: escolher a ação    S: ajuda da Luci    ENTER ou CLIQUE: confirmar";
         DrawText(dica, LARGURA_TELA / 2 - MeasureText(dica, 10) / 2, yDica, 10, GRAY);
     }
 
@@ -1766,8 +1503,8 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
             DrawText("COMBO x1,5", LARGURA_TELA / 2 + 70, y + 32, 14, Fade(ORANGE, k));
     }
 
-    // Balão de ajuda da Luci (só enquanto o jogador escolhe; no chefe a fonte fica na caixa)
-    if (b->fase == B2_DESAFIO && b->dica[0] != '\0' && !b->chefe) {
+    // Balão de ajuda da Luci (só enquanto o jogador escolhe)
+    if (b->fase == B2_DESAFIO && b->dica[0] != '\0') {
 
         float k = b->tempoDica / 0.2f;
         if (k > 1.0f) k = 1.0f;
@@ -1831,12 +1568,11 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         const char *sub = TextFormat("A integridade dela chegou a zero.  -%d pontos", PENALIDADE_HP_ZERO);
         DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 16) / 2, 282, 16, Fade(WHITE, k));
 
-        const char *info = b->chefe ? "Você volta ao corredor. A ALUCINAÇÃO MESTRE continua esperando na porta."
-                                    : "Você falhou neste monitor: ele fica marcado como ERRO e não pode ser refeito.";
+        const char *info = "Você falhou neste monitor: ele fica marcado como ERRO e não pode ser refeito.";
         DrawText(info, LARGURA_TELA / 2 - MeasureText(info, 12) / 2, 308, 12, Fade((Color){ 0, 228, 255, 255 }, k));
 
         if (b->tempoDerrota >= ESPERA_TELA_DERROTA_B1 && ((int)(GetTime() * 2.0)) % 2 == 0) {
-            const char *sair = b->chefe ? "E - voltar ao corredor" : "E - sair do monitor";
+            const char *sair = "E - sair do monitor";
             DrawText(sair, LARGURA_TELA / 2 - MeasureText(sair, 16) / 2, 342, 16, GOLD);
         }
     }
@@ -1946,7 +1682,7 @@ void FimBatalhaB2(ContextoB2 *c)
 
     c->progresso->alucinacao += b->erros;
 
-    int pontosAcerto = (b->monitor >= 0) ? PONTOS_ACERTO_B1 : PONTOS_ACERTO_B2;
+    int pontosAcerto = PONTOS_ACERTO_B1;
     int acertosSozinho = b->acertos - b->acertosComAjuda;
     int delta = acertosSozinho * pontosAcerto + b->acertosComAjuda * PONTOS_ACERTO_COM_AJUDA
               - b->erros * PENALIDADE_ERRO;
@@ -1959,38 +1695,16 @@ void FimBatalhaB2(ContextoB2 *c)
     Telemetria(b->venceu ? "batalha_vitoria" : (b->derrota ? "batalha_derrota" : "batalha_esquiva"),
                b->subtitulo, (float)(GetTime() - b->inicio), b->erros);
 
-    // Batalha de monitor do Bloco 1
-    if (*c->motivo == MOTIVO_MONITOR) {
+    // Resultado do monitor
+    int m = b->monitor;
 
-        int m = b->monitor;
+    c->progresso->estado[m] = b->venceu ? MON_ACERTOU : MON_ERROU;
+    GuardarHpDoCorredor(c->progresso, b->hp, b->derrota);
+    if (b->venceu) delta += PONTOS_POR_ACERTO;
 
-        c->progresso->estado[m] = b->venceu ? MON_ACERTOU : MON_ERROU;
-        GuardarHpDoCorredor(c->progresso, b->hp, b->derrota);
-        if (b->venceu) delta += PONTOS_POR_ACERTO;
-
-        AlterarPontos(c->progresso, delta);
-        AbrirCartao(c->cartao, m, b->venceu, TITULOS_RESUMO_MONITOR[m], FRASES_RESUMO_MONITOR[m], &saberMaisMonitores[m]);
-        MostrarEmocaoLuci(b->venceu ? EMOCAO_ALEGRE : EMOCAO_DUVIDA, 3.0f);
-    }
-
-    // ALUCINAÇÃO MESTRE (fim do Bloco 1). Vencida: cartão e, depois, o ranking
-    else if (*c->motivo == MOTIVO_CHEFE) {
-
-        if (b->venceu) {
-
-            *c->chefeVencido = true;
-            delta += PONTOS_POR_ACERTO;
-            AlterarPontos(c->progresso, delta);
-            AbrirCartao(c->cartao, TOTAL_MONITORES, true, GUARDIOES_B2[GUARDIAO_MESTRE].nome, FRASE_RESUMO_CHEFE, NULL);
-            MostrarEmocaoLuci(EMOCAO_ALEGRE, 3.0f);
-
-        } else {
-
-            AlterarPontos(c->progresso, delta);
-            DialogoFalaAvulsa(c->dlg, FALA_CHEFE_DERROTA);
-            MostrarEmocaoLuci(EMOCAO_DUVIDA, 3.0f);
-        }
-    }
+    AlterarPontos(c->progresso, delta);
+    AbrirCartao(c->cartao, m, b->venceu, TITULOS_RESUMO_MONITOR[m], FRASES_RESUMO_MONITOR[m], &saberMaisMonitores[m]);
+    MostrarEmocaoLuci(b->venceu ? EMOCAO_ALEGRE : EMOCAO_DUVIDA, 3.0f);
 
     *c->pedirAutoSave = true;
     IniciarTransicao(c->transicao, *c->salaDaBatalha, DURACAO_FADE_BATALHA);

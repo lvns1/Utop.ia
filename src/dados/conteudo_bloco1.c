@@ -183,18 +183,8 @@ const Dialogo dialogoPortaTrancada = {
     .numPaginas = 1
 };
 
-// Mini-chefe do fim do Bloco 1 (a conversa termina com OBJ_CHEFE e a batalha começa)
+// Fim do Bloco 1: a ALUCINAÇÃO MESTRE foge e a luta é na sala dela (a conversa termina com OBJ_CHEFE)
 const Dialogo dialogoChefe = {
-    .paginas = {
-        "Luci: Os 3 monitores se apagaram... espera! As alucinações estão se juntando!",
-        "Luci: É a ALUCINAÇÃO MESTRE! Ela mistura fatos com invenções. Me peça FONTES (H) antes de contestar!",
-        "Luci: Mas cuidado: se eu ficar instável, posso trazer uma fonte falsa. Confira o que eu disser!"
-    },
-    .numPaginas = 3
-};
-
-// Versão de treino (MESTRE_TREINO_COMBATE): a Mestre foge e a luta é na sala dela
-const Dialogo dialogoChefeTreino = {
     .paginas = {
         "Luci: Os 3 monitores se apagaram... espera! As alucinações estão se juntando!",
         "Luci: É a ALUCINAÇÃO MESTRE! Ela fugiu pela porta da direita.",

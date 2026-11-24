@@ -261,7 +261,6 @@ int main(void) {
     jg->progresso = (ProgressoCorredor){0};
     jg->batalhaB2 = (BatalhaB2){0};
     jg->salaDaBatalhaB2 = CORREDOR;    // para onde volta depois da batalha
-    jg->motivoBatalhaB2 = MOTIVO_MONITOR;
     jg->cartao = (CartaoResumo){0};               // cartão de resumo depois de cada desafio
     jg->tempoParado = 0.0f;                // há quanto tempo o jogador não anda (Luci reage)
     jg->estabilidadeLuci = ESTABILIDADE_MAX_LUCI;   // gasta ao pedir ajuda (H) nas batalhas
@@ -319,8 +318,8 @@ int main(void) {
 
     // O que o fim de uma batalha do Bloco 1 mexe
     jg->ctxB2 = (ContextoB2){
-        &jg->dlg, &jg->transicao, &jg->progresso, &jg->batalhaB2, &jg->pedirAutoSave, &jg->salaDaBatalhaB2, &jg->motivoBatalhaB2,
-        &jg->cartao, &jg->chefeVencido
+        &jg->dlg, &jg->transicao, &jg->progresso, &jg->batalhaB2, &jg->pedirAutoSave, &jg->salaDaBatalhaB2,
+        &jg->cartao
     };
 
     SetTargetFPS(60);

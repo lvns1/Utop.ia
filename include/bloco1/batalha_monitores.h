@@ -14,7 +14,6 @@
 //   Biblioteca dos Ecos (roguelite de tiro, mais abaixo).
 // =============================================================
 
-#define PONTOS_ACERTO_B2      5          // acerto no debate com a ALUCINAÇÃO MESTRE
 #define DURACAO_DESVIO_B2     5.0f       // DEFESA: esquiva quando erra uma rodada
 #define DURACAO_ATAQUE_B2     3.5f       // ATAQUE: minigame depois de acertar (mais curto)
 #define ESPERA_TEXTO_B2       1.5f       // textos da batalha avançam sozinhos depois disso (ENTER adianta)
@@ -26,10 +25,8 @@
 #define ESPERA_TELA_DERROTA_B1 1.0f      // game over: segundos antes de aceitar a escolha (não pula sem querer)
 
 // Visual dos inimigos das batalhas
-enum { GUARDIAO_ALUCINACAO, GUARDIAO_MESTRE, NUM_GUARDIOES };
+enum { GUARDIAO_ALUCINACAO, NUM_GUARDIOES };
 
-// Por que a batalha começou (decide o que acontece no fim)
-typedef enum { MOTIVO_MONITOR, MOTIVO_CHEFE } MotivoBatalhaB2;
 
 // Cada monitor do Bloco 1 tem um minigame com a cara do seu tema
 typedef enum {
@@ -91,20 +88,6 @@ typedef struct {
 #define DURACAO_GOLPE_FINAL     1.7f
 #define IMPACTO_GOLPE_FINAL     0.55f   // quando a lupa acerta a alucinação
 
-// ALUCINAÇÃO MESTRE (fim do Bloco 1): DEBATE COM FONTES.
-// Ela afirma coisas, misturando fatos reais (pouco conhecidos) com invenções ditas
-// com toda a confiança. O jogador CONCORDA ou CONTESTA, e pode PEDIR FONTE à Luci (H):
-//   contestar uma alucinação COM fonte = golpe grande; SEM fonte = quase não fere
-//   concordar com alucinação ou contestar um fato = ela se cura e você perde vida
-// Cada fonte gasta 1 de estabilidade. Instável, a Luci pode trazer uma FONTE FALSA
-// (confiante e sem citar nada). Acertar sem pedir fonte devolve estabilidade.
-#define NUM_AFIRMACOES             29
-#define DANO_CONTESTAR_COM_FONTE   34.0f    // 3 golpes com fonte levam ao VERIFICAR
-#define DANO_CONTESTAR_SEM_FONTE   12.0f
-#define CURA_ERRO_DEBATE           10.0f
-#define PERDA_HP_DEBATE            4
-
-#define OPCOES_DEBATE { "CONCORDAR", "CONTESTAR" }      // correta 1 = é alucinação
 // ---------- Estado da batalha ----------
 
 typedef enum { B2_INTRO, B2_DESAFIO, B2_RESULTADO, B2_ENCOLHENDO, B2_DESVIO, B2_EXPANDINDO, B2_FIM,
@@ -189,10 +172,6 @@ typedef struct {
     const char *cola;           // NULL = sem cola
     float tempoCola;            // tempo desde que a cola foi para o canto
 
-    // ALUCINAÇÃO MESTRE (debate com fontes)
-    bool chefe;
-    int ordemChefe[NUM_AFIRMACOES];     // afirmações embaralhadas
-
     // Partículas de acerto
     struct { Vector2 pos, vel; float vida; Color cor; } particulas[48];
 
@@ -204,7 +183,7 @@ typedef struct {
 // Cartão de resumo: aparece depois de cada desafio com uma frase para guardar
 typedef struct {
     bool ativo;
-    int icone;                  // monitor (0..2) ou o chefe (3)
+    int icone;                  // monitor (0..2)
     bool sucesso;
     const char *titulo;
     const char *frase;
@@ -220,9 +199,7 @@ typedef struct {
     BatalhaB2 *batalha;
     bool *pedirAutoSave;
     TelaAtual *salaDaBatalha;
-    MotivoBatalhaB2 *motivo;
     CartaoResumo *cartao;
-    bool *chefeVencido;         // venceu a ALUCINAÇÃO MESTRE
 } ContextoB2;
 
 // ----- Variáveis compartilhadas -----
@@ -237,7 +214,6 @@ void GuardarHpDoCorredor(ProgressoCorredor *p, int hp, bool derrota);
 void PrepararSaberMaisMonitores(void);
 void BatalhaB2LigarLuci(BatalhaB2 *b, int *estabilidade, int *ajudasTotal);
 void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao, int hpInicial);
-void BatalhaB2IniciarChefe(BatalhaB2 *b, int nivelAlucinacao);
 bool BatalhaB2Atualizar(BatalhaB2 *b);
 void DesenharTrianguloB2(Vector2 a, Vector2 b, Vector2 c, Color cor);
 Vector2 GirarPonto(Vector2 centro, float dx, float dy, float graus);

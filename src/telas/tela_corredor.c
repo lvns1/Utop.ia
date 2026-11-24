@@ -83,20 +83,12 @@ void TelaCorredorAtualizar(Jogo *jg)
                 jg->pedirAutoSave = true;     // AUTO SAVE: terminou um monitor
             }
 
-            // Fim da fala da Luci sobre o chefe: começa a ALUCINAÇÃO MESTRE
-            // (versão de treino: a sala dela, com a arma e o tutorial de combate)
-            if (m == OBJ_CHEFE && MESTRE_TREINO_COMBATE) {
+            // Fim da fala da Luci sobre o chefe: a ALUCINAÇÃO MESTRE é na sala dela,
+            // com a arma e o tutorial de combate
+            if (m == OBJ_CHEFE) {
 
                 jg->entrarSalaMestre = true;
                 IniciarTransicao(&jg->transicao, BIBLIOTECA, DURACAO_FADE_BATALHA);
-            }
-            else if (m == OBJ_CHEFE) {
-
-                BatalhaB2IniciarChefe(&jg->batalhaB2, jg->progresso.alucinacao);
-                BatalhaB2LigarLuci(&jg->batalhaB2, &jg->estabilidadeLuci, &jg->ajudasPedidas);
-                jg->salaDaBatalhaB2 = CORREDOR;
-                jg->motivoBatalhaB2 = MOTIVO_CHEFE;
-                IniciarTransicao(&jg->transicao, BATALHA_B2, DURACAO_FADE_BATALHA);
             }
         }
     }
@@ -119,7 +111,7 @@ void TelaCorredorAtualizar(Jogo *jg)
     else if (ContarConcluidos(&jg->progresso) == TOTAL_MONITORES && !jg->chefeVencido && !jg->chefeAnunciado) {
 
         jg->chefeAnunciado = true;
-        DialogoIniciar(&jg->dlg, MESTRE_TREINO_COMBATE ? &dialogoChefeTreino : &dialogoChefe, OBJ_CHEFE);
+        DialogoIniciar(&jg->dlg, &dialogoChefe, OBJ_CHEFE);
     }
 
     else if (jg->chefeVencido && !jg->progresso.fimAnunciado) {
@@ -207,7 +199,6 @@ void TelaCorredorAtualizar(Jogo *jg)
                         BatalhaB2IniciarMonitor(&jg->batalhaB2, i, jg->progresso.alucinacao, HpDoCorredor(&jg->progresso));
                         BatalhaB2LigarLuci(&jg->batalhaB2, &jg->estabilidadeLuci, &jg->ajudasPedidas);
                         jg->salaDaBatalhaB2 = CORREDOR;
-                        jg->motivoBatalhaB2 = MOTIVO_MONITOR;
                         IniciarTransicao(&jg->transicao, BATALHA_B2, DURACAO_FADE_BATALHA);
                     }
 

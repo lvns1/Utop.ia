@@ -63,7 +63,6 @@ typedef struct Jogo {
     ProgressoCorredor progresso;
     BatalhaB2 batalhaB2;
     TelaAtual salaDaBatalhaB2;
-    MotivoBatalhaB2 motivoBatalhaB2;
     CartaoResumo cartao;
     float tempoParado;
     int estabilidadeLuci;

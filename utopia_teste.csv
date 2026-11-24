@@ -106,3 +106,38 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 20.6;rogue_sala_limpa;sala 1 ELIMINAR;6.2;4
 22.6;primeira_missao_escolha;;0.0;0
 22.6;rogue_recompensa_sala;MELHORIA;0.0;0
+1.6;sessao_inicio;;0.0;0
+8.0;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.3;3
+11.1;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.0;3
+25.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+39.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+42.3;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;30.0;2
+42.7;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;30.3;0
+43.2;cartao;ALUCINAÇÃO;0.6;0
+53.3;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+60.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;93.0;3
+63.3;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.6;2
+63.8;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.1;0
+64.5;cartao;INTRÍNSECA x EXTRÍNSECA;0.7;0
+74.0;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;38.0;1
+81.6;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;93.0;3
+84.3;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;18.8;2
+84.6;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;19.1;0
+85.2;cartao;COMO EVITAR;0.6;0
+86.6;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.4;3
+86.8;mestre_entrada;;0.0;0
+88.7;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.3;2
+91.0;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.1;3
+91.0;mestre_etapa;;0.0;1
+95.7;mestre_etapa;;0.0;2
+101.9;mestre_etapa;;0.0;3
+109.8;mestre_etapa;;0.0;4
+115.8;mestre_parry;;4.0;1
+118.7;mestre_etapa;;0.0;5
+122.9;mestre_etapa;;0.0;6
+123.7;tutorial_escolha_treino;;0.0;0
+123.8;mestre_etapa;;0.0;7
+138.4;mestre_vitoria;;14.6;0
+145.5;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;5.1;5
+145.5;ponte_bloco1_2;inicio;58.7;0
+151.4;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;3.3;5

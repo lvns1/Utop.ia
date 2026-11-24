@@ -38,7 +38,6 @@
 //   No tutorial a Luci não deixa a vida cair abaixo de MESTRE_TREINO_HP_MIN; na luta,
 //   cair só reergue o Thomas (ensinar, não punir). Vencida: ranking e o átrio do Bloco 2.
 // =============================================================
-#define MESTRE_TREINO_COMBATE    1        // 1 = sala de treino com a arma (atual); 0 = o debate com fontes (versão anterior)
 #define MESTRE_HP                380.0f   // uns 26 tiros do Disparador (AJUSTE AQUI)
 #define MESTRE_RAIO              44.0f
 #define MESTRE_FASE2             0.5f     // fração da vida em que as 3 alucinações chegam

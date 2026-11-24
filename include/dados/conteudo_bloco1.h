@@ -17,7 +17,6 @@ extern const Dialogo dialogoIntroCorredor;
 extern const Dialogo dialogoFimCorredor;
 extern const Dialogo dialogoPortaTrancada;
 extern const Dialogo dialogoChefe;
-extern const Dialogo dialogoChefeTreino;
 extern const Dialogo dialogoChefeVolta;
 
 // ----- Funções -----

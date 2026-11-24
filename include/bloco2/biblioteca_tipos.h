@@ -755,8 +755,6 @@ typedef enum { ESCOLHA_NORMAL, ESCOLHA_RARA, ESCOLHA_ARMA } ModoEscolha;
 #define PRIMEIRA_MISSAO_VIDA     0.70f    // 1ª missão, salas 1 e 2: vida dos inimigos x0,70...
 #define PRIMEIRA_MISSAO_RITMO    0.85f    // ...ritmo x0,85...
 #define PRIMEIRA_MISSAO_DANO     0.60f    // ...e dano x0,60 (para aprender sem punição)
-#define MISSOES_PARA_REROLL      2        // liberação gradual: REROLAR a partir da 2ª missão
-#define MISSOES_PARA_ARMAS       3        // armas como recompensa a partir da 3ª missão (e a aba ARMAS da loja depois da 2ª)
 #define REROLL_CUSTO_FC          8        // depois das grátis, cada reroll custa isto
 #define FC_OPCAO_RESERVA         5
 

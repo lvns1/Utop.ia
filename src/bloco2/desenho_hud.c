@@ -1158,11 +1158,8 @@ void DesenharEscolha(const Biblioteca *b, float tempo)
     DrawText(ajuda, LARGURA_TELA / 2 - MeasureText(ajuda, 10) / 2, 438, 10, GRAY);      // logo abaixo das cartas (terminam em y=432)
 
     // Recusar também com o mouse (o mesmo que BACKSPACE)
-    if (!RogueRerollLiberado(b))
-        DesenharBotaoMenu(RET_REROLAR_ESCOLHA, TextFormat("REROLAR: ABRE NA %dª MISSÃO", MISSOES_PARA_REROLL), 12, GRAY, false);
-    else
-        DesenharBotaoMenu(RET_REROLAR_ESCOLHA, (b->j.rerolls > 0) ? TextFormat("REROLAR [R]  (%d GRÁTIS)", b->j.rerolls) : TextFormat("REROLAR [R]  (%d FC)", REROLL_CUSTO_FC), 12,
-                          (b->j.rerolls > 0 || b->perm->fragmentos >= REROLL_CUSTO_FC) ? SKYBLUE : GRAY, false);
+    DesenharBotaoMenu(RET_REROLAR_ESCOLHA, (b->j.rerolls > 0) ? TextFormat("REROLAR [R]  (%d GRÁTIS)", b->j.rerolls) : TextFormat("REROLAR [R]  (%d FC)", REROLL_CUSTO_FC), 12,
+                      (b->j.rerolls > 0 || b->perm->fragmentos >= REROLL_CUSTO_FC) ? SKYBLUE : GRAY, false);
     DesenharBotaoMenu(RET_RECUSAR_ESCOLHA, TextFormat("RECUSAR (+%d FC)", FC_RECUSAR_ESCOLHA), 12, GOLD, false);
 }
 

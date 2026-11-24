@@ -922,30 +922,10 @@ Rectangle RogueCartaEscolha(int i, int n)
     return (Rectangle){ 400.0f - total / 2.0f + (float)i * (w + gap), 132.0f, w, h };
 }
 
-// LIBERAÇÃO GRADUAL (um sistema novo por missão; perm->tentativas conta as missões começadas):
-//   missão 1: o básico (escolha de 1 entre 3, itens do Byteco)
-//   missão 2: REROLAR as opções e a aba MELHORIAS (sempre) da loja
-//   missão 3: armas novas como recompensa e a aba ARMAS da loja
-// Quem já jogou bastante (ou tem save antigo) tem tudo liberado.
-bool RogueRerollLiberado(const Biblioteca *b)
-{
-    return b->perm->tentativas >= MISSOES_PARA_REROLL;
-}
-
-bool RogueAbaLojaLiberada(const Biblioteca *b, int aba)          // a loja é visitada ENTRE as missões
-{
-    return aba == 0 || b->perm->tentativas >= aba;                      // aba 1 depois da 1ª missão; aba 2 depois da 2ª
-}
-
 // REROLAR: sorteia outras opções (o que já apareceu nesta escolha não volta). Grátis nas primeiras vezes; depois custa FC.
 static void RogueRerolarEscolha(Biblioteca *b)
 {
     JogadorRogue *j = &b->j;
-    if (!RogueRerollLiberado(b)) {
-        RogueAviso(b, TextFormat("O REROLAR abre na %dª missão.", MISSOES_PARA_REROLL));
-        TocarSom(sfxErro);
-        return;
-    }
     bool gratis = j->rerolls > 0;
     if (!gratis && b->perm->fragmentos < REROLL_CUSTO_FC) {
         RogueAviso(b, TextFormat("Reroll custa %d FC.", REROLL_CUSTO_FC));

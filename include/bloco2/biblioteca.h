@@ -1033,8 +1033,6 @@ bool RogueTemArma(const JogadorRogue *j, TipoArma a);
 void RogueInstalarArma(Biblioteca *b, TipoArma arma, int vaga);
 bool RogueReceberArma(Biblioteca *b, TipoArma arma, int origem, int pedestal);
 Rectangle RogueCartaEscolha(int i, int n);
-bool RogueRerollLiberado(const Biblioteca *b);
-bool RogueAbaLojaLiberada(const Biblioteca *b, int aba);
 void RogueAtualizarEscolha(Biblioteca *b);
 void RogueUsarRecompensa(Biblioteca *b);
 void RogueMontarTelaEvento(const Biblioteca *b, TelaEvento *t);

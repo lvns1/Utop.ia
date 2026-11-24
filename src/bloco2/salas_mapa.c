@@ -1107,13 +1107,12 @@ static int RogueSortearLab(int prof, unsigned int usados)
     return LAB_PROMPTS;
 }
 
-static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar, int tentativasFeitas)
+static TipoRecompensa RogueSortearRecompensaCombate(int prof, TipoRecompensa evitar)
 {
     for (int t = 0; t < 8; t++) {
         int r = GetRandomValue(1, 100);
         TipoRecompensa rec = (r <= 50) ? RECOMPENSA_MELHORIA : ((r <= 70) ? RECOMPENSA_FRAGMENTOS : ((r <= 85) ? RECOMPENSA_ARMA : RECOMPENSA_VIDA));
         if (rec == RECOMPENSA_VIDA && prof < 2) rec = RECOMPENSA_MELHORIA;
-        if (rec == RECOMPENSA_ARMA && tentativasFeitas < MISSOES_PARA_ARMAS - 1) rec = RECOMPENSA_MELHORIA;   // armas: liberadas aos poucos
         if (rec != evitar || t == 7) return rec;
     }
     return RECOMPENSA_MELHORIA;
@@ -1213,7 +1212,7 @@ static void RogueGerarMapa(Biblioteca *b)
 
         for (int c = 0; c < larg[d]; c++) {
             NoMapa *n = RogueNo(b, d, c);
-            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate((int)PROF_DIFICULDADE[d], ultimaRec, b->perm->tentativas);
+            if (n->tipo == SALA_COMBATE)      n->recompensa = ultimaRec = RogueSortearRecompensaCombate((int)PROF_DIFICULDADE[d], ultimaRec);
             else if (n->tipo == SALA_ELITE)   n->recompensa = RECOMPENSA_RARA;       // só Elite (e a sala secreta) dão rara
             else if (n->tipo == SALA_DESAFIO || n->tipo == SALA_ESPECIAL) n->recompensa = RECOMPENSA_MELHORIA;      // escolha comum + 1 reroll grátis
             else if (n->tipo == SALA_SILOGISTA && SILOGISTA_BH)       n->recompensa = RECOMPENSA_SELO;

@@ -97,3 +97,12 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 119.9;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;3.4;6
 124.6;rogue_morte;sala 0;122.1;0
 124.6;primeira_missao_morte;sala 0;122.1;0
+1.8;sessao_inicio;;0.0;0
+14.4;atrio_primeira_visita;;7.3;1
+14.4;rogue_missao;inicio;0.0;1
+14.4;rogue_sala;COMBATE;0.0;0
+14.4;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+14.4;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+20.6;rogue_sala_limpa;sala 1 ELIMINAR;6.2;4
+22.6;primeira_missao_escolha;;0.0;0
+22.6;rogue_recompensa_sala;MELHORIA;0.0;0

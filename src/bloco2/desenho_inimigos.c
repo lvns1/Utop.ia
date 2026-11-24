@@ -1101,11 +1101,9 @@ void DesenharLojaRogue(const Biblioteca *b, float tempo)
     for (int a = 0; a < 3; a++) {
         Rectangle r = { painel.x + 24 + a * 152, painel.y + 52, 146, 24 };
         bool ativa = (b->abaLoja == a);
-        bool aberta = RogueAbaLojaLiberada(b, a);
-        const char *rotulo = aberta ? abas[a] : TextFormat("BLOQUEADA (%dª missão)", a);
-        DrawRectangleRec(r, ativa ? Fade(GOLD, 0.25f) : Fade(GRAY, aberta ? 0.1f : 0.04f));
-        DrawRectangleLinesEx(r, 2, ativa ? GOLD : Fade(GRAY, aberta ? 0.5f : 0.25f));
-        DrawText(rotulo, (int)(r.x + r.width / 2) - MeasureText(rotulo, aberta ? 12 : 10) / 2, (int)r.y + (aberta ? 6 : 7), aberta ? 12 : 10, ativa ? GOLD : (aberta ? GRAY : Fade(GRAY, 0.6f)));
+        DrawRectangleRec(r, ativa ? Fade(GOLD, 0.25f) : Fade(GRAY, 0.1f));
+        DrawRectangleLinesEx(r, 2, ativa ? GOLD : Fade(GRAY, 0.5f));
+        DrawText(abas[a], (int)(r.x + r.width / 2) - MeasureText(abas[a], 12) / 2, (int)r.y + 6, 12, ativa ? GOLD : GRAY);
     }
 
     int linhas = (b->abaLoja == 0) ? NUM_ITENS_LOJA : ((b->abaLoja == 1) ? NUM_MELHORIAS : ARMAS_NA_LOJA);

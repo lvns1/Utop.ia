@@ -339,20 +339,13 @@ static void RogueAtualizarLoja(Biblioteca *b)
 
     bool esquerda = IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT), direita = IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT);
     if (abaClicada >= 0) {
-        if (!RogueAbaLojaLiberada(b, abaClicada)) {
-            RogueAviso(b, TextFormat("Aba bloqueada: abre depois da %dª missão.", abaClicada));
-            TocarSom(sfxErro);
-        } else if (abaClicada != b->abaLoja) {
+        if (abaClicada != b->abaLoja) {
             b->abaLoja = abaClicada;
             b->selecaoLoja = 0;
             TocarSom(sfxSelecao);
         }
     } else if (esquerda || direita) {
-        int nova = b->abaLoja;
-        for (int k = 0; k < 3; k++) {                       // pula as abas ainda bloqueadas
-            nova = (nova + (direita ? 1 : 2)) % 3;
-            if (RogueAbaLojaLiberada(b, nova)) break;
-        }
+        int nova = (b->abaLoja + (direita ? 1 : 2)) % 3;
         if (nova != b->abaLoja) {
             b->abaLoja = nova;
             b->selecaoLoja = 0;

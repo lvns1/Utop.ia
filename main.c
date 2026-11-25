@@ -359,9 +359,10 @@ int main(void) {
             else if (jg->tela == CORREDOR)                                 TrocarBGM(&bgmCorredor,   2);
             else if (jg->tela == BATALHA)                                  TrocarBGM(&bgmBatalha,    3);
             else if (jg->tela == BATALHA_B2) {
+                // Batalha de um monitor do Bloco 1 (a faixa da chefe fica para a ALUCINAÇÃO MESTRE).
                 // A integridade da Luci zerou: a faixa de game over toca na tela de derrota
                 if (jg->batalhaB2.telaDerrota && bgmGameover.stream.buffer) TrocarBGM(&bgmGameover, 8);
-                else                                                         TrocarBGM(&bgmMestre,   4);
+                else TrocarBGM(bgmBatalha.stream.buffer ? &bgmBatalha : &bgmMestre, 3);
             }
             else if (jg->tela == BIBLIOTECA) {
                 // Biblioteca: o átrio é calmo (mesmo tom da faixa das missões), a arena da Luci tem faixa própria.
@@ -378,6 +379,21 @@ int main(void) {
                     else
                         TrocarBGM(bgmLuci.stream.buffer ? &bgmLuci : &bgmBiblioteca, 7);
                 }
+                // Luta contra o ALUCINADOR (também no seletor de chefes): uma faixa por fase; derrotado, volta a da Biblioteca
+                else if (jg->biblioteca.tipoSala == SALA_CHEFE && jg->biblioteca.chefe.ativo && jg->biblioteca.chefe.apresentado &&
+                         jg->biblioteca.chefe.morrendo <= 0.0f &&
+                         bgmAlucinador[(jg->biblioteca.chefe.fase >= 2) ? 1 : 0].stream.buffer) {
+                    int faseAluc = (jg->biblioteca.chefe.fase >= 2) ? 1 : 0;
+                    TrocarBGM(&bgmAlucinador[faseAluc], 12 + faseAluc);
+                }
+                // Corredor do núcleo (Bloco 3): a Luci foi embora e os registros contam quem ela é.
+                // Toca a faixa da arena desde já (mesmo id): ela continua sem cortar quando a porta abre.
+                else if (jg->biblioteca.tipoSala == SALA_TRANSICAO)
+                    TrocarBGM(bgmLuci.stream.buffer ? &bgmLuci : &bgmBiblioteca, 7);
+                // Fim do Bloco 1: o tutorial com a faixa da Biblioteca; a luta contra a ALUCINAÇÃO MESTRE com a dela
+                else if (jg->biblioteca.tipoSala == SALA_MESTRE && jg->biblioteca.mestre.etapa == MT_LUTA &&
+                         jg->biblioteca.mestre.morrendo <= 0.0f && bgmMestre.stream.buffer)
+                    TrocarBGM(&bgmMestre, 4);
                 else if (jg->biblioteca.tipoSala == SALA_ATRIO) TrocarBGM(bgmAtrio.stream.buffer ? &bgmAtrio : &bgmBiblioteca, 6);
                 else                                        TrocarBGM(&bgmBiblioteca, 5);
             }
@@ -1097,8 +1113,10 @@ int main(void) {
     DescarregarIconesBiblioteca();       // Bloco 2: ícones opcionais das salas
     DescarregarAberracao();              // Bloco 3: alvo do pós-efeito
     for (int i = 0; i < NUM_DIRECOES; i++)
-        if (!jg->spritesJogador[i].emprestada)
+        if (!jg->spritesJogador[i].emprestada) {
             UnloadTexture(jg->spritesJogador[i].textura);
+            if (jg->spritesJogador[i].temParado) UnloadTexture(jg->spritesJogador[i].texParado);
+        }
 
     for (int i = 0; i < 4; i++)
         if (jg->spritesMonitor[i].id > 0)

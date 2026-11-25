@@ -15,10 +15,16 @@
 //     bgm_menu.ogg      → Menu principal + Intro
 //     bgm_sala.ogg      → Sala inicial (Luci)
 //     bgm_corredor.ogg  → Corredor do Histórico (Bloco 1)
-//     bgm_batalha.ogg   → Batalha dos monitores
-//     bgm_mestre.ogg    → ALUCINAÇÃO MESTRE (boss do Bloco 1)
-//     bgm_biblioteca.ogg→ Biblioteca dos Ecos (Bloco 2 + Bloco 3)
+//     bgm_batalha.ogg   → Batalha dos monitores (Bloco 1)
+//     bgm_mestre.ogg    → Luta contra a ALUCINAÇÃO MESTRE (fim do Bloco 1; o tutorial antes dela usa a da Biblioteca)
+//     bgm_atrio.ogg     → Átrio da Biblioteca
+//     bgm_biblioteca.ogg→ Salas da Biblioteca dos Ecos (Bloco 2)
 //     bgm_gameover.ogg  → Game over / derrota
+//     bgm_alucinador1/2.ogg → Luta contra o ALUCINADOR (chefe da Biblioteca): fase 1 (tiros) e
+//                         fase 2 (escudo e julgamento). Si bemol, o tom da Biblioteca, trocando
+//                         o maior pelo menor no meio da frase ("ele mistura verdade e mentira")
+//     bgm_luci.ogg      → Bloco 3: corredor do núcleo, cena da arena e fim da luta
+//   A troca entre faixas é suave (BGM_TRANSICAO).
 //     bgm_luci_chefe1/2/3.ogg → Luta contra a Luci, uma por barra:
 //                         1 CONTRADIÇÃO, 2 SURTO, 3 NÚCLEO (todas em lá frígio,
 //                         a mesma base da bgm_luci.ogg da arena, com o tema da Luci)
@@ -40,9 +46,16 @@ Music bgmGameover  = {0};
 Music bgmAtrio     = {0};   // átrio da Biblioteca (hub entre as missões)
 Music bgmLuci      = {0};   // arena final da Luci (mapa3): a cena antes da luta e o fim
 Music bgmLuciChefe[3] = {0};   // a luta contra a Luci: uma faixa por barra (contradição, surto, núcleo)
+Music bgmAlucinador[2] = {0};  // a luta contra o Alucinador: fase 1 (tiros) e fase 2 (escudo)
 static Music *bgmAtual    = NULL;   // ponteiro para a música em reprodução
 static int    bgmTelaId   = -99;    // id interno da tela atual (evita reiniciar a mesma faixa)
 static float  bgmVolume   = 0.70f;  // 0.0 – 1.0
+
+// Transição entre faixas: a que sai some enquanto a nova entra (as duas tocam juntas por um instante)
+#define BGM_TRANSICAO 0.6f          // segundos (AJUSTE AQUI)
+static Music *bgmSaindo     = NULL; // a faixa anterior, sumindo
+static float  bgmNivelAtual = 1.0f; // 0 a 1: quanto da faixa nova já entrou
+static float  bgmNivelSaindo = 0.0f;
 
 // Carrega música de arquivo; se não existir devolve zero-init (stream.buffer == NULL)
 static Music CarregarBGM(const char *caminho)
@@ -53,26 +66,71 @@ static Music CarregarBGM(const char *caminho)
     return m;
 }
 
+static bool BgmValida(const Music *m) { return m != NULL && m->stream.buffer != NULL; }
+
 // Troca a BGM atual. id é um número interno para evitar reiniciar a mesma faixa.
+// A troca é suave: a faixa atual some em BGM_TRANSICAO segundos enquanto a nova entra.
 void TrocarBGM(Music *nova, int id)
 {
     if (bgmTelaId == id) return;              // já está tocando esta
-    if (bgmAtual && bgmAtual->stream.buffer)
-        StopMusicStream(*bgmAtual);
-    bgmAtual  = nova;
     bgmTelaId = id;
-    if (bgmAtual && bgmAtual->stream.buffer) {
-        SetMusicVolume(*bgmAtual, bgmVolume);
+
+    if (nova == bgmAtual)                     // a mesma música com outro id (faixa reserva): só continua
+        return;
+
+    // Voltou para a faixa que ainda estava sumindo: ela sobe de novo de onde estava, sem recomeçar
+    if (nova == bgmSaindo) {
+        Music *antiga = bgmAtual;
+        float nivelAntiga = bgmNivelAtual;
+        bgmAtual = bgmSaindo;
+        bgmNivelAtual = bgmNivelSaindo;
+        bgmSaindo = antiga;
+        bgmNivelSaindo = nivelAntiga;
+        if (BgmValida(bgmSaindo) && !IsMusicStreamPlaying(*bgmSaindo)) { StopMusicStream(*bgmSaindo); bgmSaindo = NULL; }
+        return;
+    }
+
+    // Uma terceira troca no meio da transição: a que já estava sumindo para na hora
+    if (BgmValida(bgmSaindo))
+        StopMusicStream(*bgmSaindo);
+    bgmSaindo = NULL;
+
+    // A atual passa a sumir (se estava parada, como depois do PararSons, sai na hora)
+    if (BgmValida(bgmAtual)) {
+        if (IsMusicStreamPlaying(*bgmAtual)) { bgmSaindo = bgmAtual; bgmNivelSaindo = bgmNivelAtual; }
+        else StopMusicStream(*bgmAtual);
+    }
+
+    bgmAtual = nova;
+    bgmNivelAtual = 0.0f;
+    if (BgmValida(bgmAtual)) {
+        SetMusicVolume(*bgmAtual, 0.0f);
         PlayMusicStream(*bgmAtual);
     }
 }
 
-// Deve ser chamado UMA vez por frame no loop principal (mantém o buffer preenchido)
+// Deve ser chamado UMA vez por frame no loop principal (mantém o buffer preenchido e faz a transição)
 void AtualizarBGM(void)
 {
     if (!audioPronto) return;
-    if (bgmAtual && bgmAtual->stream.buffer)
+    float passo = fminf(GetFrameTime(), 0.1f) / BGM_TRANSICAO;
+
+    if (bgmSaindo != NULL) {
+        bgmNivelSaindo -= passo;
+        if (bgmNivelSaindo <= 0.0f || !BgmValida(bgmSaindo)) {
+            if (BgmValida(bgmSaindo)) StopMusicStream(*bgmSaindo);
+            bgmSaindo = NULL;
+        } else {
+            SetMusicVolume(*bgmSaindo, bgmVolume * sinf(bgmNivelSaindo * PI / 2.0f));   // curva de potência constante
+            UpdateMusicStream(*bgmSaindo);
+        }
+    }
+
+    if (BgmValida(bgmAtual)) {
+        bgmNivelAtual = fminf(1.0f, bgmNivelAtual + passo);
+        SetMusicVolume(*bgmAtual, bgmVolume * sinf(bgmNivelAtual * PI / 2.0f));
         UpdateMusicStream(*bgmAtual);
+    }
 }
 
 // =============================================================
@@ -2786,6 +2844,8 @@ void IniciarSons(void)
     bgmLuciChefe[0] = CarregarBGM("resources/audio/bgm_luci_chefe1.ogg");
     bgmLuciChefe[1] = CarregarBGM("resources/audio/bgm_luci_chefe2.ogg");
     bgmLuciChefe[2] = CarregarBGM("resources/audio/bgm_luci_chefe3.ogg");
+    bgmAlucinador[0] = CarregarBGM("resources/audio/bgm_alucinador1.ogg");
+    bgmAlucinador[1] = CarregarBGM("resources/audio/bgm_alucinador2.ogg");
 }
 
 // Para todos os SFX de uma vez (a 1ª queda da Luci "congela" o áudio)
@@ -2800,7 +2860,9 @@ void PararSons(void)
         StopSound(todos[i]);
     PararSonsNovos();                   // variações, armas e o ambiente do mapa
 
-    // Para a música também
+    // Para a música também (e a que ainda estava sumindo de uma troca)
+    if (BgmValida(bgmSaindo)) StopMusicStream(*bgmSaindo);
+    bgmSaindo = NULL;
     if (bgmAtual && bgmAtual->stream.buffer)
         PauseMusicStream(*bgmAtual);
 }
@@ -2835,6 +2897,9 @@ void EncerrarSons(void)
     // Para BGM antes de descarregar
     if (bgmAtual && bgmAtual->stream.buffer)
         StopMusicStream(*bgmAtual);
+    if (BgmValida(bgmSaindo))
+        StopMusicStream(*bgmSaindo);
+    bgmSaindo = NULL;
 
     if (bgmMenu.stream.buffer)       UnloadMusicStream(bgmMenu);
     if (bgmSala.stream.buffer)       UnloadMusicStream(bgmSala);
@@ -2847,6 +2912,8 @@ void EncerrarSons(void)
     if (bgmLuci.stream.buffer)       UnloadMusicStream(bgmLuci);
     for (int i = 0; i < 3; i++)
         if (bgmLuciChefe[i].stream.buffer) UnloadMusicStream(bgmLuciChefe[i]);
+    for (int i = 0; i < 2; i++)
+        if (bgmAlucinador[i].stream.buffer) UnloadMusicStream(bgmAlucinador[i]);
 
     // Sons 2.0: cada grupo descarrega as vozes e as variações (a variação 0 é o sfx* antigo)
     for (int k = 0; k < NUM_GRUPOS_GERAIS; k++)

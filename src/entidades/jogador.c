@@ -152,53 +152,85 @@ static const char *AcharSpriteJogador(const char *nome)
     return NULL;
 }
 
+// Acha o personagem dentro de cada quadro, ignorando o espaço vazio em volta.
+// Assim o tamanho fica certo em qualquer resolução e o personagem não
+// "treme" quando os quadros não estão igualmente espaçados na folha.
+static void AcharRecortes(Image img, int quadros, Rectangle *recorte, float *alturaRef)
+{
+    Color *px = LoadImageColors(img);
+    int larguraQuadro = img.width / quadros;
+
+    for (int q = 0; q < quadros; q++) {
+
+        int x0 = q * larguraQuadro;
+        int minX = img.width, maxX = -1, minY = img.height, maxY = -1;
+
+        for (int y = 0; y < img.height; y++) {
+            for (int x = x0; x < x0 + larguraQuadro; x++) {
+
+                if (px[y * img.width + x].a > 128) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+
+        if (maxX < 0)   // quadro vazio: usa o quadro inteiro
+            recorte[q] = (Rectangle){ (float)x0, 0, (float)larguraQuadro, (float)img.height };
+        else
+            recorte[q] = (Rectangle){ (float)minX, (float)minY, (float)(maxX - minX + 1), (float)(maxY - minY + 1) };
+
+        if (alturaRef != NULL && recorte[q].height > *alturaRef)
+            *alturaRef = recorte[q].height;
+    }
+
+    UnloadImageColors(px);
+}
+
+// A folha "parado" da mesma direção ("Thomas_andando_x.png" -> "Thomas_parado_x.png"): 2 quadros,
+// olhos abertos e fechados. Só existe nas direções em que o rosto aparece.
+static void CarregarParado(SpriteDirecao *s, const char *nomeAndando)
+{
+    const char *p = strstr(nomeAndando, "andando");
+    if (p == NULL)
+        return;
+
+    char nome[160];
+    snprintf(nome, sizeof(nome), "%.*sparado%s", (int)(p - nomeAndando), nomeAndando, p + 7);
+
+    const char *caminho = NULL;
+    for (int i = 0; i < NUM_PASTAS_SPRITES_JOGADOR && caminho == NULL; i++) {
+        static char tentativa[512];
+        snprintf(tentativa, sizeof(tentativa), "%s%s", PASTAS_SPRITES_JOGADOR[i], nome);
+        if (FileExists(tentativa)) caminho = tentativa;
+    }
+    if (caminho == NULL)
+        return;
+
+    Image img = LoadImage(caminho);
+    AcharRecortes(img, 2, s->recorteParado, NULL);
+    s->texParado = LoadTextureFromImage(img);
+    s->temParado = true;
+    UnloadImage(img);
+}
+
 // Carrega a folha de animação; se ela não existir, usa a imagem antiga
 SpriteDirecao CarregarSprite(const char *folha, const char *antigo, bool espelharAntigo)
 {
     SpriteDirecao s = {0};
+    const char *nome = folha;
 
     folha = AcharSpriteJogador(folha);
 
     if (folha != NULL) {
 
         Image img = LoadImage(folha);
-        Color *px = LoadImageColors(img);
 
         s.textura = LoadTextureFromImage(img);
         s.quadros = QUADROS_ANDANDO;
-
-        // Acha o personagem dentro de cada quadro, ignorando o espaço vazio em volta.
-        // Assim o tamanho fica certo em qualquer resolução e o personagem não
-        // "treme" quando os quadros não estão igualmente espaçados na folha.
-        int larguraQuadro = img.width / QUADROS_ANDANDO;
-
-        for (int q = 0; q < QUADROS_ANDANDO; q++) {
-
-            int x0 = q * larguraQuadro;
-            int minX = img.width, maxX = -1, minY = img.height, maxY = -1;
-
-            for (int y = 0; y < img.height; y++) {
-                for (int x = x0; x < x0 + larguraQuadro; x++) {
-
-                    if (px[y * img.width + x].a > 128) {
-                        if (x < minX) minX = x;
-                        if (x > maxX) maxX = x;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
-                    }
-                }
-            }
-
-            if (maxX < 0)   // quadro vazio: usa o quadro inteiro
-                s.recorte[q] = (Rectangle){ (float)x0, 0, (float)larguraQuadro, (float)img.height };
-            else
-                s.recorte[q] = (Rectangle){ (float)minX, (float)minY, (float)(maxX - minX + 1), (float)(maxY - minY + 1) };
-
-            if (s.recorte[q].height > s.alturaRef)
-                s.alturaRef = s.recorte[q].height;
-        }
-
-        UnloadImageColors(px);
+        AcharRecortes(img, QUADROS_ANDANDO, s.recorte, &s.alturaRef);
         UnloadImage(img);
 
         // Imagem muito maior que o tamanho na tela (ex.: a arte original de 909x369):
@@ -207,6 +239,8 @@ SpriteDirecao CarregarSprite(const char *folha, const char *antigo, bool espelha
             GenTextureMipmaps(&s.textura);
             SetTextureFilter(s.textura, TEXTURE_FILTER_TRILINEAR);
         }
+
+        CarregarParado(&s, nome);
 
     } else {
 
@@ -228,9 +262,75 @@ SpriteDirecao CarregarSpriteDiagonal(const char *folha, SpriteDirecao reserva)
     return reserva;
 }
 
+// =============================================================
+// ANIMAÇÃO EXTRA DO THOMAS (feita no código; liga e desliga em config.h)
+//   balanço do passo, poeira, sombra, respiração, piscar, esticar/achatar e reação ao dano
+// =============================================================
+
+#define MAX_POEIRA_THOMAS 12
+#define TEMPO_DANO_THOMAS 0.35f
+
+typedef struct { Vector2 pos, vel; float vida; } PoeiraThomas;
+
+static struct {
+    bool andando;
+    float parado;              // há quanto tempo está parado
+    float proximaPiscada;      // contagem até a próxima piscada
+    float piscando;            // > 0 = olhos fechados agora
+    float esticar, velEsticar; // > 0 achata, < 0 estica (uma molinha que volta ao normal)
+    float dano;                // tempo do vermelho e do tremor depois de um golpe
+    float ritmo;               // multiplica a troca de quadros (velocidade do passo)
+    int quadroAnt;
+    PoeiraThomas poeira[MAX_POEIRA_THOMAS];
+} g_thomas = { .proximaPiscada = 3.0f, .ritmo = 1.0f };
+
+static void ThomasEsticar(float quanto)
+{
+    if (THOMAS_ESTICAR) { g_thomas.esticar = quanto; g_thomas.velEsticar = 0.0f; }
+}
+
+void RitmoPassoJogador(float fator) { g_thomas.ritmo = (fator > 0.2f) ? fator : 0.2f; }
+void JogadorReagirDano(void)        { g_thomas.dano = TEMPO_DANO_THOMAS; ThomasEsticar(0.7f); }
+void JogadorReagirEsquiva(void)     { ThomasEsticar(-0.9f); }
+
 // Andando: avança os quadros. Parado: volta para o quadro 0 (pés juntos).
+// Também anda o estado visual (molinha, piscar, poeira, dano).
 void AtualizarAnimacao(AnimacaoJogador *a, bool andando, float dt)
 {
+    float ritmo = g_thomas.ritmo;
+    g_thomas.ritmo = 1.0f;                              // o ritmo vale só para esta chamada
+
+    if (andando && !g_thomas.andando)  ThomasEsticar(-0.45f);   // arrancou: estica
+    if (!andando && g_thomas.andando)  ThomasEsticar(0.55f);    // parou: achata
+    g_thomas.andando = andando;
+    g_thomas.parado = andando ? 0.0f : g_thomas.parado + dt;
+
+    // molinha amortecida: passa um pouco do ponto e assenta (sensação de peso)
+    float acel = -260.0f * g_thomas.esticar - 16.0f * g_thomas.velEsticar;
+    g_thomas.velEsticar += acel * dt;
+    g_thomas.esticar += g_thomas.velEsticar * dt;
+
+    if (g_thomas.dano > 0.0f) g_thomas.dano -= dt;
+
+    // piscar: só parado, a cada 2 a 5 s (às vezes duas piscadas seguidas)
+    if (g_thomas.piscando > 0.0f) g_thomas.piscando -= dt;
+    if (!andando && g_thomas.parado > 0.4f) {
+        g_thomas.proximaPiscada -= dt;
+        if (g_thomas.proximaPiscada <= 0.0f) {
+            g_thomas.piscando = 0.12f;
+            g_thomas.proximaPiscada = (GetRandomValue(0, 99) < 15) ? 0.25f : 2.0f + (float)GetRandomValue(0, 300) / 100.0f;
+        }
+    }
+
+    for (int i = 0; i < MAX_POEIRA_THOMAS; i++) {
+        PoeiraThomas *p = &g_thomas.poeira[i];
+        if (p->vida <= 0.0f) continue;
+        p->vida -= dt;
+        p->pos.x += p->vel.x * dt;
+        p->pos.y += p->vel.y * dt;
+        p->vel.y += 20.0f * dt;
+    }
+
     if (!andando) {
 
         a->quadro = 0;
@@ -238,12 +338,25 @@ void AtualizarAnimacao(AnimacaoJogador *a, bool andando, float dt)
         return;
     }
 
-    a->tempo += dt;
+    a->tempo += dt * ritmo;
 
     if (a->tempo >= 1.0f / FPS_ANIMACAO) {
 
         a->tempo -= 1.0f / FPS_ANIMACAO;
         a->quadro = (a->quadro + 1) % QUADROS_ANDANDO;
+    }
+}
+
+static void SoltarPoeira(Vector2 pe)
+{
+    for (int n = 0, i = 0; i < MAX_POEIRA_THOMAS && n < 2; i++) {
+        PoeiraThomas *p = &g_thomas.poeira[i];
+        if (p->vida > 0.0f) continue;
+        float lado = (n == 0) ? -1.0f : 1.0f;
+        p->pos = (Vector2){ pe.x + lado * (float)GetRandomValue(2, 6), pe.y };
+        p->vel = (Vector2){ lado * (float)GetRandomValue(10, 22), -(float)GetRandomValue(8, 18) };
+        p->vida = 0.35f;
+        n++;
     }
 }
 
@@ -257,6 +370,13 @@ void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Dir
 
         // Folha de animação: recorta só o personagem do quadro atual
         Rectangle sourceRec = s->recorte[quadro % s->quadros];
+        bool parado = !g_thomas.andando;
+
+        // Parado, com a folha "parado": olhos abertos ou fechados (piscando)
+        if (parado && s->temParado) {
+            t = s->texParado;
+            sourceRec = s->recorteParado[(THOMAS_PISCAR && g_thomas.piscando > 0.0f) ? 1 : 0];
+        }
 
         // A escala vem da altura do PERSONAGEM na imagem: qualquer resolução
         // aparece com ALTURA_PERSONAGEM pixels de altura na tela.
@@ -264,17 +384,54 @@ void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Dir
         float w = roundf(sourceRec.width * escala);
         float h = roundf(sourceRec.height * escala);
 
-        // Centralizado na horizontal e com o topo da cabeça sempre na mesma
-        // altura (os pés mudam a cada passo, a cabeça não pula).
-        // Posição arredondada para os pixels ficarem nítidos.
+        // O topo da cabeça fica sempre na mesma altura (os pés mudam a cada passo);
+        // o esticar/achatar acontece a partir dos pés
+        float topo = roundf(pos.y - ALTURA_PERSONAGEM / 2);
+        float pes = topo + h;
+
+        // Balanço: nos quadros em que um pé está no ar, o corpo sobe um pixel da arte
+        float sobe = (THOMAS_BALANCO && g_thomas.andando && (quadro % 2) == 1) ? roundf(2.0f * escala) : 0.0f;
+
+        float e = THOMAS_ESTICAR ? Clamp(g_thomas.esticar, -1.0f, 1.0f) : 0.0f;
+        float resp = (THOMAS_RESPIRAR && parado) ? 0.02f * sinf(g_thomas.parado * 2.0f * PI / 2.4f) : 0.0f;
+        float sx = 1.0f + 0.14f * e - 0.5f * resp;
+        float sy = 1.0f - 0.14f * e + resp;
+        float w2 = roundf(w * sx), h2 = roundf(h * sy);
+
+        float tremor = 0.0f;
+        Color cor = WHITE;
+        if (THOMAS_DANO && g_thomas.dano > 0.0f) {
+            float k = g_thomas.dano / TEMPO_DANO_THOMAS;
+            tremor = (((int)(g_thomas.dano * 40.0f)) % 2 ? 1.0f : -1.0f) * roundf(escala);
+            cor = (Color){ 255, (unsigned char)(255 - 150 * k), (unsigned char)(255 - 150 * k), 255 };
+        }
+
+        // Sombra oval embaixo dos pés (menor quando ele sobe)
+        if (THOMAS_SOMBRA) {
+            float k = (sobe > 0.0f) ? 0.85f : 1.0f;
+            DrawEllipse((int)pos.x, (int)(pes - 1), w * 0.34f * k, 3.0f * k, Fade(BLACK, 0.25f));
+        }
+
+        // Poeira: sai quando o pé toca o chão (quadros 0 e 2 da caminhada)
+        if (THOMAS_POEIRA && g_thomas.andando && quadro != g_thomas.quadroAnt && (quadro % 2) == 0)
+            SoltarPoeira((Vector2){ pos.x, pes - 1 });
+        g_thomas.quadroAnt = quadro;
+        for (int i = 0; i < MAX_POEIRA_THOMAS; i++) {
+            const PoeiraThomas *p = &g_thomas.poeira[i];
+            if (p->vida <= 0.0f) continue;
+            float k = p->vida / 0.35f;
+            DrawCircleV(p->pos, 1.5f + 2.0f * (1.0f - k), Fade((Color){ 210, 200, 190, 255 }, 0.5f * k));
+        }
+
+        // Posição arredondada para os pixels ficarem nítidos
         Rectangle destRec = {
-            roundf(pos.x - w / 2),
-            roundf(pos.y - ALTURA_PERSONAGEM / 2),
-            w,
-            h
+            roundf(pos.x - w2 / 2 + tremor),
+            roundf(pes - h2 - sobe),
+            w2,
+            h2
         };
 
-        DrawTexturePro(t, sourceRec, destRec, (Vector2){ 0, 0 }, 0.0f, WHITE);
+        DrawTexturePro(t, sourceRec, destRec, (Vector2){ 0, 0 }, 0.0f, cor);
 
     } else {
 

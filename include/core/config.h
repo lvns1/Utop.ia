@@ -15,17 +15,29 @@
 // TAMANHO e com o personagem no mesmo lugar de cada quadro (versão limpa
 // de 152x60, quadros de 38x60). O quadro 0 é o personagem parado (pés juntos).
 // Andando para CIMA ele aparece DE COSTAS (Andando_costas.png).
-#define SPRITE_ANDANDO_FRENTE    "Andando_de_frente.png"
-#define SPRITE_ANDANDO_COSTAS    "Andando_costas.png"
-#define SPRITE_ANDANDO_DIREITA   "Andando_direita.png"
-#define SPRITE_ANDANDO_ESQUERDA  "Andando_esquerda.png"
+// As folhas "Thomas_andando_*" são a caminhada nova (pé levantando e braços balançando);
+// as "Andando_*" originais continuam na pasta: para voltar, troque os nomes abaixo.
+// Cada folha pode ter uma "Thomas_parado_*" de 2 quadros (olhos abertos | fechados) para ele piscar.
+#define SPRITE_ANDANDO_FRENTE    "Thomas_andando_de_frente.png"
+#define SPRITE_ANDANDO_COSTAS    "Thomas_andando_costas.png"
+#define SPRITE_ANDANDO_DIREITA   "Thomas_andando_direita.png"
+#define SPRITE_ANDANDO_ESQUERDA  "Thomas_andando_esquerda.png"
 
 // Diagonais (3/4). Se alguma dessas folhas não for encontrada,
 // aquela diagonal usa a folha de LADO do mesmo sentido.
-#define SPRITE_ANDANDO_FRENTE_DIREITA   "Andando_diagonal_frente_direita.png"
-#define SPRITE_ANDANDO_FRENTE_ESQUERDA  "Andando_diagonal_frente_esquerda.png"
-#define SPRITE_ANDANDO_COSTAS_DIREITA   "Andando_diagonal_costas_direita.png"
-#define SPRITE_ANDANDO_COSTAS_ESQUERDA  "Andando_diagonal_costas_esquerda.png"
+#define SPRITE_ANDANDO_FRENTE_DIREITA   "Thomas_andando_diagonal_frente_direita.png"
+#define SPRITE_ANDANDO_FRENTE_ESQUERDA  "Thomas_andando_diagonal_frente_esquerda.png"
+#define SPRITE_ANDANDO_COSTAS_DIREITA   "Thomas_andando_diagonal_costas_direita.png"
+#define SPRITE_ANDANDO_COSTAS_ESQUERDA  "Thomas_andando_diagonal_costas_esquerda.png"
+
+// Animação extra do Thomas (feita no código). 1 = ligado, 0 = desligado (AJUSTE AQUI)
+#define THOMAS_BALANCO   1     // o corpo sobe 1 pixel da arte a cada passo
+#define THOMAS_POEIRA    1     // poeirinha nos pés quando o pé toca o chão
+#define THOMAS_SOMBRA    1     // sombra oval embaixo dos pés (encolhe quando ele sobe)
+#define THOMAS_RESPIRAR  1     // parado, o corpo "respira" bem de leve
+#define THOMAS_PISCAR    1     // parado, ele pisca a cada 2 a 5 segundos
+#define THOMAS_ESTICAR   1     // estica ao começar a andar e na esquiva; achata ao parar e ao levar dano
+#define THOMAS_DANO      1     // levou dano: fica vermelho e treme um instante
 
 #define NUM_PASTAS_SPRITES_JOGADOR 4
 

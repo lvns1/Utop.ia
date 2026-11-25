@@ -26,6 +26,9 @@ typedef struct {
     Rectangle recorte[4];                 // onde o personagem está de verdade em cada quadro
     float alturaRef;                      // altura do personagem na imagem (maior dos quadros)
     bool emprestada;                      // true = usa a textura de outra direção (não liberar duas vezes)
+    bool temParado;                       // achou a folha "parado" desta direção (para piscar)
+    Texture2D texParado;                  // 2 quadros: olhos abertos | olhos fechados
+    Rectangle recorteParado[2];
 } SpriteDirecao;
 
 // Qual quadro da caminhada está aparecendo

@@ -106,6 +106,7 @@ void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float dt)
         b->perm->esquivasRun++;
         if (j->invulneravel < ESQUIVA_INVULNERAVEL) j->invulneravel = ESQUIVA_INVULNERAVEL;
         TocarGrupo(&gJogEsquiva, 1.0f, 0.75f);
+        JogadorReagirEsquiva();
 
         // Contra-Ataque Heurístico (Passo Fantasma dobra o tempo)
         if (RogueUp(j, UP_POS_ESQUIVA) > 0)
@@ -158,6 +159,8 @@ void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float dt)
     }
 
     RogueEmpurrarParaFora(&j->pos, RAIO_CORPO_JOGADOR, b->obst, b->numObst);
+    // o passo acompanha a velocidade (melhorias de velocidade, overclock) e acelera na esquiva
+    RitmoPassoJogador(RogueVelocidadeJogador(j) / ROGUE_VELOCIDADE * ((j->tempoEsquiva > 0.0f) ? 1.6f : 1.0f));
     AtualizarAnimacao(&j->anim, andando || j->tempoEsquiva > 0.0f, dt);
 
     // Keylogger: velocidade recente e há quanto tempo ele anda na mesma direção (esquivar quebra a leitura)

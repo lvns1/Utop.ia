@@ -51,6 +51,9 @@ SpriteDirecao CarregarSprite(const char *folha, const char *antigo, bool espelha
 SpriteDirecao CarregarSpriteDiagonal(const char *folha, SpriteDirecao reserva);
 void AtualizarAnimacao(AnimacaoJogador *a, bool andando, float dt);
 void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Direcao direcao, int quadro);
+void RitmoPassoJogador(float fator);   // passo mais rápido (velocidade maior); vale para a próxima AtualizarAnimacao
+void JogadorReagirDano(void);          // fica vermelho, treme e achata
+void JogadorReagirEsquiva(void);       // estica na esquiva
 void MostrarEmocaoLuci(EmocaoLuci e, float segundos);
 void CarregarLuci(void);
 void DescarregarLuci(void);

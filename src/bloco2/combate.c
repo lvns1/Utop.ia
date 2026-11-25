@@ -332,6 +332,7 @@ void RogueFerirJogador(Biblioteca *b, float dano)
 
     j->hp -= dano * RogueFatorDanoRecebido(j);
     j->invulneravel = INVULNERAVEL_APOS_DANO;
+    JogadorReagirDano();
     j->golpesSofridos++;                        // desafio de integridade
     b->perm->golpesRun++;
     b->tremor = 0.25f;                          // a tela só treme quando o jogador toma dano

@@ -36,6 +36,67 @@ static bool GravarSave(const DadosSave *d)
     return (rename(ARQUIVO_SAVE_TEMP, ARQUIVO_SAVE) == 0);
 }
 
+// Um byte estragado no arquivo pode virar um bool que não é nem 0 nem 1, e só ler
+// esse valor já é comportamento indefinido em C. Lê o byte cru e regrava como true/false.
+static void ConsertarBool(bool *b)
+{
+    unsigned char byte;
+
+    memcpy(&byte, b, 1);
+    *b = (byte != 0);
+}
+
+// Todos os bool que vêm do arquivo (o ProgressoBloco2 é zerado logo abaixo)
+static void ConsertarBoolsSave(DadosSave *d)
+{
+    ConsertarBool(&d->luciAcompanhando);
+    ConsertarBool(&d->progresso.introVista);
+    ConsertarBool(&d->progresso.fimAnunciado);
+    ConsertarBool(&d->chefeVencido);
+    ConsertarBool(&d->biblioteca.byteVisto);
+    ConsertarBool(&d->biblioteca.bytecoVisto);
+    ConsertarBool(&d->biblioteca.alucinadorVencido);
+    ConsertarBool(&d->biblioteca.silogistaVencido);
+    ConsertarBool(&d->biblioteca.bloco3Liberado);
+    ConsertarBool(&d->biblioteca.jogoConcluido);
+}
+
+// Teto dos contadores lidos do arquivo: bem acima do que uma partida chega, e baixo o bastante
+// para as contas do índice de desempenho (nucleo.c) não estourarem o int
+#define TETO_CONTADOR_SAVE 1000000
+
+static void LimitarContador(int *v)
+{
+    if (*v < 0)                       *v = 0;
+    else if (*v > TETO_CONTADOR_SAVE) *v = TETO_CONTADOR_SAVE;
+}
+
+// Contadores negativos ou absurdos (save estragado) viram números válidos.
+// Negativos também dividiriam por zero no índice (ex.: alucinacoesPegas + confiouAlucinacao + 1 == 0).
+static void LimitarContadoresSave(DadosSave *d)
+{
+    ProgressoBiblioteca *b = &d->biblioteca;
+    int *contadores[] = {
+        &d->progresso.pontos, &d->progresso.alucinacao, &d->ajudasPedidas,
+        &b->fragmentos, &b->tentativas, &b->desafiosCertos, &b->desafiosErrados, &b->mortes,
+        &b->confiouCego, &b->confiouAlucinacao, &b->verificou, &b->alucinacoesPegas,
+        &b->contradicoesFlagradas, &b->contradicoesPerdidas, &b->contestouAToa, &b->reparos,
+        &b->derrotasLuci, &b->abatidosRun, &b->salasRun, &b->esquivasRun, &b->golpesRun,
+        &b->parriesRun, &b->especiaisRun
+    };
+
+    for (size_t i = 0; i < sizeof(contadores) / sizeof(contadores[0]); i++)
+        LimitarContador(contadores[i]);
+
+    for (int i = 0; i < 3; i++)
+        if (b->melhorias[i] < 0) b->melhorias[i] = 0;
+
+    if (b->indiceFinal < 0 || b->indiceFinal > 100) b->indiceFinal = 0;
+    if (b->finalJogo < 0 || b->finalJogo > 2)       b->finalJogo = 0;
+    b->corrupcaoLuciMax = (int)Clamp((float)b->corrupcaoLuciMax, 0.0f, 100.0f);
+    if (!(b->segundosRun >= 0.0f && b->segundosRun < 360000.0f)) b->segundosRun = 0.0f;
+}
+
 // Lê e confere o save. Devolve false se não existir, for de outra versão
 // ou estiver corrompido (nesse caso o jogo simplesmente começa do zero).
 bool LerSave(DadosSave *d)
@@ -52,6 +113,8 @@ bool LerSave(DadosSave *d)
 
     if (d->assinatura != ASSINATURA_SAVE)
         return false;
+
+    ConsertarBoolsSave(d);                  // antes das migrações, que já leem alguns deles
 
     // Save da versão 3 (sem a estabilidade da Luci no final): abre com os valores iniciais
     if (d->versao == 3 && lidos == offsetof(DadosSave, estabilidadeLuci)) {
@@ -120,17 +183,10 @@ bool LerSave(DadosSave *d)
 
     memset(&d->bloco2, 0, sizeof(d->bloco2));
 
-    if (d->biblioteca.fragmentos < 0) d->biblioteca.fragmentos = 0;
-    if (d->biblioteca.desafiosCertos < 0)  d->biblioteca.desafiosCertos = 0;
-    if (d->biblioteca.desafiosErrados < 0) d->biblioteca.desafiosErrados = 0;
-    if (d->biblioteca.mortes < 0)          d->biblioteca.mortes = 0;
+    LimitarContadoresSave(d);
+
     if (d->biblioteca.mortes >= LIMITE_MORTES)
         return false;                       // partida encerrada sem vidas: não dá para continuar
-    if (!(d->biblioteca.segundosRun >= 0.0f && d->biblioteca.segundosRun < 360000.0f)) d->biblioteca.segundosRun = 0.0f;
-    if (d->biblioteca.finalJogo < 0 || d->biblioteca.finalJogo > 2) d->biblioteca.finalJogo = 0;
-    d->biblioteca.corrupcaoLuciMax = (int)Clamp((float)d->biblioteca.corrupcaoLuciMax, 0.0f, 100.0f);
-    for (int i = 0; i < 3; i++)
-        if (d->biblioteca.melhorias[i] < 0) d->biblioteca.melhorias[i] = 0;
 
     if (d->direcao < 0 || d->direcao >= NUM_DIRECOES)
         d->direcao = DIR_FRENTE;
@@ -145,7 +201,11 @@ bool LerSave(DadosSave *d)
         if (d->progresso.estado[i] < MON_NEUTRO || d->progresso.estado[i] > MON_ERROU)
             d->progresso.estado[i] = MON_NEUTRO;
 
-    // Posição dentro dos limites da sala salva (na Biblioteca o jogo começa no átrio)
+    // Posição dentro dos limites da sala salva (na Biblioteca o jogo começa no átrio).
+    // NaN passaria direto pelo Clamp, então volta para o meio da sala antes.
+    if (!isfinite(d->x)) d->x = 400.0f;
+    if (!isfinite(d->y)) d->y = 340.0f;
+
     if (d->sala == JOGANDO) {
         d->x = Clamp(d->x, 80, 720);
         d->y = Clamp(d->y, 80, 520);

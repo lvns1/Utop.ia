@@ -298,6 +298,10 @@ static void SilComecarAtaque(Biblioteca *b)
             a->dir = Vector2Normalize(Vector2Subtract(jp, s->pos));
             a->tiros = 6;
             TocarGrupo(&gChefeMira, 0.8f / SIL_AVISO, 0.7f);    // trava junto com o corredor
+            // (antes caía direto no ATQ_CORTE: sorteava candidatos[GetRandomValue(0, -1)] com n = 0,
+            //  lendo fora do vetor; da refutação só aproveitava o aviso de 0,8 s, mantido aqui)
+            a->aviso = 0.8f;
+            break;
 
         case ATQ_CORTE:
             a->alvo = candidatos[GetRandomValue(0, n - 1)];

@@ -399,12 +399,14 @@ static Sound GerarParryPerfeito(float volume)
         float freqRing = 400.0f + 800.0f * t;
         faseRing += 2.0f * PI * freqRing / (float)taxa;
         float ring    = sinf(faseRing);
-        float envRing = (t < 0.05f) ? 0.0f : (t - 0.05f) / 0.15f * expf(-(t - 0.05f) * 6.0f);
+        // Entra depois do impacto (sobe em 15% da duração) e some no fim, sem corte seco
+        float uRing   = t - 0.05f;
+        float envRing = (uRing < 0.0f) ? 0.0f : (uRing < 0.15f) ? uRing / 0.15f : expf(-(uRing - 0.15f) * 6.0f);
 
         // 3) Burst de ruído no impacto inicial
         float burst = (t < 0.04f) ? ruido * (1.0f - t / 0.04f) : 0.0f;
 
-        float onda = impacto * 0.5f + ring * 0.35f + burst * 0.15f;
+        float onda = impacto * 0.5f + ring * envRing * 0.35f + burst * 0.15f;
         am[i] = (short)(onda * volume * 30000.0f);
     }
 

@@ -58,9 +58,21 @@ void RogueAtualizarJogador(Biblioteca *b, ProgressoCorredor *prog, float dt)
     }
 
     if (!j->miraSetas) {
-        Vector2 d = Vector2Subtract(GetMousePosition(), j->pos);
+        Vector2 d = Vector2Subtract(RogueMouseMundo(b), j->pos);
         if (Vector2Length(d) > 4.0f)
             j->mira = Vector2Normalize(d);
+    }
+
+    // Câmera na mira: a visão adianta um pouco para o lado em que ele mira (devagar, sem tranco)
+    {
+        Vector2 alvoCam = { 0.0f, 0.0f };
+#if CAMERA_NA_MIRA
+        if (Prefs()->cameraMira && b->tipoSala != SALA_ATRIO)
+            alvoCam = Vector2Scale(j->mira, CAMERA_MIRA_DIST);
+        if (b->tipoSala == SALA_LUCI && alvoCam.y > 0.0f)
+            alvoCam.y = 0.0f;           // a arte da luta final encosta no HUD de baixo: sem faixa vazia embaixo
+#endif
+        b->camAdiante = Vector2Lerp(b->camAdiante, alvoCam, fminf(1.0f, dt * 5.0f));
     }
 
     j->direcao = DirecaoDoVetor(j->mira);

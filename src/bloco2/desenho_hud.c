@@ -212,8 +212,48 @@ void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float tempo)
     bool aberta = b->limpa;
     float pulso = 0.5f + 0.5f * sinf(tempo * 4.0f);
     Rectangle r = p->r;
+    const Color FOLHA = { 30, 10, 20, 255 };            // a porta fechada
 
-    DrawRectangleRec(r, aberta ? Fade(cor, 0.25f + 0.15f * pulso) : (Color){ 30, 10, 20, 255 });
+    // Abrindo agora (a sala acabou de ficar limpa): k vai de 0 (fechada) a 1 (aberta)
+    bool abrindo = false;
+    float k = 1.0f, e = 1.0f;
+#if PORTAS_ANIMADAS
+    if (aberta && b->portasAbrindo > 0.0f) {
+        abrindo = true;
+        k = 1.0f - b->portasAbrindo / PORTAS_ABRIR_TEMPO;
+        e = 1.0f - (1.0f - k) * (1.0f - k) * (1.0f - k);    // sai rápido e freia no fim
+    }
+#endif
+
+    DrawRectangleRec(r, aberta ? Fade(cor, 0.25f + 0.15f * pulso) : FOLHA);
+
+    if (abrindo) {
+        // As duas folhas correm para os lados (porta de cima) ou para cima e para baixo (portas dos lados)
+        bool deitada = r.width >= r.height;
+        float metade = (deitada ? r.width : r.height) * 0.5f * (1.0f - e);
+        Rectangle f1 = deitada ? (Rectangle){ r.x, r.y, metade, r.height } : (Rectangle){ r.x, r.y, r.width, metade };
+        Rectangle f2 = deitada ? (Rectangle){ r.x + r.width - metade, r.y, metade, r.height }
+                               : (Rectangle){ r.x, r.y + r.height - metade, r.width, metade };
+        DrawRectangleRec(f1, FOLHA);
+        DrawRectangleRec(f2, FOLHA);
+
+        // A fresta acesa entre as folhas e um clarão na cor da sala, que apaga até o fim
+        float apaga = (1.0f - k) * (1.0f - k);
+        BeginBlendMode(BLEND_ADDITIVE);
+        if (deitada) {
+            DrawRectangle((int)(f1.x + f1.width) - 2, (int)r.y, 2, (int)r.height, Fade(WHITE, 0.8f * (1.0f - e)));
+            DrawRectangle((int)f2.x, (int)r.y, 2, (int)r.height, Fade(WHITE, 0.8f * (1.0f - e)));
+        } else {
+            DrawRectangle((int)r.x, (int)(f1.y + f1.height) - 2, (int)r.width, 2, Fade(WHITE, 0.8f * (1.0f - e)));
+            DrawRectangle((int)r.x, (int)f2.y, (int)r.width, 2, Fade(WHITE, 0.8f * (1.0f - e)));
+        }
+        for (int camada = 0; camada < 3; camada++) {       // três camadas: o clarão sai suave da porta
+            float cresce = 2.0f + (4.0f + 4.0f * (float)camada) * e;
+            DrawRectangleRec((Rectangle){ r.x - cresce, r.y - cresce, r.width + cresce * 2, r.height + cresce * 2 }, Fade(cor, 0.2f * apaga));
+        }
+        EndBlendMode();
+    }
+
     DrawRectangleLinesEx(r, 2, aberta ? Fade(cor, 0.6f + 0.4f * pulso) : MAROON);
 
     // Placa logo na frente da porta (dentro da arena)
@@ -221,6 +261,12 @@ void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float tempo)
     if (p->lado == LADO_CIMA)          c.y += 34;
     else if (p->lado == LADO_ESQUERDA) c.x += 36;
     else                               c.x -= 36;
+
+    if (abrindo) {      // uma onda sai da placa
+        BeginBlendMode(BLEND_ADDITIVE);
+        DrawRing(c, 17.0f + 16.0f * e, 19.0f + 16.0f * e, 0, 360, 36, Fade(cor, 0.7f * (1.0f - e)));
+        EndBlendMode();
+    }
 
     DrawCircleV(c, 17, Fade(BLACK, 0.65f));
     DrawCircleLines((int)c.x, (int)c.y, 17, aberta ? cor : Fade(cor, 0.5f));
@@ -235,6 +281,12 @@ void DesenharPortaMissao(const Biblioteca *b, const PortaMissao *p, float tempo)
     if (!aberta) {      // cadeado
         DrawRectangle((int)c.x - 6, (int)c.y - 2, 12, 9, MAROON);
         DrawRing(c, 3, 5, 180, 360, 10, MAROON);
+    } else if (abrindo) {   // o cadeado destrava (a argola sobe primeiro), sobe e some
+        Vector2 lc = { c.x, c.y - 16.0f * e };
+        float solta = 3.0f * fminf(1.0f, k * 4.0f);
+        Color corCadeado = Fade(MAROON, 1.0f - e);
+        DrawRectangle((int)lc.x - 6, (int)lc.y - 2, 12, 9, corCadeado);
+        DrawRing((Vector2){ lc.x, lc.y - solta }, 3, 5, 180, 360, 10, corCadeado);
     }
 
     const char *nome = RoguePlacaNo(n);

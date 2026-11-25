@@ -7,6 +7,7 @@
 #include "../../include/core/mapas.h"
 #include "../../include/telas/jogo.h"
 #include "../../include/telas/historico_luci.h"
+#include "../../include/entidades/jogador.h"
 
 void TelaMenuAtualizar(Jogo *jg)
 {
@@ -143,11 +144,13 @@ void TelaMenuAtualizar(Jogo *jg)
 
 void TelaOpcoesAtualizar(Jogo *jg)
 {
-    if (AtualizarOpcoes(&jg->menuOpcoes, &jg->exibicao)) {
+    // VÍDEO muda a janela; EFEITOS e SONS já valem na hora: os dois só precisam ser salvos
+    MudancaOpcoes mudou = AtualizarOpcoes(&jg->menuOpcoes, &jg->exibicao);
 
+    if (mudou == OPCOES_VIDEO)
         AplicarExibicao(jg->exibicao);
+    if (mudou != OPCOES_NADA)
         SalvarConfigExibicao(jg->exibicao);
-    }
 
     // Botão VOLTAR AO MENU (clique ou ENTER nele)
     if (jg->menuOpcoes.sair) {
@@ -165,9 +168,87 @@ void TelaOpcoesAtualizar(Jogo *jg)
     }
 }
 
+// ---------- Fundo animado do menu ----------
+// Tudo sai do tempo (sem estado guardado): colunas de "dados" caindo, partículas subindo e um
+// brilho roxo embaixo. Fica bem apagado, atrás da logo e dos botões.
+static float RuidoMenu(int a, int b)
+{
+    unsigned int h = (unsigned int)a * 374761393u + (unsigned int)b * 668265263u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return (float)((h ^ (h >> 16)) & 0xFFFF) / 65535.0f;
+}
+
+static void DesenharFundoMenu(float t)
+{
+    static const char SIMBOLOS[] = "01010110ABCDEF0123456789";
+    const int colunas = 26;
+
+    DrawRectangleGradientV(0, ALTURA_TELA - 220, LARGURA_TELA, 220, Fade(PURPLE, 0.0f), Fade(PURPLE, 0.16f));
+
+    // Chuva de dados: cada coluna tem a sua velocidade; a "cabeça" é mais clara e o rastro some
+    for (int c = 0; c < colunas; c++) {
+        float vel = 28.0f + 46.0f * RuidoMenu(c, 1);
+        float x = 14.0f + c * 30.0f + 8.0f * RuidoMenu(c, 2);
+        float cabeca = fmodf(t * vel + 900.0f * RuidoMenu(c, 3), ALTURA_TELA + 240.0f) - 120.0f;
+        Color cor = (RuidoMenu(c, 4) < 0.5f) ? (Color){ 170, 110, 255, 255 } : (Color){ 0, 200, 255, 255 };
+        int troca = (int)(t * (3.0f + 4.0f * RuidoMenu(c, 5)));      // os símbolos mudam de vez em quando
+
+        for (int k = 0; k < 9; k++) {
+            float y = cabeca - k * 15.0f;
+            if (y < -14.0f || y > ALTURA_TELA) continue;
+            char s[2] = { SIMBOLOS[(int)(RuidoMenu(c * 31 + k, troca) * (sizeof(SIMBOLOS) - 1))], '\0' };
+            float alfa = (k == 0) ? 0.30f : 0.20f * (1.0f - k / 9.0f);
+            DrawText(s, (int)x, (int)y, 12, Fade(cor, alfa));
+        }
+    }
+
+    // Partículas subindo devagar, balançando um pouco
+    for (int i = 0; i < 40; i++) {
+        float vel = 10.0f + 22.0f * RuidoMenu(i, 7);
+        float y = ALTURA_TELA + 20.0f - fmodf(t * vel + 700.0f * RuidoMenu(i, 8), ALTURA_TELA + 60.0f);
+        float x = LARGURA_TELA * RuidoMenu(i, 9) + 10.0f * sinf(t * 0.8f + i);
+        float tam = 2.0f + 2.0f * RuidoMenu(i, 10);
+        Color cor = (i % 3 == 0) ? SKYBLUE : (Color){ 200, 122, 255, 255 };
+        DrawRectangleV((Vector2){ x, y }, (Vector2){ tam, tam }, Fade(cor, 0.15f + 0.3f * RuidoMenu(i, 11)));
+    }
+}
+
+// Botão do menu com cara de neon: escuro, borda na cor dele e brilho quando está marcado.
+// foco vai de 0 a 1 (sobe e desce suave quando a seleção muda).
+static void DesenharBotaoNeon(Rectangle r, const char *texto, Color cor, float foco, float t)
+{
+    for (int k = 3; k >= 1; k--)
+        if (foco > 0.01f)
+            DrawRectangleLinesEx((Rectangle){ r.x - k * 2.0f, r.y - k * 2.0f, r.width + k * 4.0f, r.height + k * 4.0f }, 2, Fade(cor, 0.10f * foco / k));
+
+    DrawRectangleRec(r, Fade((Color){ 10, 8, 22, 255 }, 0.85f));
+    DrawRectangleRec(r, Fade(cor, 0.06f + 0.16f * foco));
+    DrawRectangleLinesEx(r, 2, Fade(cor, 0.45f + 0.55f * foco));
+
+    // Cantos mais claros (cara de janela de terminal)
+    float c = 8.0f;
+    Color canto = Fade(cor, 0.6f + 0.4f * foco);
+    DrawRectangle((int)r.x, (int)r.y, (int)c, 2, canto);                                 DrawRectangle((int)r.x, (int)r.y, 2, (int)c, canto);
+    DrawRectangle((int)(r.x + r.width - c), (int)(r.y + r.height - 2), (int)c, 2, canto); DrawRectangle((int)(r.x + r.width - 2), (int)(r.y + r.height - c), 2, (int)c, canto);
+
+    // Marcado: uma faixa clara passa pelo botão de vez em quando
+    if (foco > 0.5f) {
+        float p = fmodf(t * 0.7f, 1.6f);
+        if (p < 1.0f) {
+            float x = r.x + p * (r.width + 30.0f) - 30.0f;
+            float x0 = fmaxf(x, r.x + 2), x1 = fminf(x + 18.0f, r.x + r.width - 2);
+            if (x1 > x0) DrawRectangle((int)x0, (int)r.y + 2, (int)(x1 - x0), (int)r.height - 4, Fade(WHITE, 0.07f * foco));
+        }
+    }
+
+    Color corTexto = ColorLerp(LIGHTGRAY, WHITE, foco);
+    DesenharTextoBotao(r, texto, 20, corTexto);
+}
+
 void TelaMenuDesenhar(Jogo *jg)
 {
     ClearBackground(jg->cor_de_fundo_menu);
+    DesenharFundoMenu(jg->tempo);
 
     // Título original
     // A logo é escalada para caber acima dos botões (a imagem tem 615 px de largura e passava da tela).
@@ -178,25 +259,40 @@ void TelaMenuDesenhar(Jogo *jg)
         Rectangle fonte = { 0, 0, (float)jg->imagem_titulo.width, (float)jg->imagem_titulo.height };
         float lx = 400.0f - jg->imagem_titulo.width * esc * 0.5f;
         float desloc = -30.0f;            // sobe a logo para não encostar nos botões
+        // De vez em quando a logo "falha": cópias vermelha e ciano deslocadas por um instante
+        float falha = fmodf(jg->tempo, 4.3f);
+        if (falha < 0.12f) {
+            float d = 3.0f + 3.0f * sinf(jg->tempo * 90.0f);
+            DrawTexturePro(jg->imagem_titulo, fonte, (Rectangle){ lx - d, jg->y + desloc, jg->imagem_titulo.width * esc, jg->imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(RED, 0.45f));
+            DrawTexturePro(jg->imagem_titulo, fonte, (Rectangle){ lx + d, jg->y + desloc, jg->imagem_titulo.width * esc, jg->imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(SKYBLUE, 0.45f));
+        }
         DrawTexturePro(jg->imagem_titulo, fonte, (Rectangle){ lx, jg->y  + desloc, jg->imagem_titulo.width * esc, jg->imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, WHITE);
         DrawTexturePro(jg->imagem_titulo, fonte, (Rectangle){ lx, jg->y1 + desloc, jg->imagem_titulo.width * esc, jg->imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(PURPLE, 0.1f));
         DrawTexturePro(jg->imagem_titulo, fonte, (Rectangle){ lx, jg->y2 + desloc, jg->imagem_titulo.width * esc, jg->imagem_titulo.height * esc }, (Vector2){ 0, 0 }, 0.0f, Fade(PURPLE, 0.1f));
     }
 
-    // Botões
-    if (jg->existeSave) {
-        DrawRectangleRec(jg->btnContinuar, jg->corBtnContinuar);
-        DesenharTextoBotao(jg->btnContinuar, "CONTINUAR", 20, WHITE);
+    // Botões neon (cada um com a sua cor); o brilho do marcado sobe e desce suave
+    static float focoAnim[4] = { 0 };
+    static float luciY = -1.0f;
+    const Rectangle botoes[4] = { jg->btnContinuar, jg->btnJogar, jg->btnOpcoes, jg->btnSair };
+    const char *nomes[4] = { "CONTINUAR", "NOVO JOGO", "OPÇÕES", "SAIR" };
+    const Color cores[4] = { { 200, 122, 255, 255 }, { 0, 228, 48, 255 }, { 102, 191, 255, 255 }, { 230, 41, 55, 255 } };
+    float passo = fminf(GetFrameTime(), 0.1f) * 9.0f;
+
+    for (int i = 0; i < 4; i++) {
+        if (i == 0 && !jg->existeSave) continue;
+        float alvo = (jg->focoMenu == i) ? 1.0f : 0.0f;
+        focoAnim[i] += Clamp(alvo - focoAnim[i], -passo, passo);
+        DesenharBotaoNeon(botoes[i], nomes[i], cores[i], focoAnim[i], jg->tempo);
     }
 
-    DrawRectangleRec(jg->btnJogar, jg->corBtnJogar);
-    DrawRectangleRec(jg->btnOpcoes, jg->corBtnOpcoes);
-    DrawRectangleRec(jg->btnSair, jg->corBtnSair);
-
-    // Textos
-    DesenharTextoBotao(jg->btnJogar, "NOVO JOGO", 20, WHITE);
-    DesenharTextoBotao(jg->btnOpcoes, "OPÇÕES", 20, WHITE);
-    DesenharTextoBotao(jg->btnSair, "SAIR", 20, WHITE);
+    // A Luci flutua ao lado do botão marcado e desliza quando a seleção muda
+    if (jg->focoMenu >= 0 && jg->focoMenu < 4) {
+        float alvoY = botoes[jg->focoMenu].y + botoes[jg->focoMenu].height / 2;
+        if (luciY < 0.0f) luciY = alvoY;
+        luciY += (alvoY - luciY) * fminf(1.0f, GetFrameTime() * 12.0f);
+        DesenharLuciTamanho((Vector2){ botoes[jg->focoMenu].x - 34.0f, luciY + 3.0f * sinf(jg->tempo * 3.0f) }, 34.0f);
+    }
 
     DesenharRankingMenu(&jg->ranking, jg->tempo);
 }

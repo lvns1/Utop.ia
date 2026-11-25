@@ -1109,10 +1109,20 @@ void DesenharNucleoCorrupcao(const Inimigo *e, float escala, float t)
     float aviso = (e->estado == 1) ? 1.0f - e->timer / NUCLEO_PREPARO : 0.0f;
 
     DrawCircleV(e->pos, r + 10 + 8 * aviso, Fade(cor, 0.12f + 0.25f * aviso));
-    DrawPoly(e->pos, 4, r, t * 50.0f, (Color){ 60, 10, 70, 255 });
-    DrawPolyLines(e->pos, 4, r, t * 50.0f, cor);
-    DrawPoly(e->pos, 4, r * 0.55f, -t * 80.0f, Fade(cor, 0.8f));
-    DrawCircleV(e->pos, r * 0.25f, WHITE);
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_NUCLEO)) {              // o cristal parado, com o brilho correndo pelas faces
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + r + 6 }, r * 0.6f, 4 * escala);
+        float flutua = sinf(t * 2.0f + e->pos.x) * 2.0f;
+        DesenharSpriteInimigo(SPR_NUCLEO, 0, QuadroAnimInimigo(SPR_NUCLEO, t, 5.0f + 10.0f * aviso, 0.0f),
+                              (Vector2){ e->pos.x, e->pos.y + flutua }, escala, WHITE);
+    } else
+#endif
+    {
+        DrawPoly(e->pos, 4, r, t * 50.0f, (Color){ 60, 10, 70, 255 });
+        DrawPolyLines(e->pos, 4, r, t * 50.0f, cor);
+        DrawPoly(e->pos, 4, r * 0.55f, -t * 80.0f, Fade(cor, 0.8f));
+        DrawCircleV(e->pos, r * 0.25f, WHITE);
+    }
     for (int k = 0; k < 3; k++) {
         float a = t * 2.0f + (float)k * 2.0f * PI / 3.0f;
         DrawCircleV((Vector2){ e->pos.x + cosf(a) * (r + 8), e->pos.y + sinf(a) * (r + 8) }, 3, Fade(cor, 0.8f));

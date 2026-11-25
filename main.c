@@ -148,6 +148,32 @@ static void DesenharDevMenu(int sel, int arma, int som, bool naBiblioteca, int p
     DrawText("Cima/Baixo escolhe  -  Esq/Dir troca  -  ENTER usa", x + 14, y + h - 22, 12, LIGHTGRAY);
 }
 
+// Quanto a tela mostra a corrupção (0 = limpa, 1 = no limite), para os efeitos de tela.
+// Blocos 1 e 2: segue a estabilidade da Luci. Bloco 3: mais alta, e sobe a cada barra da luta final.
+static float CorrupcaoDaTela(const Jogo *jg)
+{
+    float instavel = 1.0f - (float)jg->estabilidadeLuci / ESTABILIDADE_MAX_LUCI;
+
+    switch (jg->tela) {
+        case JOGANDO: case CORREDOR: case BATALHA: case BATALHA_B2:
+            return 0.08f + 0.45f * instavel;
+        case BIBLIOTECA: {
+            const Biblioteca *b = &jg->biblioteca;
+            if (b->morreu)
+                return 0.5f;
+            if (RogueNoBloco3(b)) {
+                const LuciChefe *l = &b->luci;
+                if (b->tipoSala == SALA_LUCI && l->ativo && l->apresentado && l->morrendo <= 0.0f)
+                    return (l->faseOculta >= 3) ? 0.95f : (l->faseOculta == 2) ? 0.8f : 0.65f;
+                return 0.5f;
+            }
+            return 0.08f + 0.45f * instavel;
+        }
+        default:
+            return 0.12f;                   // menu, opções, abertura
+    }
+}
+
 // Dá para pausar agora? (ESC e o R do histórico): só durante o jogo, fora das janelas da Biblioteca
 // que têm o próprio ESC, sem transição e sem uma pergunta SIM / NÃO aberta
 static bool PodePausarJogo(const Jogo *jg)
@@ -319,6 +345,7 @@ int main(void) {
     jg->opConfirmandoPausa = -1;             // qual opção do pause está pedindo a confirmação
     jg->historicoAberto = false;             // tela "FALAS DA LUCI" (R ou menu de pause)
     jg->historicoDireto = false;
+    jg->opcoesNaPausa = false;               // OPÇÕES aberta de dentro do pause
     jg->rolagemHistorico = 0.0f;
     jg->fundoPausa = (Texture2D){0};
 
@@ -444,6 +471,7 @@ int main(void) {
                     if (devSel == DEV_SALA || devSel == DEV_CORREDOR || irBib) {
                         jg->transicao.ativa = false;
                         jg->pausado = false;
+                        jg->opcoesNaPausa = false;
                         jg->dlg.estado = DLG_NENHUM;
                     }
                     if (devSel == DEV_SALA)          { jg->tela = JOGANDO;  jg->playerPos = SPAWN_SALA_VOLTA; jg->direcaoAtual = DIR_FRENTE; }
@@ -509,7 +537,13 @@ int main(void) {
 
         if (IsKeyPressed(KEY_ESCAPE)) {
 
-            if (jg->pausado) {
+            if (jg->pausado && jg->opcoesNaPausa) {
+
+                // OPÇÕES dentro do pause: fecha a lista aberta, ou volta ao menu de pause
+                if (jg->menuOpcoes.aberta >= 0) jg->menuOpcoes.aberta = -1;
+                else                            jg->opcoesNaPausa = false;
+
+            } else if (jg->pausado) {
 
                 // Volta para o jogo (cancela também uma confirmação de saída pendente)
                 jg->pausado = false;
@@ -525,6 +559,7 @@ int main(void) {
                 jg->selecaoPausa = PAUSA_CONTINUAR;
                 jg->confirmarSaida = 0.0f;
                 jg->historicoAberto = false;
+                jg->opcoesNaPausa = false;
 
             } else if (jg->tela == OPCOES) {
 
@@ -554,6 +589,7 @@ int main(void) {
                 jg->confirmarSaida = 0.0f;
                 jg->historicoAberto = true;
                 jg->historicoDireto = true;
+                jg->opcoesNaPausa = false;
                 jg->rolagemHistorico = 0.0f;
             }
         }
@@ -695,6 +731,27 @@ int main(void) {
             }
         }
 
+        // OPÇÕES dentro do pause: o VOLTAR (ou o BACKSPACE) volta ao menu de pause
+        else if (jg->pausado && jg->opcoesNaPausa) {
+
+            MudancaOpcoes mudou = AtualizarOpcoes(&jg->menuOpcoes, &jg->exibicao);
+
+            if (mudou == OPCOES_VIDEO)
+                AplicarExibicao(jg->exibicao);
+            if (mudou != OPCOES_NADA)
+                SalvarConfigExibicao(jg->exibicao);
+
+            if (IsKeyPressed(KEY_BACKSPACE)) {
+                if (jg->menuOpcoes.aberta >= 0) jg->menuOpcoes.aberta = -1;
+                else                            jg->menuOpcoes.sair = true;
+            }
+
+            if (jg->menuOpcoes.sair) {
+                jg->menuOpcoes.sair = false;
+                jg->opcoesNaPausa = false;
+            }
+        }
+
         else if (jg->pausado) {
 
             bool temLobby = (jg->tela == BIBLIOTECA) && RoguePodeAbandonar(&jg->biblioteca);
@@ -732,6 +789,11 @@ int main(void) {
                 jg->historicoAberto = true;
                 jg->historicoDireto = false;
                 jg->rolagemHistorico = 0.0f;
+
+            } else if (escolha == PAUSA_OPCOES) {
+
+                jg->opcoesNaPausa = true;
+                jg->menuOpcoes = (MenuOpcoes){ .foco = FOCO_ABAS, .aberta = -1, .naPausa = true };
 
             } else if (escolha == PAUSA_CONTINUAR) {
 
@@ -980,10 +1042,18 @@ int main(void) {
             DesenharHistoricoLuci(jg->fundoPausa, jg->rolagemHistorico, jg->historicoDireto);
         }
 
+        else if (jg->pausado && jg->opcoesNaPausa) {
+
+            DesenharFundoPausa(jg->fundoPausa);
+            DesenharOpcoes(&jg->menuOpcoes, jg->exibicao, BLANK);
+        }
+
         else if (jg->pausado) {
 
             DesenharPausa(jg->fundoPausa, jg->selecaoPausa, (jg->tela == BIBLIOTECA) && RoguePodeAbandonar(&jg->biblioteca),
                           (jg->confirmarSaida > 0.0f) ? jg->opConfirmandoPausa : -1);
+            if (jg->tela == BIBLIOTECA)
+                RogueDesenharControlesPausa(&jg->biblioteca);    // os controles da sala (saíram da faixa de baixo do HUD)
         }
 
         // =====================================================
@@ -1078,7 +1148,7 @@ int main(void) {
         // Bloco 3: aberração cromática (canais R e B deslocados em ondas) sobre o quadro da Biblioteca
         if (jg->tela == BIBLIOTECA && !jg->pausado && !jg->transicao.ativa) {
             float aberracao = RogueIntensidadeAberracao(&jg->biblioteca) * ((jg->dlg.estado != DLG_NENHUM) ? 0.3f : 1.0f);
-            if (aberracao > 0.01f)
+            if (aberracao > 0.01f && Prefs()->corrupcaoTela)       // (a opção CORRUPÇÃO NA TELA desliga)
                 AplicarAberracaoCromatica(jg->alvo, aberracao, jg->tempo);
         }
 
@@ -1090,7 +1160,8 @@ int main(void) {
             jg->pausado = true;
         }
 
-        // Estica o quadro de 800x600 para o tamanho da janela
+        // Estica o quadro de 800x600 para o tamanho da janela (com os efeitos de tela)
+        DefinirCorrupcaoTela(CorrupcaoDaTela(jg));
         BeginDrawing();
         DesenharNaJanela(jg->alvo, jg->filtroNitidez);
         EndDrawing();
@@ -1118,6 +1189,7 @@ int main(void) {
     DescarregarLuci();
     DescarregarMapasNovos();
     DescarregarIconesBiblioteca();       // Bloco 2: ícones opcionais das salas
+    DescarregarSpritesBiblioteca();      // Blocos 2 e 3: sprites dos inimigos e do chão
     DescarregarAberracao();              // Bloco 3: alvo do pós-efeito
     for (int i = 0; i < NUM_DIRECOES; i++)
         if (!jg->spritesJogador[i].emprestada) {

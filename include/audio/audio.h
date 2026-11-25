@@ -109,6 +109,7 @@ extern float g_tomPulsoFW;
 
 // ----- Funções -----
 void TrocarBGM(Music *nova, int id);
+void DefinirVolumes(float geral, float musica, float efeitos);   // tela de Opções, aba SONS (0 a 1)
 void AtualizarBGM(void);
 void AtualizarAmbiente(int desejado, float dt);
 void PausarAmbiente(bool pausar);

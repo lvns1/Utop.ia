@@ -715,6 +715,16 @@ EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo
     if (b->tituloBloco > 0.0f)        b->tituloBloco -= dt;
     for (int i = 0; i < MAX_TEXTOS_FLUTUANTES; i++)
         if (b->textos[i].tempo > 0.0f) { b->textos[i].tempo -= dt; b->textos[i].pos.y -= 28.0f * dt; }
+    for (int i = 0; i < MAX_NUMEROS_DANO; i++)
+        if (b->numeros[i].tempo > 0.0f) { b->numeros[i].tempo -= dt; b->numeros[i].pop = fmaxf(0.0f, b->numeros[i].pop - dt * 8.0f); }
+    for (int i = 0; i < MAX_FAISCAS; i++)
+        if (b->faiscas[i].tempo > 0.0f) b->faiscas[i].tempo -= dt;
+
+    // Portas da missão: a sala acabou de ficar limpa (agora, jogando) -> as portas se abrem animadas
+    if (b->portasAbrindo > 0.0f) b->portasAbrindo -= dt;
+    if (b->limpa && !b->limpaAntes && b->numPortas > 0)
+        b->portasAbrindo = PORTAS_ABRIR_TEMPO;
+    b->limpaAntes = b->limpa;
 
     // Cutscene da porta do núcleo: glitch, estática e a inversão de paleta (o jogo espera)
     if (b->transicaoNucleo > 0.0f) {

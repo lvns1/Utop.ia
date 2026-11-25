@@ -108,6 +108,13 @@ void RogueFaixaVirada(Biblioteca *b, const char *titulo, const char *sub, Color 
     TocarGrupo(&gChefeVirada, 1.0f, 0.9f);
 }
 
+// O mouse em coordenadas do mundo. A câmera na mira desloca o mundo na tela (offset = -camAdiante),
+// então o ponto do mundo embaixo do cursor é o mouse + camAdiante.
+Vector2 RogueMouseMundo(const Biblioteca *b)
+{
+    return Vector2Add(GetMousePosition(), b->camAdiante);
+}
+
 // Texto que sobe de um ponto da arena e some (o mais antigo é reaproveitado)
 void RogueTextoFlutuante(Biblioteca *b, Vector2 pos, const char *texto, Color cor)
 {
@@ -121,6 +128,60 @@ void RogueTextoFlutuante(Biblioteca *b, Vector2 pos, const char *texto, Color co
     t->tempo = 1.2f;
     t->cor = cor;
     snprintf(t->texto, sizeof(t->texto), "%s", texto);
+}
+
+// Número de dano: soma no número do mesmo alvo se ele acabou de nascer; senão usa uma vaga
+// livre (ou o número mais antigo). O número que soma não volta para o começo: ele continua
+// subindo, e o próximo golpe já nasce como um número novo.
+void RogueNumeroDano(Biblioteca *b, int alvo, Vector2 pos, float dano, int tipo)
+{
+#if COMBATE_NUMEROS_DANO
+    if (!(dano >= 0.0f) || !Prefs()->numerosDano)      // (desligado na tela de Opções)
+        return;
+
+    for (int i = 0; i < MAX_NUMEROS_DANO; i++) {
+        NumeroDano *n = &b->numeros[i];
+        if (n->tempo > NUMERO_DANO_TEMPO - NUMERO_DANO_JUNTAR && n->alvo == alvo && n->tipo == tipo) {
+            n->valor += dano;
+            n->pop = 1.0f;
+            return;
+        }
+    }
+
+    int escolhido = 0;
+    for (int i = 0; i < MAX_NUMEROS_DANO; i++) {
+        if (b->numeros[i].tempo <= 0.0f) { escolhido = i; break; }
+        if (b->numeros[i].tempo < b->numeros[escolhido].tempo) escolhido = i;
+    }
+    NumeroDano *n = &b->numeros[escolhido];
+    n->pos = (Vector2){ pos.x + (float)GetRandomValue(-8, 8), pos.y };
+    n->valor = dano;
+    n->tempo = NUMERO_DANO_TEMPO;
+    n->pop = 1.0f;
+    n->alvo = alvo;
+    n->tipo = (unsigned char)tipo;
+#else
+    (void)b; (void)alvo; (void)pos; (void)dano; (void)tipo;
+#endif
+}
+
+// Faísca no ponto do acerto (a mais antiga é reaproveitada)
+void RogueFaisca(Biblioteca *b, Vector2 pos, Vector2 dir, Color cor)
+{
+#if COMBATE_FAISCAS
+    int escolhido = 0;
+    for (int i = 0; i < MAX_FAISCAS; i++) {
+        if (b->faiscas[i].tempo <= 0.0f) { escolhido = i; break; }
+        if (b->faiscas[i].tempo < b->faiscas[escolhido].tempo) escolhido = i;
+    }
+    FaiscaAcerto *f = &b->faiscas[escolhido];
+    f->pos = pos;
+    f->dir = (Vector2Length(dir) > 0.01f) ? Vector2Normalize(dir) : (Vector2){ 0.0f, -1.0f };
+    f->tempo = FAISCA_TEMPO;
+    f->cor = cor;
+#else
+    (void)b; (void)pos; (void)dir; (void)cor;
+#endif
 }
 
 // Feedback de erro na verificação: o termo falso aparece com aberração cromática e a justificativa

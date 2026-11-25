@@ -1,0 +1,36 @@
+SPRITES DOS INIMIGOS (Blocos 2 e 3 - Biblioteca dos Ecos e Núcleo)
+
+O jogo funciona sem estes arquivos: sem um PNG (ou com o tamanho errado), aquele
+inimigo volta a ser desenhado com formas do Raylib, como antes. Para desligar
+todos de uma vez: SPRITES_INIMIGOS 0 em include/core/config.h.
+
+Formato: pixel art em escala 1 (1 pixel do PNG = 1 pixel da tela de 800x600),
+fundo transparente. Cada arquivo é uma FOLHA: os quadros da animação ficam lado
+a lado (na horizontal) e cada estado numa linha (na vertical). Todos os quadros
+de uma folha têm o mesmo tamanho:
+
+  arquivo                quadro   quadros x estados
+  spammer.png            28x26    2 x 1   (normal / falha de imagem)
+  spam.png               16x12    2 x 1
+  phisher.png            28x46    2 x 2   (linha 1: disfarçado; linha 2: revelado)
+  firewall.png           46x46    2 x 1   (2º quadro: o cadeado reluz)
+  overclock.png          42x42    4 x 2   (4 posições do giro; linha 2: superaquecido)
+  botnet.png             22x22    2 x 2   (linha 1: o centro; linha 2: um nó)
+  keylogger.png          22x44    2 x 2   (linha 2: mirando)
+  cache.png              36x12    1 x 2   (UM pente de memória; o jogo empilha três)
+  nucleo.png             40x48    4 x 1
+  sentinela.png          44x44    1 x 2   (linha 2: vulnerável; a lente é desenhada pelo jogo)
+  sentinela_cabeca.png   12x12    1 x 2
+  retro.png              46x40    2 x 2   (linha 2: recalibrando)
+  janela.png             74x58    1 x 2   (linha 2: aberta; o texto rolando é do jogo)
+  token.png              16x16    4 x 1
+  alucinacao.png         36x38    3 x 1
+  verboso.png            60x52    1 x 2   (linha 2: carregando; o texto é do jogo)
+  fragmento.png          30x36    8 x 2   (tutorial do Mestre; giro de 60 graus; linha 2: bote)
+  guardiao.png           38x42    2 x 2   (tutorial do Mestre; linha 2: atirando)
+
+Pode pôr mais quadros na horizontal (a animação usa todos), desde que a largura
+e a altura do PNG sejam múltiplos do quadro. O meio do quadro fica no centro do
+inimigo (o phisher, o retro e o verboso usam um ponto próprio: ver
+src/bloco2/desenho_inimigos.c). Carregamento: CarregarSpritesBiblioteca, na
+primeira vez que a Biblioteca é desenhada; liberação: DescarregarSpritesBiblioteca.

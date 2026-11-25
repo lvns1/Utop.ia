@@ -33,8 +33,17 @@ static void DesenharSpammer(const Inimigo *e, float escala)
     float s = escala;
     Vector2 p = { e->pos.x, e->pos.y + sinf(e->anim * 9.0f) * 1.5f };
 
-    if (((int)(e->anim * 7.0f + e->lado * 3.0f)) % 9 == 0)
+    bool glitch = ((int)(e->anim * 7.0f + e->lado * 3.0f)) % 9 == 0;
+    if (glitch)
         p.x += 2.0f;                                        // tremidinha de glitch
+
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_SPAMMER)) {
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + 15 }, 9 * s, 3 * s);
+        DesenharSpriteInimigo(SPR_SPAMMER, 0, glitch ? 1 : 0, p, s, WHITE);
+        return;
+    }
+#endif
 
     Rectangle janela = { p.x - 11 * s, p.y - 8 * s, 22 * s, 16 * s };
     DrawRectangleRec(janela, (Color){ 45, 25, 30, 255 });
@@ -55,6 +64,13 @@ static void DesenharSpam(const Inimigo *e)
 {
     Vector2 p = e->pos;
     float alfa = fminf(1.0f, e->vida / 0.6f);                // some piscando no fim
+
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_SPAM)) {
+        DesenharSpriteInimigo(SPR_SPAM, 0, QuadroAnimInimigo(SPR_SPAM, e->anim, 6.0f, (float)e->lado), p, 1.0f, Fade(WHITE, alfa));
+        return;
+    }
+#endif
 
     DrawRectangle((int)p.x - 6, (int)p.y - 4, 12, 8, Fade((Color){ 255, 220, 180, 255 }, alfa));
     DrawLine((int)p.x - 6, (int)p.y - 4, (int)p.x, (int)p.y + 1, Fade(RED, alfa));
@@ -82,6 +98,21 @@ static void DesenharPhisher(const Inimigo *e, float escala)
 
     Color papel = revelado ? (Color){ 70, 55, 80, 255 } : (Color){ 235, 228, 205, 255 };
     Rectangle r = { p.x - 10 * s, p.y - 13 * s, 20 * s, 26 * s };
+
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_PHISHER)) {
+        // Camuflado: o anzol brilha no canto de vez em quando; revelado e mirando: a boca abre
+        int quadro = revelado ? (e->estado == 1 ? 1 : 0) : (fmodf(e->anim, 2.6f) < 0.25f ? 1 : 0);
+        DesenharSpriteInimigoPivo(SPR_PHISHER, revelado ? 1 : 0, quadro, p, (Vector2){ 14, 30 }, s, WHITE);
+        if (!revelado) {
+            const char *rotulo = "GRÁTIS";
+            DrawText(rotulo, (int)p.x - MeasureText(rotulo, 8) / 2, (int)(r.y + r.height) + 3, 8, GOLD);
+        } else if (e->estado == 1) {
+            DrawText("!", (int)p.x - 2, (int)(r.y - 30), 16, GOLD);
+        }
+        return;
+    }
+#endif
 
     DrawRectangleRec(r, papel);
     DesenharTrianguloB2((Vector2){ r.x + r.width - 7 * s, r.y }, (Vector2){ r.x + r.width, r.y + 7 * s },
@@ -119,13 +150,20 @@ static void DesenharFirewall(const Inimigo *e, float escala, float t)
     Vector2 lado = { -e->frente.y, e->frente.x };
 
     DrawEllipse((int)p.x, (int)p.y + 20, 20 * s, 5 * s, Fade(BLACK, 0.4f));
-    DrawPoly(p, 8, 20 * s, 22.5f, (Color){ 30, 60, 45, 255 });
-    DrawPolyLinesEx(p, 8, 20 * s, 22.5f, 2, (Color){ 120, 220, 150, 255 });
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_FIREWALL)) {
+        DesenharSpriteInimigo(SPR_FIREWALL, 0, fmodf(t + e->pos.x * 0.013f, 2.2f) < 0.18f ? 1 : 0, p, s, WHITE);   // o cadeado reluz de vez em quando
+    } else
+#endif
+    {
+        DrawPoly(p, 8, 20 * s, 22.5f, (Color){ 30, 60, 45, 255 });
+        DrawPolyLinesEx(p, 8, 20 * s, 22.5f, 2, (Color){ 120, 220, 150, 255 });
 
-    // Cadeado
-    DrawRing((Vector2){ p.x, p.y - 3 * s }, 4 * s, 6 * s, 180.0f, 360.0f, 10, LIGHTGRAY);
-    DrawRectangle((int)(p.x - 6 * s), (int)(p.y - 3 * s), (int)(12 * s), (int)(9 * s), GOLD);
-    DrawRectangle((int)(p.x - 1 * s), (int)p.y, (int)(2 * s), (int)(3 * s), (Color){ 60, 40, 0, 255 });
+        // Cadeado
+        DrawRing((Vector2){ p.x, p.y - 3 * s }, 4 * s, 6 * s, 180.0f, 360.0f, 10, LIGHTGRAY);
+        DrawRectangle((int)(p.x - 6 * s), (int)(p.y - 3 * s), (int)(12 * s), (int)(9 * s), GOLD);
+        DrawRectangle((int)(p.x - 1 * s), (int)p.y, (int)(2 * s), (int)(3 * s), (Color){ 60, 40, 0, 255 });
+    }
 
     // Saída de ar atrás (ponto fraco), pulsando
     for (int k = -1; k <= 1; k++) {
@@ -187,11 +225,22 @@ static void DesenharOverclock(const Inimigo *e, float escala, float t)
     float giro = (e->estado == 3) ? 0.0f : e->anim * (e->estado == 1 ? 12.0f + 20.0f * k : 4.0f);
     Color metal = (e->estado == 3) ? (Color){ 90, 90, 110, 255 } : (Color){ 150, 110, 70, 255 };
 
-    for (int d = 0; d < 8; d++) {
-        float a = giro + d * (PI / 4.0f);
-        DrawRectanglePro((Rectangle){ p.x + cosf(a) * 15 * s, p.y + sinf(a) * 15 * s, 7 * s, 7 * s }, (Vector2){ 3.5f * s, 3.5f * s }, a * RAD2DEG, metal);
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_OVERCLOCK)) {
+        // A engrenagem gira por quadros (cada um avança 1/4 de dente); o núcleo continua desenhado aqui
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + 19 }, 16 * s, 4 * s);
+        int quadro = (int)floorf(giro / (PI / 16.0f));
+        DesenharSpriteInimigo(SPR_OVERCLOCK, (e->estado == 3) ? 1 : 0, quadro, p, s, WHITE);
+        DrawCircleV(p, 7.5f * s, (Color){ 30, 22, 18, 255 });
+    } else
+#endif
+    {
+        for (int d = 0; d < 8; d++) {
+            float a = giro + d * (PI / 4.0f);
+            DrawRectanglePro((Rectangle){ p.x + cosf(a) * 15 * s, p.y + sinf(a) * 15 * s, 7 * s, 7 * s }, (Vector2){ 3.5f * s, 3.5f * s }, a * RAD2DEG, metal);
+        }
+        DrawCircleV(p, 14 * s, metal);
     }
-    DrawCircleV(p, 14 * s, metal);
 
     Color nucleo = (e->estado == 3) ? (Color){ 60, 90, 140, 255 }
                  : ColorLerp((Color){ 255, 120, 0, 255 }, WHITE, k);
@@ -221,6 +270,20 @@ static void DesenharBotnet(const Inimigo *e, float escala, float t)
     if (e->estado == 1)
         DrawCircleV(p, (e->raio + 6) * s, Fade(ciano, 0.25f + 0.25f * sinf(t * 25.0f)));
 
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_BOTNET)) {
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + 18 }, 11 * s, 3 * s);
+        for (int n = 0; n < 3; n++) {
+            float a = t * 2.0f + n * (2.0f * PI / 3.0f);
+            Vector2 q = { p.x + cosf(a) * 16 * s, p.y + sinf(a) * 16 * s };
+            DrawLineEx(p, q, 1, Fade(ciano, 0.7f));
+            DesenharSpriteInimigo(SPR_BOTNET, 1, ((int)(t * 3.0f) + n) % 2, q, s, WHITE);   // os nós (piscam desencontrados)
+        }
+        DesenharSpriteInimigo(SPR_BOTNET, 0, QuadroAnimInimigo(SPR_BOTNET, t, 2.0f, e->pos.x * 0.01f), p, s, WHITE);
+        return;
+    }
+#endif
+
     for (int n = 0; n < 3; n++) {
         float a = t * 2.0f + n * (2.0f * PI / 3.0f);
         Vector2 q = { p.x + cosf(a) * 16 * s, p.y + sinf(a) * 16 * s };
@@ -243,13 +306,22 @@ static void DesenharKeylogger(const Inimigo *e, float escala, float t)
     static const char *teclas[6] = { "Q", "W", "E", "A", "S", "D" };
 
     DrawEllipse((int)e->pos.x, (int)e->pos.y + 20, 9 * s, 3 * s, Fade(BLACK, 0.4f));
-    DrawRectangleRec(r, (Color){ 40, 40, 48, 255 });
-    DrawRectangleLinesEx(r, 1, (e->estado >= 1) ? RED : LIGHTGRAY);
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_KEYLOGGER)) {
+        // Digitando sozinho: uma tecla afunda por vez (mais rápido quando está mirando)
+        DesenharSpriteInimigo(SPR_KEYLOGGER, (e->estado >= 1) ? 1 : 0,
+                              QuadroAnimInimigo(SPR_KEYLOGGER, t, (e->estado >= 1) ? 9.0f : 3.0f, e->pos.y * 0.01f), p, s, WHITE);
+    } else
+#endif
+    {
+        DrawRectangleRec(r, (Color){ 40, 40, 48, 255 });
+        DrawRectangleLinesEx(r, 1, (e->estado >= 1) ? RED : LIGHTGRAY);
 
-    for (int k = 0; k < 6; k++) {
-        int cx = (int)(r.x + 2 * s + (k % 2) * 7 * s), cy = (int)(r.y + 3 * s + (k / 2) * 10 * s);
-        DrawRectangle(cx, cy, (int)(6 * s), (int)(7 * s), (Color){ 200, 200, 210, 255 });
-        if (s > 0.9f) DrawText(teclas[k], cx + 1, cy, 8, (Color){ 40, 40, 48, 255 });
+        for (int k = 0; k < 6; k++) {
+            int cx = (int)(r.x + 2 * s + (k % 2) * 7 * s), cy = (int)(r.y + 3 * s + (k / 2) * 10 * s);
+            DrawRectangle(cx, cy, (int)(6 * s), (int)(7 * s), (Color){ 200, 200, 210, 255 });
+            if (s > 0.9f) DrawText(teclas[k], cx + 1, cy, 8, (Color){ 40, 40, 48, 255 });
+        }
     }
 
     // REC
@@ -288,6 +360,12 @@ static void DesenharCache(const Inimigo *e, float escala, float t)
 
     for (int k = 0; k < 3; k++) {
         float y = p.y - 14 * s + k * 10 * s + sinf(t * 2.0f + k) * 1.5f;
+#if SPRITES_INIMIGOS
+        if (SpriteInimigoPronto(SPR_CACHE)) {          // cada pente é o mesmo sprite (eles balançam desencontrados)
+            DesenharSpriteInimigo(SPR_CACHE, brilho ? 1 : 0, 0, (Vector2){ p.x, y + 4 * s }, s, WHITE);
+            continue;
+        }
+#endif
         Rectangle pente = { p.x - 16 * s, y, 32 * s, 8 * s };
         DrawRectangleRec(pente, brilho ? (Color){ 120, 220, 140, 255 } : (Color){ 20, 90, 50, 255 });
         DrawRectangleLinesEx(pente, 1, (Color){ 0, 228, 48, 255 });
@@ -550,15 +628,27 @@ void DesenharSentinela(const Inimigo *e, float escala, float t)
     }
 
     // Cabeças de atenção em órbita (mais rápidas quanto mais foco)
+    bool comSprite = false;
+#if SPRITES_INIMIGOS
+    comSprite = SpriteInimigoPronto(SPR_SENTINELA) && SpriteInimigoPronto(SPR_SENTINELA_CABECA);
+#endif
     for (int k = 0; k < 3; k++) {
         float a = t * (1.2f + 3.0f * e->foco) + (float)k * 2.0f * PI / 3.0f;
         Vector2 c = { e->pos.x + cosf(a) * (r + 12), e->pos.y + sinf(a) * (r + 12) };
-        DrawTriangle((Vector2){ c.x - 5, c.y + 4 }, (Vector2){ c.x + 5, c.y + 4 }, (Vector2){ c.x, c.y - 6 }, vulneravel ? GRAY : cor);
+        if (comSprite)
+            DesenharSpriteInimigo(SPR_SENTINELA_CABECA, vulneravel ? 1 : 0, 0, c, escala, WHITE);
+        else
+            DrawTriangle((Vector2){ c.x - 5, c.y + 4 }, (Vector2){ c.x + 5, c.y + 4 }, (Vector2){ c.x, c.y - 6 }, vulneravel ? GRAY : cor);
     }
 
     // Casco e lente
-    DrawPoly(e->pos, 6, r, t * 20.0f, (Color){ 30, 40, 60, 255 });
-    DrawPolyLinesEx(e->pos, 6, r, t * 20.0f, 2, vulneravel ? GOLD : cor);
+    if (comSprite) {
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + r + 2 }, r * 0.9f, 4 * escala);
+        DesenharSpriteInimigo(SPR_SENTINELA, vulneravel ? 1 : 0, 0, e->pos, escala, WHITE);
+    } else {
+        DrawPoly(e->pos, 6, r, t * 20.0f, (Color){ 30, 40, 60, 255 });
+        DrawPolyLinesEx(e->pos, 6, r, t * 20.0f, 2, vulneravel ? GOLD : cor);
+    }
     Vector2 olhar = (e->distraida > 0.0f) ? (Vector2){ sinf(t * 6.0f), 0 } : e->alvo;
     if (e->estado == 0 && e->visao) olhar = Vector2Normalize(Vector2Subtract(e->miraPrevista, e->pos));
     if (e->estado == 3) {
@@ -592,17 +682,26 @@ void DesenharRetro(const Inimigo *e, float escala, float t)
     }
 
     // Corpo: nabla com três camadas de pontos ligadas
-    Color corpo = recalibrando ? (Color){ 90, 70, 60, 255 } : (Color){ 70, 25, 15, 255 };
-    Vector2 a = { e->pos.x - r, e->pos.y - r * 0.7f }, b2 = { e->pos.x + r, e->pos.y - r * 0.7f }, c = { e->pos.x, e->pos.y + r };
-    DrawTriangle(a, c, b2, corpo);
-    DrawTriangleLines(a, c, b2, recalibrando ? GRAY : cor);
-    for (int camada = 0; camada < 3; camada++) {
-        int n = 3 - camada;
-        float y = e->pos.y - r * 0.45f + camada * r * 0.45f;
-        for (int k = 0; k < n; k++) {
-            float x = e->pos.x + ((float)k - (n - 1) / 2.0f) * r * 0.5f;
-            float brilho = (e->estado == 2) ? 1.0f : 0.5f + 0.5f * sinf(t * 4.0f + camada + k);
-            DrawCircleV((Vector2){ x, y }, 2.5f, Fade(recalibrando ? GRAY : ORANGE, brilho));
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_RETRO)) {
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + r + 4 }, r * 0.6f, 4 * escala);
+        int quadro = (e->estado == 2) ? 0 : QuadroAnimInimigo(SPR_RETRO, t, 3.0f, 0.0f);    // os neurônios acendem alternados
+        DesenharSpriteInimigoPivo(SPR_RETRO, recalibrando ? 1 : 0, quadro, e->pos, (Vector2){ 23, 17 }, escala, WHITE);
+    } else
+#endif
+    {
+        Color corpo = recalibrando ? (Color){ 90, 70, 60, 255 } : (Color){ 70, 25, 15, 255 };
+        Vector2 a = { e->pos.x - r, e->pos.y - r * 0.7f }, b2 = { e->pos.x + r, e->pos.y - r * 0.7f }, c = { e->pos.x, e->pos.y + r };
+        DrawTriangle(a, c, b2, corpo);
+        DrawTriangleLines(a, c, b2, recalibrando ? GRAY : cor);
+        for (int camada = 0; camada < 3; camada++) {
+            int n = 3 - camada;
+            float y = e->pos.y - r * 0.45f + camada * r * 0.45f;
+            for (int k = 0; k < n; k++) {
+                float x = e->pos.x + ((float)k - (n - 1) / 2.0f) * r * 0.5f;
+                float brilho = (e->estado == 2) ? 1.0f : 0.5f + 0.5f * sinf(t * 4.0f + camada + k);
+                DrawCircleV((Vector2){ x, y }, 2.5f, Fade(recalibrando ? GRAY : ORANGE, brilho));
+            }
         }
     }
 
@@ -645,9 +744,17 @@ void DesenharJanelaChefe(const Inimigo *e, float escala, float t)
     }
 
     // Corpo: a janela
-    DrawRectangleRec(r, (Color){ 22, 20, 44, 255 });
-    DrawRectangle((int)r.x, (int)r.y, (int)r.width, 9, aberta ? MAGENTA : cor);
-    for (int k = 0; k < 3; k++) DrawCircle((int)(r.x + r.width - 8 - k * 7), (int)r.y + 4, 2, (Color){ 22, 20, 44, 255 });
+    bool comSprite = false;
+#if SPRITES_INIMIGOS
+    comSprite = SpriteInimigoPronto(SPR_JANELA);
+#endif
+    if (comSprite) {
+        DesenharSpriteInimigo(SPR_JANELA, aberta ? 1 : 0, 0, p, escala, WHITE);
+    } else {
+        DrawRectangleRec(r, (Color){ 22, 20, 44, 255 });
+        DrawRectangle((int)r.x, (int)r.y, (int)r.width, 9, aberta ? MAGENTA : cor);
+        for (int k = 0; k < 3; k++) DrawCircle((int)(r.x + r.width - 8 - k * 7), (int)r.y + 4, 2, (Color){ 22, 20, 44, 255 });
+    }
     // Linhas de texto correndo. O sorteio usa a largura FIXA do corpo e só o resultado é escalado:
     // surgindo, a escala começa em 0 (a largura escalada viraria um "% 0", divisão por zero que fechava o jogo)
     for (int k = 0; k < 5; k++) {
@@ -655,7 +762,8 @@ void DesenharJanelaChefe(const Inimigo *e, float escala, float t)
         int lw = (int)((float)(12 + (int)(Ruido((unsigned int)(k * 13 + (int)(t * 2.0f))) % 42u)) * escala);
         DrawRectangle((int)r.x + 6, (int)(r.y + 12 + fase), lw, 2, Fade(cor, 0.6f));
     }
-    DrawRectangleLinesEx(r, 2, aberta ? MAGENTA : cor);
+    if (!comSprite)
+        DrawRectangleLinesEx(r, 2, aberta ? MAGENTA : cor);
 
     if (aberta) {
         // Rachaduras e o núcleo exposto
@@ -677,6 +785,17 @@ static void DesenharAlucinacaoInimigo(const Inimigo *e, float escala, float t)
     Color cor = DEF_INIMIGOS[INIMIGO_ALUCINACAO].cor;
     if (e->estado == 1) { p.x += (float)GetRandomValue(-2, 2); p.y += (float)GetRandomValue(-2, 2); }
     float alfa = (e->estado == 1 && ((int)(t * 20.0f)) % 2 == 0) ? 0.25f : 0.8f;
+
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_ALUCINACAO)) {
+        int quadro = QuadroAnimInimigo(SPR_ALUCINACAO, t, 7.0f, e->pos.x * 0.01f);
+        DesenharSpriteInimigo(SPR_ALUCINACAO, 0, quadro, (Vector2){ p.x - 4, p.y }, escala, Fade(SKYBLUE, 0.35f));   // a "imagem duplicada"
+        DesenharSpriteInimigo(SPR_ALUCINACAO, 0, quadro, (Vector2){ p.x + 4, p.y }, escala, Fade(RED, 0.35f));
+        DesenharSpriteInimigo(SPR_ALUCINACAO, 0, quadro, p, escala, Fade(WHITE, alfa + 0.15f));
+        DrawText("?", (int)p.x - 3, (int)(p.y - s - 14), 10, Fade(WHITE, alfa));
+        return;
+    }
+#endif
 
     DrawCircleV((Vector2){ p.x - 4, p.y }, s, Fade(SKYBLUE, 0.35f));      // a "imagem duplicada" (erro de renderização)
     DrawCircleV((Vector2){ p.x + 4, p.y }, s, Fade(RED, 0.35f));
@@ -706,10 +825,18 @@ static void DesenharVerboso(const Inimigo *e, float escala, float t)
     Rectangle fora = { p.x - w / 2 - 3, p.y - h / 2 - 3, w + 6, h + 6 };
     Rectangle dentro = { p.x - w / 2, p.y - h / 2, w, h };
     DrawRectangleRounded(fora, 0.45f, 8, Fade(borda, 0.25f + 0.35f * carga));
-    DrawRectangleRounded(dentro, 0.4f, 8, (Color){ 235, 238, 250, 255 });
-    DrawTriangle((Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Color){ 235, 238, 250, 255 });
-    DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, 2, borda);
-    DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, 2, borda);
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_VERBOSO)) {             // o balão incha junto com a carga
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + s * 1.5f }, s * 0.9f, 4);
+        DesenharSpriteInimigoPivo(SPR_VERBOSO, (carga > 0.0f) ? 1 : 0, 0, p, (Vector2){ 30, 22 }, escala * (1.0f + 0.25f * carga), WHITE);
+    } else
+#endif
+    {
+        DrawRectangleRounded(dentro, 0.4f, 8, (Color){ 235, 238, 250, 255 });
+        DrawTriangle((Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, (Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Color){ 235, 238, 250, 255 });
+        DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.1f, p.y + h / 2 - 2 }, 2, borda);
+        DrawLineEx((Vector2){ p.x - s * 0.6f, p.y + h / 2 + s * 0.65f }, (Vector2){ p.x - s * 0.55f, p.y + h / 2 - 2 }, 2, borda);
+    }
 
     // Linhas de texto que correm sem parar (cada linha é mais comprida e rápida que a anterior)
     for (int k = 0; k < 4; k++) {
@@ -734,6 +861,12 @@ static void DesenharToken(const Inimigo *e, float t)
 {
     float s = 7.0f + sinf(t * 8.0f + e->pos.x) * 1.0f;
     DrawPoly(e->pos, 4, s + 4, 45.0f, Fade(GOLD, 0.25f));
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_TOKEN)) {               // a moeda girando
+        DesenharSpriteInimigo(SPR_TOKEN, 0, QuadroAnimInimigo(SPR_TOKEN, t, 8.0f, e->pos.x * 0.03f), e->pos, 1.0f, WHITE);
+        return;
+    }
+#endif
     DrawPoly(e->pos, 4, s, 45.0f + t * 90.0f, GOLD);
     DrawCircleV(e->pos, 2, (Color){ 60, 40, 0, 255 });
 }
@@ -814,6 +947,11 @@ void DesenharInimigo(const Inimigo *e)
 
     if (e->surgindo > 0.0f)
         DrawCircleLines((int)e->pos.x, (int)e->pos.y, e->raio + 12 * (1.0f - escala), Fade(MAGENTA, 0.7f));
+
+#if COMBATE_POP
+    if (e->flash > 0.0f)
+        escala *= 1.0f + 0.14f * fminf(1.0f, e->flash / 0.1f);     // levou dano: incha um instante e volta
+#endif
 
     for (int vez = 0; vez < ((e->flash > 0.0f) ? 3 : 1); vez++) {
 

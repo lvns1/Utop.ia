@@ -1042,6 +1042,33 @@ typedef struct {
 
 #define MAX_TEXTOS_FLUTUANTES 8
 
+// Número de dano que sobe do alvo. Golpes no mesmo alvo logo depois que o número nasce somam nele
+// (os balins da Fragmentadora viram um número só, e o Fluxo não enche a tela)
+typedef struct {
+    Vector2 pos;                // de onde ele sobe
+    float valor;                // dano somado
+    float tempo;                // > 0 = na tela
+    float pop;                  // 1 = acabou de somar (o número dá um pulo)
+    int alvo;                   // índice do inimigo ou ALVO_NUM_CHEFE / _SILOGISTA / _LUCI
+    unsigned char tipo;         // NUM_DANO_NORMAL, _FORTE (bônus) ou _BLOQUEADO (escudo, guarda)
+} NumeroDano;
+
+#define MAX_NUMEROS_DANO    12
+#define NUMERO_DANO_TEMPO   0.65f
+#define NUMERO_DANO_JUNTAR  0.20f   // golpe no mesmo alvo até este tempo depois do número nascer soma nele
+enum { NUM_DANO_NORMAL, NUM_DANO_FORTE, NUM_DANO_BLOQUEADO };
+enum { ALVO_NUM_CHEFE = 1000, ALVO_NUM_SILOGISTA, ALVO_NUM_LUCI };
+
+// Faísca no ponto do acerto: um estalo branco que vira a cor do alvo e some em poucos quadros
+typedef struct {
+    Vector2 pos, dir;           // dir: para onde o tiro ia (as faíscas voltam ao contrário)
+    float tempo;
+    Color cor;
+} FaiscaAcerto;
+
+#define MAX_FAISCAS   16
+#define FAISCA_TEMPO  0.12f
+
 typedef struct {
     float hp, ep;
     Vector2 pos;

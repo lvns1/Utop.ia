@@ -104,6 +104,7 @@ typedef struct Jogo {
     Texture2D fundoPausa;
     bool historicoAberto;           // tela "FALAS DA LUCI" aberta (dentro do pause)
     bool historicoDireto;           // aberta pelo R: fechar volta direto ao jogo (senão, ao menu de pause)
+    bool opcoesNaPausa;             // tela de OPÇÕES aberta de dentro do pause
     float rolagemHistorico;
 
     // --- Do quadro atual (recalculados a cada volta do laço) ---

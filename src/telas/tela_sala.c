@@ -185,6 +185,9 @@ void TelaSalaDesenhar(Jogo *jg)
     DesenharJogadorComLuci(jg->spritesJogador, jg->playerPos, jg->direcaoAtual, jg->animJogador.quadro,
                            jg->luciAcompanhando, jg->companionAngulo);
 
+    // Poeira no ar da sala
+    DesenharPoeiraAr(AREA_MAPA_SALA, jg->tempo, 1.0f);
+
     // Paredes invisíveis e pés do personagem (para calibrar)
     // Desligue em MOSTRAR_PAREDES_INVISIVEIS
 #if MOSTRAR_PAREDES_INVISIVEIS

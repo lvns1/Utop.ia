@@ -55,6 +55,12 @@ static Music *bgmAtual    = NULL;   // ponteiro para a música em reprodução
 static int    bgmTelaId   = -99;    // id interno da tela atual (evita reiniciar a mesma faixa)
 static float  bgmVolume   = 0.70f;  // 0.0 – 1.0
 
+// Volumes escolhidos na tela de Opções (aba SONS), de 0 a 1. A música e os efeitos multiplicam
+// o volume de cada som; o geral vai direto no volume mestre da raylib.
+static float volumeGeral   = 1.0f;
+static float volumeMusica  = 1.0f;
+static float volumeEfeitos = 1.0f;
+
 // Transição entre faixas: a que sai some enquanto a nova entra (as duas tocam juntas por um instante)
 #define BGM_TRANSICAO 0.6f          // segundos (AJUSTE AQUI)
 static Music *bgmSaindo     = NULL; // a faixa anterior, sumindo
@@ -113,6 +119,16 @@ void TrocarBGM(Music *nova, int id)
     }
 }
 
+// Volumes da tela de Opções (0 a 1). A música muda já no próximo quadro (a AtualizarBGM usa o valor novo).
+void DefinirVolumes(float geral, float musica, float efeitos)
+{
+    volumeGeral = Clamp(geral, 0.0f, 1.0f);
+    volumeMusica = Clamp(musica, 0.0f, 1.0f);
+    volumeEfeitos = Clamp(efeitos, 0.0f, 1.0f);
+    if (audioPronto)
+        SetMasterVolume(volumeGeral);
+}
+
 // Deve ser chamado UMA vez por frame no loop principal (mantém o buffer preenchido e faz a transição)
 void AtualizarBGM(void)
 {
@@ -125,14 +141,14 @@ void AtualizarBGM(void)
             if (BgmValida(bgmSaindo)) StopMusicStream(*bgmSaindo);
             bgmSaindo = NULL;
         } else {
-            SetMusicVolume(*bgmSaindo, bgmVolume * sinf(bgmNivelSaindo * PI / 2.0f));   // curva de potência constante
+            SetMusicVolume(*bgmSaindo, bgmVolume * volumeMusica * sinf(bgmNivelSaindo * PI / 2.0f));   // curva de potência constante
             UpdateMusicStream(*bgmSaindo);
         }
     }
 
     if (BgmValida(bgmAtual)) {
         bgmNivelAtual = fminf(1.0f, bgmNivelAtual + passo);
-        SetMusicVolume(*bgmAtual, bgmVolume * sinf(bgmNivelAtual * PI / 2.0f));
+        SetMusicVolume(*bgmAtual, bgmVolume * volumeMusica * sinf(bgmNivelAtual * PI / 2.0f));
         UpdateMusicStream(*bgmAtual);
     }
 }
@@ -2462,7 +2478,7 @@ void AtualizarAmbiente(int desejado, float dt)
         g_ambVolume = fminf(1.0f, g_ambVolume + dt * 0.5f);          // entra em ~2 s (valores negativos = silêncio por um tempo)
     }
     if (g_ambAtual != AMB_NENHUM && g_amb[g_ambAtual].stream.buffer) {
-        SetMusicVolume(g_amb[g_ambAtual], fmaxf(g_ambVolume, 0.0f) * ambVolume);
+        SetMusicVolume(g_amb[g_ambAtual], fmaxf(g_ambVolume, 0.0f) * ambVolume * volumeMusica);
         UpdateMusicStream(g_amb[g_ambAtual]);
     }
 }
@@ -2511,7 +2527,7 @@ void TocarGrupo(GrupoSom *g, float tom, float volume)
     Sound s = (g->voz == 0) ? g->v[k] : g->alias[k][g->voz - 1];
     float j = 1.0f + g->jitter * ((float)GetRandomValue(-100, 100) / 100.0f);
     SetSoundPitch(s, tom * j);
-    SetSoundVolume(s, volume);
+    SetSoundVolume(s, volume * volumeEfeitos);
     PlaySound(s);
 }
 
@@ -2762,6 +2778,8 @@ void IniciarSons(void)
 {
     InitAudioDevice();
     audioPronto = IsAudioDeviceReady();
+    if (audioPronto)
+        SetMasterVolume(volumeGeral);
 
     if (!audioPronto)
         return;
@@ -2889,6 +2907,7 @@ void TocarSomTom(Sound s, float tom)
         }
 
     SetSoundPitch(s, tom);
+    SetSoundVolume(s, volumeEfeitos);
     PlaySound(s);
 }
 

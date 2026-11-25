@@ -44,6 +44,65 @@ static void DesenharIconeVida(float x, float y, float r, bool cheia, float alfa)
 }
 
 // As vidas da partida em fila, centradas em cx (a que acabou de ser gasta pode piscar)
+// Faísca no ponto do acerto: um leque de traços que volta na direção do tiro, branco no
+// primeiro instante e com a cor do alvo no fim
+static void DesenharFaiscasAcerto(const Biblioteca *b)
+{
+    BeginBlendMode(BLEND_ADDITIVE);
+    for (int i = 0; i < MAX_FAISCAS; i++) {
+        const FaiscaAcerto *f = &b->faiscas[i];
+        if (f->tempo <= 0.0f) continue;
+
+        float k = f->tempo / FAISCA_TEMPO;                     // 1 -> 0
+        float abre = 1.0f - k;
+        Color cor = ColorLerp(WHITE, f->cor, abre);
+        float base = atan2f(-f->dir.y, -f->dir.x);
+
+        for (int r = -2; r <= 2; r++) {
+            float ang = base + (float)r * 0.55f;
+            float comp = ((r == 0) ? 20.0f : (r == 1 || r == -1) ? 14.0f : 9.0f) * (0.4f + 0.6f * abre);
+            float ini = 3.0f + 7.0f * abre;
+            Vector2 d = { cosf(ang), sinf(ang) };
+            DrawLineEx(Vector2Add(f->pos, Vector2Scale(d, ini)), Vector2Add(f->pos, Vector2Scale(d, ini + comp)),
+                       (r == 0) ? 3.0f : 2.0f, Fade(cor, k));
+        }
+        if (k > 0.5f)
+            DrawCircleV(f->pos, 6.0f * k, Fade(WHITE, k));    // clarão no primeiro instante
+    }
+    EndBlendMode();
+}
+
+// Números de dano: sobem rápido e freiam, com contorno escuro para ler em cima de qualquer coisa
+static void DesenharNumerosDano(const Biblioteca *b)
+{
+    const Color contorno = { 10, 6, 20, 255 };
+
+    for (int i = 0; i < MAX_NUMEROS_DANO; i++) {
+        const NumeroDano *n = &b->numeros[i];
+        if (n->tempo <= 0.0f) continue;
+
+        int valor = (int)(n->valor + 0.5f);
+        if (valor <= 0 && n->tipo != NUM_DANO_BLOQUEADO) continue;
+
+        float vida = 1.0f - n->tempo / NUMERO_DANO_TEMPO;     // 0 -> 1
+        float sobe = 26.0f * (1.0f - (1.0f - vida) * (1.0f - vida));
+        float alfa = (n->tempo < 0.25f) ? n->tempo / 0.25f : 1.0f;
+
+        int tam = (n->tipo == NUM_DANO_FORTE) ? 18 : (n->tipo == NUM_DANO_BLOQUEADO) ? 11 : 14;
+        tam += (int)(6.0f * n->pop);
+        Color cor = (n->tipo == NUM_DANO_FORTE) ? GOLD : (n->tipo == NUM_DANO_BLOQUEADO) ? (Color){ 150, 150, 170, 255 } : WHITE;
+
+        const char *txt = TextFormat("%d", valor);
+        int x = (int)n->pos.x - MeasureText(txt, tam) / 2;
+        int y = (int)(n->pos.y - sobe) - tam / 2;
+        DrawText(txt, x - 1, y, tam, Fade(contorno, alfa));
+        DrawText(txt, x + 1, y, tam, Fade(contorno, alfa));
+        DrawText(txt, x, y - 1, tam, Fade(contorno, alfa));
+        DrawText(txt, x, y + 1, tam, Fade(contorno, alfa));
+        DrawText(txt, x, y, tam, Fade(cor, alfa));
+    }
+}
+
 static void DesenharVidas(const Biblioteca *b, float cx, float y, float r, float alfa, bool piscarUltima)
 {
     int restam = RogueVidasRestantes(b);
@@ -282,6 +341,133 @@ static void DesenharDicasPrimeiraMissao(const Biblioteca *b, float tempo)
 //   • sobre um inimigo ela TRAVA: fica vermelha, menor, com cantos girando;
 //   • Vetor: arco da carga em volta; Fluxo: arco do calor (pisca vermelho superaquecida);
 //   • uma setinha em volta do Thomas aponta para a mira (para não perder a direção do tiro).
+// ---------- Controles da sala ----------
+// Saíram da faixa de baixo (que agora guarda os painéis): a lista completa aparece ao lado do menu de pause.
+
+typedef struct { const char *tecla, *acao; } ControleSala;
+
+#define QTD_CONTROLES(v)  ((int)(sizeof(v) / sizeof((v)[0])))
+
+static const ControleSala CONTROLES_ATRIO[] = {
+    { "WASD", "andar" }, { "E", "falar, comprar, ler, abrir" }, { "porta de cima", "missão" }, { "porta da esquerda", "corredor" }
+};
+static const ControleSala CONTROLES_MESTRE_ARMA[]  = { { "WASD", "andar" }, { "E", "pegar" } };
+static const ControleSala CONTROLES_MESTRE[]       = { { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "E", "usar" } };
+static const ControleSala CONTROLES_MESTRE_PARRY[] = { { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "V / botão direito", "parry" } };
+static const ControleSala CONTROLES_MESTRE_PULSO[] = {
+    { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "V / botão direito", "parry" }, { "Q", "pulso" }
+};
+static const ControleSala CONTROLES_SILOGISTA_BH[] = {
+    { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "SHIFT", "foco" }, { "V / botão direito", "parry" },
+    { "Q", "pulso" }, { "H", "scanner" }, { "E", "usar" }
+};
+static const ControleSala CONTROLES_LUCI[] = {
+    { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "V / botão direito", "parry" }, { "Q", "pulso" },
+    { "C", "contestar" }, { "H", "scanner" }, { "E", "usar" }
+};
+static const ControleSala CONTROLES_MISSAO[] = {
+    { "WASD", "andar" }, { "MOUSE", "atirar" }, { "ESPAÇO", "esquiva" }, { "Q", "pulso" }, { "1/2", "itens" },
+    { "TAB", "arma" }, { "H", "scanner" }, { "C", "contestar" }, { "M", "mapa" }, { "E", "usar" }
+};
+static const ControleSala CONTROLES_SEMPRE[]   = { { "R", "falas da Luci" }, { "ESC", "voltar ao jogo" } };
+static const ControleSala DICA_CONTROLES_PAUSA = { "ESC", "pausa e controles" };
+
+static const ControleSala *ControlesDaSala(const Biblioteca *b, int *n)
+{
+    const ControleSala *c = CONTROLES_MISSAO;
+    *n = QTD_CONTROLES(CONTROLES_MISSAO);
+
+    if (b->tipoSala == SALA_ATRIO) {
+        c = CONTROLES_ATRIO; *n = QTD_CONTROLES(CONTROLES_ATRIO);
+    } else if (b->tipoSala == SALA_MESTRE) {
+        if (b->mestre.etapa >= MT_PULSO)      { c = CONTROLES_MESTRE_PULSO; *n = QTD_CONTROLES(CONTROLES_MESTRE_PULSO); }
+        else if (b->mestre.etapa >= MT_PARRY) { c = CONTROLES_MESTRE_PARRY; *n = QTD_CONTROLES(CONTROLES_MESTRE_PARRY); }
+        else if (b->mestre.etapa == MT_ARMA)  { c = CONTROLES_MESTRE_ARMA;  *n = QTD_CONTROLES(CONTROLES_MESTRE_ARMA); }
+        else                                  { c = CONTROLES_MESTRE;       *n = QTD_CONTROLES(CONTROLES_MESTRE); }
+    } else if (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) {
+        c = CONTROLES_SILOGISTA_BH; *n = QTD_CONTROLES(CONTROLES_SILOGISTA_BH);
+    } else if (b->tipoSala == SALA_LUCI) {
+        c = CONTROLES_LUCI; *n = QTD_CONTROLES(CONTROLES_LUCI);
+    }
+    return c;
+}
+
+// Largura de "TECLA ação  TECLA ação ..." a partir do item 'primeiro'
+static int LarguraControles(const ControleSala *c, int n, int primeiro, int tam)
+{
+    int w = 0;
+    for (int i = primeiro; i < n; i++)
+        w += MeasureText(c[i].tecla, tam) + 4 + MeasureText(c[i].acao, tam) + ((i + 1 < n) ? 12 : 0);
+    return w;
+}
+
+// Uma linha de controles entre x0 e x1. Se não couber, saem os primeiros (ficam os mais novos do tutorial);
+// se nem o último couber, não desenha nada.
+static void DesenharControlesLinha(const ControleSala *c, int n, int x0, int x1, int y)
+{
+    int primeiro = 0;
+    while (primeiro < n - 1 && LarguraControles(c, n, primeiro, 10) > x1 - x0)
+        primeiro++;
+    if (n <= 0 || LarguraControles(c, n, primeiro, 10) > x1 - x0)
+        return;
+
+    int x = x0;
+    for (int i = primeiro; i < n; i++) {
+        DrawText(c[i].tecla, x, y, 10, GOLD);
+        x += MeasureText(c[i].tecla, 10) + 4;
+        DrawText(c[i].acao, x, y, 10, LIGHTGRAY);
+        x += MeasureText(c[i].acao, 10) + 12;
+    }
+}
+
+// Ao lado do menu de pause: o cartão com todos os controles da sala (tecla em dourado, ação em cinza)
+void RogueDesenharControlesPausa(const Biblioteca *b)
+{
+    Rectangle cartao = { 22, 100, 206, 420 };
+    float larguraUtil = cartao.width - 28;
+
+    DrawRectangleRec(cartao, Fade((Color){ 18, 15, 30, 255 }, 0.92f));
+    DrawRectangleLinesEx(cartao, 2, Fade(PURPLE, 0.8f));
+    DrawText("CONTROLES", (int)(cartao.x + cartao.width / 2) - MeasureText("CONTROLES", 16) / 2, (int)cartao.y + 18, 16, PURPLE);
+
+    int n = 0;
+    const ControleSala *c = ControlesDaSala(b, &n);
+
+    // As ações ficam alinhadas numa coluna depois da tecla mais larga (se alguma não couber, vão logo depois da tecla)
+    int coluna = 0;
+    bool alinhar = true;
+    for (int lista = 0; lista < 2; lista++) {
+        const ControleSala *itens = (lista == 0) ? c : CONTROLES_SEMPRE;
+        int qtd = (lista == 0) ? n : QTD_CONTROLES(CONTROLES_SEMPRE);
+        for (int i = 0; i < qtd; i++)
+            coluna = (int)fmaxf((float)coluna, (float)MeasureText(itens[i].tecla, 12) + 10);
+    }
+    for (int lista = 0; lista < 2; lista++) {
+        const ControleSala *itens = (lista == 0) ? c : CONTROLES_SEMPRE;
+        int qtd = (lista == 0) ? n : QTD_CONTROLES(CONTROLES_SEMPRE);
+        for (int i = 0; i < qtd; i++)
+            if (coluna + MeasureText(itens[i].acao, 12) > larguraUtil) alinhar = false;
+    }
+
+    int y = (int)cartao.y + 56;
+    int passo = LinhaTexto(12) + 12;
+    for (int lista = 0; lista < 2; lista++) {
+        const ControleSala *itens = (lista == 0) ? c : CONTROLES_SEMPRE;
+        int qtd = (lista == 0) ? n : QTD_CONTROLES(CONTROLES_SEMPRE);
+        if (lista == 1) {
+            y += 6;
+            DrawLine((int)cartao.x + 14, y - 9, (int)(cartao.x + cartao.width) - 14, y - 9, Fade(PURPLE, 0.4f));
+        }
+        for (int i = 0; i < qtd && y < cartao.y + cartao.height - 20; i++) {
+            int tam = (LarguraControles(&itens[i], 1, 0, 12) > larguraUtil) ? 10 : 12;
+            int x = (int)cartao.x + 14;
+            DrawText(itens[i].tecla, x, y, tam, GOLD);
+            DrawText(itens[i].acao, alinhar ? x + coluna : x + MeasureText(itens[i].tecla, tam) + 6, y, tam, LIGHTGRAY);
+            y += passo;
+        }
+    }
+}
+
 static void DesenharLinhaMira(Vector2 a, Vector2 b, Color cor)
 {
     DrawLineEx(a, b, 4.0f, Fade(BLACK, 0.75f));
@@ -404,12 +590,13 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
     bool semArmaAinda = (b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA);   // fim do Bloco 1: a arma ainda está no pedestal
 
     CarregarIconesBiblioteca();         // sprites opcionais dos ícones das salas (só na 1ª vez)
+    CarregarSpritesBiblioteca();        // sprites dos inimigos e do chão (só na 1ª vez)
     ClearBackground((Color){ 8, 6, 18, 255 });
 
-    // A tela só treme quando o jogador toma dano
+    // A tela só treme quando o jogador toma dano (e se o tremor estiver ligado na tela de Opções)
     Camera2D cam = { 0 };
     cam.zoom = 1.0f;
-    if (b->tremor > 0.0f) {
+    if (b->tremor > 0.0f && Prefs()->tremorTela) {
         int f = (b->tremorForte > 0.0f) ? (int)PARRY_TREMOR : 4;      // o parry treme mais
         cam.offset = (Vector2){ (float)GetRandomValue(-f, f), (float)GetRandomValue(-f, f) };
     }
@@ -422,6 +609,9 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
         cam.zoom = 1.0f + 0.14f * k * k;
     }
 
+    // Câmera na mira (o mundo anda para o lado contrário; a mira do mouse já desconta isso)
+    cam.offset = Vector2Subtract(cam.offset, b->camAdiante);
+
     BeginMode2D(cam);
 
     // Luta final da Luci: a arte do mapa roxo no lugar do chão, da grade, das estantes e da borda
@@ -433,13 +623,15 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
 
     } else {
 
-        // Chão da biblioteca: ladrilhos (no átrio, um tapete no caminho da porta)
-        DrawRectangleRec(ArenaRogue(), atrio ? (Color){ 22, 18, 38, 255 } : (Color){ 18, 15, 30, 255 });
+        // Chão da biblioteca: ladrilhos em pixel art (sem a folha: cor lisa e a grade; no átrio, um tapete no caminho da porta)
+        if (!DesenharChaoSprites(b)) {
+            DrawRectangleRec(ArenaRogue(), atrio ? (Color){ 22, 18, 38, 255 } : (Color){ 18, 15, 30, 255 });
 
-        for (int x = (int)ArenaRogue().x; x < ArenaRogue().x + ArenaRogue().width; x += 40)
-            DrawLine(x, (int)ArenaRogue().y, x, (int)(ArenaRogue().y + ArenaRogue().height), Fade(PURPLE, 0.10f));
-        for (int y = (int)ArenaRogue().y; y < ArenaRogue().y + ArenaRogue().height; y += 40)
-            DrawLine((int)ArenaRogue().x, y, (int)(ArenaRogue().x + ArenaRogue().width), y, Fade(PURPLE, 0.10f));
+            for (int x = (int)ArenaRogue().x; x < ArenaRogue().x + ArenaRogue().width; x += 40)
+                DrawLine(x, (int)ArenaRogue().y, x, (int)(ArenaRogue().y + ArenaRogue().height), Fade(PURPLE, 0.10f));
+            for (int y = (int)ArenaRogue().y; y < ArenaRogue().y + ArenaRogue().height; y += 40)
+                DrawLine((int)ArenaRogue().x, y, (int)(ArenaRogue().x + ArenaRogue().width), y, Fade(PURPLE, 0.10f));
+        }
     }
 
     if (atrio)
@@ -450,6 +642,8 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
 
     if (RogueNoBloco3(b))
         DesenharChaoNucleo(b, tempo);
+
+    RogueDesenharLuzChao(b, tempo);       // as poças de luz no chão (a penumbra vem depois dos personagens)
 
     // Prateleira decorativa na parede de cima e a borda (a arte da luta final já tem as suas paredes)
     if (!mapaLuci) {
@@ -657,6 +851,10 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
             DesenharPecaSilogismo((Vector2){ j->pos.x, j->pos.y - 40 }, b->silogista.letraPeca[b->silogista.carregando], YELLOW, tempo);
     }
 
+    // Penumbra e luzes da sala (os tiros, as partículas e os números vêm depois: ficam acesos)
+    RogueDesenharLuz(b, tempo);
+    RogueDesenharPoeira(b, tempo);          // poeira no ar, que brilha onde tem luz
+
     // Projéteis: os do jogador em ciano, os inimigos em laranja com contorno (fácil de ver)
     for (int i = 0; i < MAX_PROJETEIS; i++) {
 
@@ -685,6 +883,8 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
             DrawRectangleV((Vector2){ p->pos.x - p->tam / 2, p->pos.y - p->tam / 2 }, (Vector2){ p->tam, p->tam },
                            Fade(p->cor, p->vida / p->vidaMax));
     }
+    DesenharFaiscasAcerto(b);
+    DesenharNumerosDano(b);
 
     // Tecla E sobre o que dá para usar
     int pedestal = -1;
@@ -1021,13 +1221,16 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
         DrawText("SELO", (int)c.x - MeasureText("SELO", 8) / 2, yHud + 22, 8, GOLD);
     }
 
+    // Faixa dos painéis (onde ficava a linha de controles): fora da arena, nada de jogo fica embaixo deles
+    DrawRectangle(0, ALTURA_TELA - 20, LARGURA_TELA, 20, Fade(BLACK, 0.55f));
+
     if (!(b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA))   // ainda sem arma: o painel aparece quando ele pega
         DesenharHudArmas(b, tempo);
 
     // Vidas da partida: um painel no mesmo estilo do da arma, logo à direita dele
     // (a sala da Mestre ainda é o Bloco 1: lá não há vidas)
     if (b->tipoSala != SALA_MESTRE) {
-        Rectangle pv = { 262, 506, 62, 22 };
+        Rectangle pv = { PAINEL_VIDAS_X, FAIXA_PAINEIS_Y, 62, FAIXA_PAINEIS_ALTURA };
         bool ultima = RogueVidasRestantes(b) == 1;
         DrawRectangleRec(pv, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
         DrawRectangleLinesEx(pv, 1, Fade((Color){ 235, 45, 70, 255 }, ultima ? 0.5f + 0.4f * sinf(tempo * 5.0f) : 0.7f));
@@ -1044,8 +1247,10 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
         DesenharHudBuild(b, uy, tempo);
     }
 
-    // Mochila: as teclas dos itens de usar e os passivos
-    for (int i = 0; i < NUM_ITENS_LOJA; i++) {
+    // Mochila: as teclas dos itens de usar e os passivos (no treino do Mestre, o lugar dela mostra as etapas)
+    if (b->tipoSala == SALA_MESTRE)
+        DesenharEtapasMestre(b, 484, yHud + 1, tempo);
+    for (int i = 0; i < NUM_ITENS_LOJA && b->tipoSala != SALA_MESTRE; i++) {
 
         int x = 500 + i * 48;
         bool tem = j->itens[i] > 0;
@@ -1062,18 +1267,20 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
         if (i == ITEM_PACOTE_DADOS) DrawText("2", x - 15, yHud + 2, 10, GOLD);
     }
 
-    const char *controles = atrio ? "WASD andar    E falar, comprar, ler e abrir portas    porta de cima: missão    porta da esquerda: corredor"
-                          : (b->tipoSala == SALA_MESTRE) ? ((b->mestre.etapa >= MT_PULSO) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso"
-                                                                                            : (b->mestre.etapa >= MT_PARRY) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY"
-                                                                                            : (b->mestre.etapa == MT_ARMA) ? "WASD andar  E pegar"
-                                                                                            : "WASD andar  MOUSE atirar  ESPAÇO esquiva  E usar")
-                          : (b->tipoSala == SALA_SILOGISTA && b->silogista.modoBH) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  SHIFT foco  V / botão direito PARRY  Q pulso  H scanner  E usar"
-                          : (b->tipoSala == SALA_LUCI) ? "WASD andar  MOUSE atirar  ESPAÇO esquiva  V / botão direito PARRY  Q pulso  C contestar  H scanner  E usar"
-                                  : "WASD andar  MOUSE atirar  ESPAÇO esquiva  Q pulso  1/2 itens  TAB arma  H scanner  C contestar  M mapa  E usar";
-    int tamControles = 12;
-    if (MeasureText(controles, tamControles) > LARGURA_TELA - 16) tamControles = 10;
-    DrawRectangle(0, ALTURA_TELA - 20, LARGURA_TELA, 20, Fade(BLACK, 0.55f));
-    DrawText(controles, LARGURA_TELA / 2 - MeasureText(controles, tamControles) / 2, ALTURA_TELA - 17, tamControles, LIGHTGRAY);
+    // Controles: a lista completa fica no pause (ESC). Na faixa, só o que cabe no espaço livre:
+    // no átrio (sem o painel da Luci), o E; no tutorial do Mestre (sem vidas), as teclas da etapa;
+    // nas outras salas, o lembrete de que os controles estão no pause.
+    {
+        int n = 0;
+        const ControleSala *c = ControlesDaSala(b, &n);
+        int yTexto = FAIXA_PAINEIS_Y + (FAIXA_PAINEIS_ALTURA - LinhaTexto(10)) / 2;
+        if (atrio)
+            DesenharControlesLinha(&CONTROLES_ATRIO[1], 1, PAINEL_LUCI_X + 4, PAINEL_ARMA_X - 8, yTexto);
+        if (b->tipoSala == SALA_MESTRE)
+            DesenharControlesLinha(c, n, PAINEL_VIDAS_X, LARGURA_TELA - 8, yTexto);
+        else
+            DesenharControlesLinha(&DICA_CONTROLES_PAUSA, 1, PAINEL_VIDAS_X + 72, LARGURA_TELA - 124, yTexto);
+    }
 
     // Cartão de título do Bloco 2 (chegada à Biblioteca)
     if (b->tituloBloco > 0.0f) {

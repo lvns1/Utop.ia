@@ -390,6 +390,28 @@ void DesenharMestreTreino(const Biblioteca *b, float tempo)
 }
 
 // Barra de vida e as etapas do treino (no alto da tela)
+// As etapas do treino (o que já foi aprendido fica dourado), em duas linhas de quatro no HUD de baixo, no
+// lugar da mochila (que ainda não serve no treino). Antes ficavam dentro da arena e cobriam o Thomas.
+void DesenharEtapasMestre(const Biblioteca *b, int x0, int y0, float tempo)
+{
+    const MestreTreino *m = &b->mestre;
+    static const char *nomes[8] = { "ARMA", "TIRO", "ESQUIVA", "BRECHA", "PARRY", "PULSO", "ESCOLHA", "LUTA" };
+
+    if (!m->ativo)
+        return;
+
+    int x = x0, y = y0;
+    for (int i = 0; i < 8; i++) {
+        bool feito = (int)m->etapa > i, atual = (int)m->etapa == i;
+        if (i == 4) { x = x0; y += 19; }
+        int w = MeasureText(nomes[i], 10) + 12;
+        DrawRectangle(x, y, w, 15, feito ? Fade(GOLD, 0.25f) : (atual ? Fade((Color){ 0, 228, 255, 255 }, 0.2f + 0.1f * sinf(tempo * 4.0f)) : Fade(BLACK, 0.5f)));
+        DrawRectangleLines(x, y, w, 15, feito ? GOLD : (atual ? (Color){ 0, 228, 255, 255 } : Fade(GRAY, 0.6f)));
+        DrawText(nomes[i], x + 6, y + 3, 10, feito ? GOLD : (atual ? WHITE : GRAY));
+        x += w + 4;
+    }
+}
+
 void DesenharHudMestre(const Biblioteca *b, float tempo)
 {
     const MestreTreino *m = &b->mestre;
@@ -397,17 +419,7 @@ void DesenharHudMestre(const Biblioteca *b, float tempo)
     if (!m->ativo)
         return;
 
-    // As etapas: o que já foi aprendido fica dourado (embaixo, à esquerda, acima do painel da Luci)
-    static const char *nomes[8] = { "ARMA", "TIRO", "ESQUIVA", "BRECHA", "PARRY", "PULSO", "ESCOLHA", "LUTA" };
-    int x = 46, y = 464;
-    for (int i = 0; i < 8; i++) {
-        bool feito = (int)m->etapa > i, atual = (int)m->etapa == i;
-        int w = MeasureText(nomes[i], 10) + 12;
-        DrawRectangle(x, y, w, 15, feito ? Fade(GOLD, 0.25f) : (atual ? Fade((Color){ 0, 228, 255, 255 }, 0.2f + 0.1f * sinf(tempo * 4.0f)) : Fade(BLACK, 0.5f)));
-        DrawRectangleLines(x, y, w, 15, feito ? GOLD : (atual ? (Color){ 0, 228, 255, 255 } : Fade(GRAY, 0.6f)));
-        DrawText(nomes[i], x + 6, y + 3, 10, feito ? GOLD : (atual ? WHITE : GRAY));
-        x += w + 4;
-    }
+    // (as etapas aprendidas ficam no HUD de baixo, no lugar da mochila: DesenharEtapasMestre)
 
     // O cartão da etapa (no meio da tela) e o painel com o progresso (no topo)
     DesenharCartaoEtapaMestre(b, tempo);
@@ -682,6 +694,20 @@ void DesenharFragmentoAlucinado(const Inimigo *e, float escala)
     Color cores[3] = { Fade(SKYBLUE, 0.5f), Fade(RED, 0.5f), (e->estado == 1) ? RED : (Color){ 230, 41, 255, 255 } };
     float desloc[3] = { -3.0f, 3.0f, 0.0f };
 
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_FRAGMENTO)) {
+        // O cristal gira em volta do próprio eixo (quadros) e as cópias deslocadas em ciano e vermelho fazem o glitch
+        int quadro = QuadroAnimInimigo(SPR_FRAGMENTO, e->anim, 9.0f, 0.0f);
+        float k = escala;
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + s * 1.3f }, s * 0.7f, 3);
+        DesenharSpriteInimigo(SPR_FRAGMENTO, 0, quadro, (Vector2){ p.x - 3, p.y }, k, Fade(SKYBLUE, 0.5f));
+        DesenharSpriteInimigo(SPR_FRAGMENTO, 0, quadro, (Vector2){ p.x + 3, p.y }, k, Fade(RED, 0.5f));
+        DesenharSpriteInimigo(SPR_FRAGMENTO, (e->estado == 1) ? 1 : 0, quadro, p, k, WHITE);
+        DrawText(e->estado == 1 ? "!" : "?", (int)p.x - 3, (int)p.y - 7, 14, WHITE);
+        return;
+    }
+#endif
+
     for (int k = 0; k < 3; k++) {
         Vector2 c = { p.x + desloc[k], p.y };
         float giro = e->anim * 2.0f;
@@ -708,6 +734,13 @@ void DesenharGuardiao(const Inimigo *e, float escala)
     }
 
     DrawCircleV(p, e->raio + 4, Fade(SKYBLUE, 0.12f));
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_GUARDIAO)) {            // o tomo: as páginas abanam de leve
+        DesenharSombraSprite((Vector2){ e->pos.x, e->pos.y + 24 }, 13 * escala, 3);
+        DesenharSpriteInimigo(SPR_GUARDIAO, (e->estado == 1) ? 1 : 0, QuadroAnimInimigo(SPR_GUARDIAO, e->anim, 3.0f, 0.0f), p, escala, WHITE);
+        return;
+    }
+#endif
     DrawRectangle((int)(p.x - w / 2), (int)(p.y - h / 2), (int)w, (int)h, (Color){ 30, 60, 120, 255 });
     DrawRectangle((int)(p.x - w / 2), (int)(p.y - h / 2), (int)(6 * escala), (int)h, SKYBLUE);           // lombada
     DrawRectangleLinesEx((Rectangle){ p.x - w / 2, p.y - h / 2, w, h }, 2, SKYBLUE);
@@ -723,6 +756,10 @@ void DesenharEco(const Inimigo *e)
     float pisca = 0.35f + 0.35f * sinf(e->anim * (8.0f + 20.0f * k));
 
     DrawCircleV(e->pos, e->raio + 4 * k, Fade(MAGENTA, 0.25f + pisca * 0.4f));
+#if SPRITES_INIMIGOS
+    if (SpriteInimigoPronto(SPR_FRAGMENTO))             // o fantasma do cristal, piscando
+        DesenharSpriteInimigo(SPR_FRAGMENTO, 0, QuadroAnimInimigo(SPR_FRAGMENTO, e->anim, 10.0f, 0.0f), e->pos, 1.0f, Fade(MAGENTA, 0.35f + pisca));
+#endif
     DrawCircleLines((int)e->pos.x, (int)e->pos.y, e->raio + 10 * (1.0f - k), Fade(MAGENTA, 0.8f));
     DrawText("?", (int)e->pos.x - 3, (int)e->pos.y - 7, 14, Fade(WHITE, 0.8f));
 }

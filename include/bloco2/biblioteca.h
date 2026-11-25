@@ -13,6 +13,7 @@
 #include "../bloco1/objetivo.h"
 #include "../bloco2/biblioteca_tipos.h"
 #include "../core/config.h"
+#include "../core/preferencias.h"
 #include "../core/save.h"
 #include "../core/telemetria.h"
 #include "../core/texto.h"
@@ -189,6 +190,9 @@ typedef struct {
     int ultimoEncontro;         // não repete o mesmo encontro em salas seguidas
     int educativas;             // terminais já vistos nesta tentativa (decide o conceito)
     bool limpa;                 // a porta de cima está aberta
+    bool limpaAntes;            // como estava no quadro anterior (para animar as portas só quando abrem na hora)
+    float portasAbrindo;        // > 0 = as portas da missão estão se abrindo (PORTAS_ABRIR_TEMPO -> 0)
+    Vector2 camAdiante;         // quanto a câmera adiantou para o lado da mira (CAMERA_NA_MIRA)
     bool terminalLido;
     bool recompensaPega;
     TipoItem pedestal[NUM_PEDESTAIS];
@@ -317,6 +321,8 @@ typedef struct {
     char erroExplicacao[160];
     float tempoErro;
     TextoFlutuante textos[MAX_TEXTOS_FLUTUANTES];
+    NumeroDano numeros[MAX_NUMEROS_DANO];
+    FaiscaAcerto faiscas[MAX_FAISCAS];
     bool bonusSilogistaSessao;  // venceu o Silogista bullet-hell nesta sessão (o Selo amplificado volta no núcleo)
 
     // Expansão educativa: o laboratório da sala atual e o que vale para a sessão (nada disso vai para o save)
@@ -870,6 +876,8 @@ void RogueParticulas(Biblioteca *b, Vector2 origem, Color cor, int quantidade, f
 void RogueAviso(Biblioteca *b, const char *texto);
 void RogueFaixaVirada(Biblioteca *b, const char *titulo, const char *sub, Color cor);
 void RogueTextoFlutuante(Biblioteca *b, Vector2 pos, const char *texto, Color cor);
+void RogueNumeroDano(Biblioteca *b, int alvo, Vector2 pos, float dano, int tipo);
+void RogueFaisca(Biblioteca *b, Vector2 pos, Vector2 dir, Color cor);
 void RogueErroVerificacao(Biblioteca *b, const char *termo, const char *explicacao);
 Projetil *RogueDisparar(Biblioteca *b, Vector2 origem, Vector2 dir, float vel, float dano, float raio, bool doJogador);
 void RogueSoltar(Biblioteca *b, Vector2 pos, bool fragmento, TipoItem item);
@@ -1085,6 +1093,7 @@ void DesenharAlvoTreino(Vector2 c, float tempo, int i);
 void DesenharDicasMestreMundo(const Biblioteca *b, float tempo);
 void DesenharMestreTreino(const Biblioteca *b, float tempo);
 void DesenharHudMestre(const Biblioteca *b, float tempo);
+void DesenharEtapasMestre(const Biblioteca *b, int x0, int y0, float tempo);
 void DesenharPortaRogue(Rectangle r, bool aberta, const char *nome, float tempo);
 void DesenharIconeItem(TipoItem item, Vector2 c, float e, float tempo);
 void DesenharFragmentoConhecimento(Vector2 c, float t);
@@ -1185,5 +1194,35 @@ void DesenharSimbolosSilogistaBH(const Biblioteca *b, float t);
 void DesenharFocoSilogistaBH(const Biblioteca *b, float t);
 void DesenharTerminalAtalho(Vector2 c, const char *destino, Vector2 alvoSeta, bool liberado, float t);
 void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES], float anguloLuci, float tempo, const char *nickname, int pontos);
+void RogueDesenharLuzChao(const Biblioteca *b, float tempo);    // luz_salas.c
+void RogueDesenharLuz(const Biblioteca *b, float tempo);
+void RogueDesenharPoeira(const Biblioteca *b, float tempo);
+void DesenharPoeiraAr(Rectangle area, float tempo, float forca);   // salas sem a luz da Biblioteca (Bloco 1)
+Vector2 RogueMouseMundo(const Biblioteca *b);                      // o mouse no mundo (desconta a câmera na mira)
+
+// Faixa dos painéis: embaixo, fora da arena (onde ficava a linha de controles), para nunca cobrirem o
+// Thomas, os inimigos ou os tiros. Da esquerda para a direita: estado da Luci | arma | vidas | ... | efeitos
+#define FAIXA_PAINEIS_Y       580
+#define FAIXA_PAINEIS_ALTURA  18
+#define PAINEL_LUCI_X         44
+#define PAINEL_ARMA_X         264
+#define PAINEL_VIDAS_X        484
+void RogueDesenharControlesPausa(const Biblioteca *b);    // a lista de controles da sala, ao lado do menu de pause
+
+// sprites_biblioteca.c: folhas de pixel art dos inimigos e do chão (sem o PNG, o jogo usa as formas)
+typedef enum {
+    SPR_SPAMMER, SPR_SPAM, SPR_PHISHER, SPR_FIREWALL, SPR_OVERCLOCK, SPR_BOTNET, SPR_KEYLOGGER, SPR_CACHE,
+    SPR_NUCLEO, SPR_SENTINELA, SPR_SENTINELA_CABECA, SPR_RETRO, SPR_JANELA, SPR_TOKEN, SPR_ALUCINACAO,
+    SPR_VERBOSO, SPR_FRAGMENTO, SPR_GUARDIAO, NUM_SPRITES_INIMIGO
+} SpriteInimigo;
+void CarregarSpritesBiblioteca(void);
+void DescarregarSpritesBiblioteca(void);
+bool SpriteInimigoPronto(SpriteInimigo s);
+int  QuadrosSpriteInimigo(SpriteInimigo s);
+int  QuadroAnimInimigo(SpriteInimigo s, float tempo, float fps, float fase);
+void DesenharSpriteInimigo(SpriteInimigo s, int estado, int quadro, Vector2 centro, float escala, Color tinta);
+void DesenharSpriteInimigoPivo(SpriteInimigo s, int estado, int quadro, Vector2 pos, Vector2 pivo, float escala, Color tinta);
+void DesenharSombraSprite(Vector2 pos, float largura, float altura);
+bool DesenharChaoSprites(const Biblioteca *b);
 
 #endif // UTOPIA_BLOCO2_BIBLIOTECA_H

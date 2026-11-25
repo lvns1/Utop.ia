@@ -39,6 +39,39 @@
 #define THOMAS_ESTICAR   1     // estica ao começar a andar e na esquiva; achata ao parar e ao levar dano
 #define THOMAS_DANO      1     // levou dano: fica vermelho e treme um instante
 
+// Impacto no combate (Blocos 2 e 3). 1 = ligado, 0 = desligado (AJUSTE AQUI)
+#define COMBATE_NUMEROS_DANO 1   // números de dano subindo do alvo (golpes seguidos no mesmo alvo somam)
+#define COMBATE_FAISCAS      1   // faísca no ponto em que o tiro acerta
+#define COMBATE_POP          1   // o inimigo "incha" um instante ao levar dano
+
+// Efeitos de tela (um shader no quadro final, junto com o filtro de nitidez). 1 = ligado, 0 = desligado (AJUSTE AQUI)
+#define TELA_EFEITOS    1   // 0 = só o filtro de nitidez, como antes
+#define TELA_VINHETA    1   // cantos mais escuros
+#define TELA_LINHAS     1   // linhas de monitor entre as linhas de pixels (só com a imagem esticada 2x ou mais)
+#define TELA_BRILHO     1   // brilho de neon: as cores claras vazam um pouco em volta
+#define TELA_CORRUPCAO  1   // cresce com a corrupção da Luci: cores separadas nas bordas, sombras magenta e,
+                            // perto do limite, faixas da tela que escorregam de vez em quando
+#define TELA_GRAO       1   // granulado leve
+
+// Iluminação das salas da missão (Bloco 2): penumbra com luz em volta do Thomas, dos inimigos, dos
+// tiros, das portas e do que dá para usar. 1 = ligado, 0 = desligado (AJUSTE AQUI)
+#define LUZ_SALAS           1
+#define LUZ_FORCA_PENUMBRA  1.0f    // 1 = como foi feito; 0.5 = metade da escuridão; 0 = sem penumbra
+#define LUZ_RAIO_THOMAS     175.0f  // até onde a luz do Thomas alcança (pixels)
+#define LUZ_BRILHO_CHAO     0.16f   // quanto as luzes clareiam o chão (as poças de luz)
+
+// Detalhes de vida. 1 = ligado, 0 = desligado (AJUSTE AQUI)
+#define AMBIENTE_POEIRA     1       // poeira flutuando no ar das salas (brilha onde tem luz)
+#define PORTAS_ANIMADAS     1       // as portas da missão abrem com animação quando a sala fica limpa
+#define PORTAS_ABRIR_TEMPO  0.7f    // segundos da animação das portas
+#define CAMERA_NA_MIRA      1       // a câmera adianta um pouco para o lado da mira (dá para desligar nas Opções)
+#define CAMERA_MIRA_DIST    12.0f   // quanto ela adianta (pixels)
+
+// Sprites (pixel art) dos Blocos 2 e 3. 1 = usa os PNGs de resources/sprites/biblioteca/ quando existem;
+// 0 = sempre as formas desenhadas pelo código (como era antes)
+#define SPRITES_INIMIGOS    1       // inimigos comuns, elites, mini-chefe e os do tutorial do Mestre
+#define SPRITES_CHAO        1       // ladrilhos do chão da Biblioteca e do Núcleo
+
 #define NUM_PASTAS_SPRITES_JOGADOR 4
 
 #define QUADROS_ANDANDO     4

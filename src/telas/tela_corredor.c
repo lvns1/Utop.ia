@@ -348,6 +348,9 @@ void TelaCorredorDesenhar(Jogo *jg)
     DesenharJogadorComLuci(jg->spritesJogador, jg->playerPos, jg->direcaoAtual, jg->animJogador.quadro,
                            true, jg->companionAngulo);
 
+    // Poeira no ar do corredor
+    DesenharPoeiraAr((Rectangle){ MAPA_CORREDOR_X, MAPA_CORREDOR_Y, MAPA_CORREDOR_LARGURA, MAPA_CORREDOR_ALTURA }, jg->tempo, 1.0f);
+
     // Calibração do mapa (MOSTRAR_COLISOES_CORREDOR = 1)
     if (MOSTRAR_COLISOES_CORREDOR) {
         for (int i = 0; i < NUM_PAREDES_CORREDOR; i++)

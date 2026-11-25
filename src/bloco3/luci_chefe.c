@@ -355,6 +355,7 @@ bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde)
 
     if (!RogueLuciVulneravel(l)) {
         RogueParticulas(b, onde, MAGENTA, 3, 90);           // armadura de dados
+        RogueNumeroDano(b, ALVO_NUM_LUCI, (Vector2){ onde.x, onde.y - 12.0f }, 0.0f, NUM_DANO_BLOQUEADO);
         return false;
     }
 
@@ -362,9 +363,12 @@ bool RogueFerirLuciChefe(Biblioteca *b, float dano, Vector2 onde)
     if (!aberta)
         dano *= LUCI_GUARDA_FATOR;                          // barras 2 e 3: fora das janelas ela defende quase tudo
 
-    l->hp -= dano / RogueAdaptacaoChefe(b);
+    float real = dano / RogueAdaptacaoChefe(b);
+    l->hp -= real;
     l->flash = aberta ? 0.08f : 0.03f;
     RogueParticulas(b, onde, aberta ? (Color){ 0, 228, 255, 255 } : (Color){ 150, 60, 70, 255 }, aberta ? 3 : 2, aberta ? 120.0f : 70.0f);
+    RogueNumeroDano(b, ALVO_NUM_LUCI, (Vector2){ onde.x, onde.y - 12.0f }, real, aberta ? NUM_DANO_NORMAL : NUM_DANO_BLOQUEADO);
+    if (aberta) RogueFaisca(b, onde, Vector2Subtract(onde, b->j.pos), (Color){ 0, 228, 255, 255 });
     return true;
 }
 
@@ -784,6 +788,7 @@ void RogueGolpeDedutivo(Biblioteca *b)
     float dano = l->hpMax * MELEE_FRACAO[l->combo] * (0.75f + 0.25f * RogueFatorDano(b));
     l->hp -= dano;                          // o golpe dedutivo passa por qualquer armadura
     l->flash = 0.12f;
+    RogueNumeroDano(b, ALVO_NUM_LUCI, (Vector2){ l->pos.x + 48.0f, l->pos.y - 24.0f }, dano, NUM_DANO_FORTE);
 
     Vector2 dir = Vector2Subtract(l->pos, j->pos);
     dir = (Vector2Length(dir) > 0.1f) ? Vector2Normalize(dir) : (Vector2){ 0, -1 };

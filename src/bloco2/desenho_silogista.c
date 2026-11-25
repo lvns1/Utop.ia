@@ -955,33 +955,35 @@ void DesenharHudArmas(const Biblioteca *b, float tempo)
     const JogadorRogue *j = &b->j;
     TipoArma arma = RogueArmaAtual(j);
 
-    // Arma (canto de baixo, à esquerda). Com duas, mostra a outra e a tecla de troca.
-    Rectangle r = { 44, 506, 214, 22 };
+    // Arma (na faixa de baixo, depois do estado da Luci). Com duas, mostra a outra e a tecla de troca.
+    Rectangle r = { PAINEL_ARMA_X, FAIXA_PAINEIS_Y, 214, FAIXA_PAINEIS_ALTURA };
+    float meio = r.y + r.height / 2;
     DrawRectangleRec(r, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
     DrawRectangleLinesEx(r, 1, Fade(DEF_ARMAS[arma].cor, 0.7f));
-    DesenharIconeArma(arma, (Vector2){ r.x + 16, r.y + 11 }, 0.8f, tempo);
+    DesenharIconeArma(arma, (Vector2){ r.x + 16, meio }, 0.8f, tempo);
     {
         int espaco = (int)r.width - 34 - ((j->armaExtra != ARMA_DISPARADOR) ? 52 : 6);     // sobra do nome até o ícone da outra arma
         int tamNome = (MeasureText(DEF_ARMAS[arma].nome, 10) > espaco) ? 8 : 10;
-        DrawText(DEF_ARMAS[arma].nome, (int)r.x + 34, (int)r.y + 6 + (10 - tamNome) / 2, tamNome, DEF_ARMAS[arma].cor);
+        DrawText(DEF_ARMAS[arma].nome, (int)r.x + 34, (int)meio - 5 + (10 - tamNome) / 2, tamNome, DEF_ARMAS[arma].cor);
     }
 
     if (j->armaExtra != ARMA_DISPARADOR) {
         TipoArma outra = j->usandoExtra ? j->armaBase : j->armaExtra;
-        DesenharIconeArma(outra, (Vector2){ r.x + r.width - 34, r.y + 11 }, 0.6f, tempo);
-        DrawText("TAB", (int)(r.x + r.width) - 22, (int)r.y + 7, 8, GRAY);
+        DesenharIconeArma(outra, (Vector2){ r.x + r.width - 34, meio }, 0.6f, tempo);
+        DrawText("TAB", (int)(r.x + r.width) - 22, (int)meio - 4, 8, GRAY);
     }
 
-    // Efeitos com tempo (canto de baixo, à direita): ícone e uma barra com o que falta
+    // Efeitos com tempo (no fim da faixa de baixo, à direita): ícone e uma barra com o que falta
     static const TipoItem itemDoEfeito[NUM_EFEITOS] = { ITEM_OVERCLOCK, ITEM_FIREWALL_PORTATIL, ITEM_PROXY, ITEM_CAMPO_LATENCIA };
     static const float duracao[NUM_EFEITOS] = { EFEITO_OVERCLOCK_DURACAO, ESCUDO_PORTATIL_DURACAO, PROXY_DURACAO, LATENCIA_DURACAO };
-    int x = 734;
+    int x = LARGURA_TELA - 22;
+    int ye = FAIXA_PAINEIS_Y;
 
     for (int e = 0; e < NUM_EFEITOS; e++) {
         if (j->efeito[e] <= 0.0f) continue;
-        DrawRectangle(x - 12, 506, 24, 22, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
-        DesenharIconeItem(itemDoEfeito[e], (Vector2){ (float)x, 515 }, 0.6f, tempo);
-        DrawRectangle(x - 11, 525, (int)(22 * fminf(1.0f, j->efeito[e] / duracao[e])), 2, GOLD);
+        DrawRectangle(x - 12, ye, 24, FAIXA_PAINEIS_ALTURA, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
+        DesenharIconeItem(itemDoEfeito[e], (Vector2){ (float)x, ye + 8.0f }, 0.6f, tempo);
+        DrawRectangle(x - 11, ye + FAIXA_PAINEIS_ALTURA - 3, (int)(22 * fminf(1.0f, j->efeito[e] / duracao[e])), 2, GOLD);
         x -= 28;
     }
 
@@ -1055,14 +1057,14 @@ void DesenharScannerLuci(const Biblioteca *b, float tempo)
     }
 }
 
-// Estado da Luci (estabilidade, nome do estado e scanner) acima da arma
+// Estado da Luci (estabilidade, nome do estado e scanner): o primeiro painel da faixa de baixo
 
 void DesenharHudLuci(const Biblioteca *b, float tempo)
 {
     int e = RogueEstab(b);
     const char *estado = (e >= 4) ? "ESTÁVEL" : ((e == 3) ? "INSTÁVEL" : ((e >= 1) ? "GLITCHANDO" : "ECOANDO"));
     Color cor = (e >= 4) ? (Color){ 0, 228, 255, 255 } : ((e == 3) ? GOLD : ((e >= 1) ? ORANGE : MAGENTA));
-    Rectangle r = { 44, 484, 214, 18 };
+    Rectangle r = { PAINEL_LUCI_X, FAIXA_PAINEIS_Y, 214, FAIXA_PAINEIS_ALTURA };
     int dx = (e <= 2 && ((int)(tempo * 9.0f)) % 7 == 0) ? GetRandomValue(-2, 2) : 0;     // glitchando: treme
 
     // Bloco 3: "data bleed" (a cor oscila entre o azul e o vermelho/magenta)

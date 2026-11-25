@@ -391,6 +391,13 @@ void RogueFerirInimigo(Biblioteca *b, ProgressoCorredor *prog, Inimigo *e, float
     e->flash = 0.1f;
     e->empurrao = Vector2Add(e->empurrao, Vector2Scale(direcao, 140.0f * def->empurrao));
 
+    // Número de dano (cinza = o escudo segurou; dourado = bônus de rótulo, choque, fraqueza...)
+    // e a faísca no lado em que o tiro bateu
+    RogueNumeroDano(b, (int)(e - b->ini), (Vector2){ e->pos.x, e->pos.y - e->raio - 24.0f }, dano * fator,   // acima da barra de vida
+                    (protegido && fator < 0.6f) ? NUM_DANO_BLOQUEADO : (fator >= 1.25f) ? NUM_DANO_FORTE : NUM_DANO_NORMAL);
+    if (Vector2Length(direcao) > 0.01f)
+        RogueFaisca(b, Vector2Subtract(e->pos, Vector2Scale(Vector2Normalize(direcao), e->raio * 0.7f)), direcao, def->cor);
+
     RogueParticulas(b, e->pos, protegido ? (Color){ 0, 228, 48, 255 } : def->cor, 4, 120);
     if (protegido && fator < 0.6f && (e->tipo == INIMIGO_FIREWALL || e->tipo == INIMIGO_SENTINELA)) {
         static double ultimoEscudo = -10.0;
@@ -592,12 +599,16 @@ void RogueFerirChefe(Biblioteca *b, float dano, Vector2 onde)
 
     if (c->fase == 2 && c->janela <= 0.0f) {
         RogueParticulas(b, onde, MAGENTA, 3, 90);          // bateu no escudo de distorção
+        RogueNumeroDano(b, ALVO_NUM_CHEFE, (Vector2){ onde.x, onde.y - 12.0f }, 0.0f, NUM_DANO_BLOQUEADO);
         return;
     }
 
-    c->hp -= dano / RogueAdaptacaoChefe(b);
+    float real = dano / RogueAdaptacaoChefe(b);
+    c->hp -= real;
     c->flash = 0.08f;
     RogueParticulas(b, onde, MAGENTA, 3, 120);
+    RogueNumeroDano(b, ALVO_NUM_CHEFE, (Vector2){ onde.x, onde.y - 12.0f }, real, NUM_DANO_NORMAL);
+    RogueFaisca(b, onde, Vector2Subtract(onde, b->j.pos), MAGENTA);
 }
 
 // O Alucinador leva dano agora? (o Disparo Dedutivo só marca quem pode ser ferido)
@@ -616,12 +627,16 @@ bool RogueFerirSilogista(Biblioteca *b, float dano, Vector2 onde)
 
     if (s->etapa != SIL_VULNERAVEL) {
         RogueParticulas(b, onde, (Color){ 0, 228, 255, 255 }, 3, 90);     // bateu na armadura lógica
+        RogueNumeroDano(b, ALVO_NUM_SILOGISTA, (Vector2){ onde.x, onde.y - 12.0f }, 0.0f, NUM_DANO_BLOQUEADO);
         return false;
     }
 
-    s->hp -= dano / RogueAdaptacaoChefe(b);
+    float real = dano / RogueAdaptacaoChefe(b);
+    s->hp -= real;
     s->flash = 0.08f;
     RogueParticulas(b, onde, PURPLE, 3, 120);
+    RogueNumeroDano(b, ALVO_NUM_SILOGISTA, (Vector2){ onde.x, onde.y - 12.0f }, real, NUM_DANO_NORMAL);
+    RogueFaisca(b, onde, Vector2Subtract(onde, b->j.pos), PURPLE);
     return true;
 }
 

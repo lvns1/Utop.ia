@@ -135,15 +135,56 @@ void AbrirTelaRanking(TelaRanking *t, Ranking *r, const char *titulo,
     t->idPartida = idPartida;
     t->posicao = RegistrarNoRanking(r, nickname, pontos, idPartida);
     t->inicio = GetTime();
+    t->revelado = false;
 }
 
-// Devolve true quando o jogador fecha o ranking
+// Animação da tela do ranking (segundos desde que abriu): as linhas entram uma a uma, a pontuação
+// conta de 0 até o total e, no fim, a posição aparece com um "pulo"
+#define RANK_LINHAS_INICIO   0.25f
+#define RANK_LINHA_PASSO     0.05f
+#define RANK_CONTA_INICIO    0.80f
+#define RANK_CONTA_DURACAO   1.20f
+#define RANK_LUGAR_TEMPO     (RANK_CONTA_INICIO + RANK_CONTA_DURACAO + 0.15f)
+#define RANK_ANIM_FIM        (RANK_LUGAR_TEMPO + 0.25f)
+
+static float FracaoContagem(double passou)
+{
+    float p = Clamp((float)(passou - RANK_CONTA_INICIO) / RANK_CONTA_DURACAO, 0.0f, 1.0f);
+    return 1.0f - (1.0f - p) * (1.0f - p) * (1.0f - p);         // começa rápido e freia no fim
+}
+
+// Devolve true quando o jogador fecha o ranking. O primeiro ENTER (ou clique) durante a
+// animação só pula para o fim dela; o seguinte fecha.
 bool AtualizarTelaRanking(TelaRanking *t)
 {
-    if (!t->aberto || GetTime() - t->inicio < 0.6)
+    static double ultimoTique = 0.0;
+
+    if (!t->aberto)
+        return false;
+
+    double passou = GetTime() - t->inicio;
+
+    // Tique enquanto a pontuação conta (mais agudo perto do fim) e um acerto quando a posição aparece
+    if (t->pontos > 0 && passou > RANK_CONTA_INICIO && passou < RANK_CONTA_INICIO + RANK_CONTA_DURACAO && GetTime() - ultimoTique > 0.07) {
+        ultimoTique = GetTime();
+        TocarSomTom(sfxSelecao, 1.0f + 0.6f * (float)((passou - RANK_CONTA_INICIO) / RANK_CONTA_DURACAO));
+    }
+    if (!t->revelado && passou >= RANK_LUGAR_TEMPO) {
+        t->revelado = true;
+        TocarSom(sfxAcerto);
+    }
+
+    if (passou < 0.6)
         return false;
 
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse()) {
+
+        if (passou < RANK_ANIM_FIM) {
+            t->inicio = GetTime() - RANK_ANIM_FIM;
+            t->revelado = true;
+            return false;
+        }
+
         t->aberto = false;
         return true;
     }
@@ -151,30 +192,38 @@ bool AtualizarTelaRanking(TelaRanking *t)
     return false;
 }
 
-// As 10 linhas do ranking. idDestaque = partida que pisca em dourado (0 = nenhuma)
-static void DesenharListaRanking(const Ranking *r, int x, int y, int largura, int fonte, int idDestaque, float tempo)
+// As 10 linhas do ranking. idDestaque = partida que pisca em dourado (0 = nenhuma).
+// aberto = segundos desde que a tela abriu: as linhas entram uma a uma (< 0 = todas já na tela)
+static void DesenharListaRanking(const Ranking *r, int x, int y, int largura, int fonte, int idDestaque, float tempo, float aberto)
 {
     static const Color podio[3] = { { 255, 203, 0, 255 }, { 200, 200, 220, 255 }, { 205, 127, 50, 255 } };
     int alturaLinha = fonte + 8;
 
     for (int i = 0; i < MAX_RANKING; i++) {
 
+        float k = (aberto < 0.0f) ? 1.0f : Clamp((aberto - RANK_LINHAS_INICIO - i * RANK_LINHA_PASSO) / 0.2f, 0.0f, 1.0f);
+        if (k <= 0.0f)
+            continue;
+
+        int lx = x + (int)((1.0f - k) * 24.0f);                  // entra deslizando da direita
         int ly = y + i * alturaLinha;
         bool existe = (i < r->total);
         bool destaque = existe && idDestaque != 0 && r->entradas[i].idPartida == idDestaque;
         Color cor = !existe ? Fade(GRAY, 0.5f) : (i < 3 ? podio[i] : WHITE);
 
         if (destaque) {
-            DrawRectangle(x - 6, ly - 4, largura + 12, alturaLinha, Fade(GOLD, 0.18f + 0.1f * sinf(tempo * 6.0f)));
-            DesenharCursorLuci((float)x - 16, (float)ly + fonte / 2.0f - 1);
+            DrawRectangle(lx - 6, ly - 4, largura + 12, alturaLinha, Fade(GOLD, (0.18f + 0.1f * sinf(tempo * 6.0f)) * k));
+            if (k >= 1.0f)                                      // a Luci só aparece com a linha já no lugar
+                DesenharCursorLuci((float)lx - 16, (float)ly + fonte / 2.0f - 1);
             cor = GOLD;
         }
 
-        DrawText(TextFormat("%2d.", i + 1), x, ly, fonte, cor);
-        DrawText(existe ? r->entradas[i].nickname : "---", x + fonte * 3, ly, fonte, cor);
+        cor = Fade(cor, (cor.a / 255.0f) * k);
+        DrawText(TextFormat("%2d.", i + 1), lx, ly, fonte, cor);
+        DrawText(existe ? r->entradas[i].nickname : "---", lx + fonte * 3, ly, fonte, cor);
 
         const char *pts = existe ? TextFormat("%d", r->entradas[i].pontos) : "-";
-        DrawText(pts, x + largura - MeasureText(pts, fonte), ly, fonte, cor);
+        DrawText(pts, lx + largura - MeasureText(pts, fonte), ly, fonte, cor);
     }
 }
 
@@ -199,17 +248,28 @@ void DesenharTelaRanking(const TelaRanking *t, const Ranking *r, float tempo)
     DrawText(t->titulo, cx - MeasureText(t->titulo, 12) / 2, (int)painel.y + 18, 12, Fade(SKYBLUE, 0.9f));
     DrawText(TITULO_RANKING, cx - MeasureText(TITULO_RANKING, 26) / 2, (int)painel.y + 38, 26, GOLD);
 
-    DesenharListaRanking(r, (int)painel.x + 70, (int)painel.y + 90, 220, 20, t->idPartida, tempo);
+    double passou = GetTime() - t->inicio;
 
-    const char *pontos = TextFormat("SUA PONTUAÇÃO: %d", t->pontos);
-    DrawText(pontos, cx - MeasureText(pontos, 18) / 2, (int)painel.y + 380, 18, WHITE);
+    DesenharListaRanking(r, (int)painel.x + 70, (int)painel.y + 90, 220, 20, t->idPartida, tempo, (float)passou);
 
-    const char *lugar = (t->posicao >= 0) ? TextFormat("VOCÊ ESTÁ EM %dº LUGAR!", t->posicao + 1)
-                                           : "Fora do TOP 10... jogue de novo para entrar!";
-    Color corLugar = (t->posicao == 0) ? GOLD : (t->posicao > 0 ? LIME : ORANGE);
-    DrawText(lugar, cx - MeasureText(lugar, 14) / 2, (int)painel.y + 408, 14, corLugar);
+    // A pontuação conta de 0 até o total
+    if (passou >= RANK_CONTA_INICIO) {
+        float f = FracaoContagem(passou);
+        const char *pontos = TextFormat("SUA PONTUAÇÃO: %d", (int)(t->pontos * f + 0.5f));
+        DrawText(pontos, cx - MeasureText(pontos, 18) / 2, (int)painel.y + 380, 18, (f >= 1.0f) ? GOLD : WHITE);
+    }
 
-    if (GetTime() - t->inicio > 0.6 && ((int)(GetTime() * 2.0)) % 2 == 0)
+    // A posição aparece no fim, com um pulo
+    if (passou >= RANK_LUGAR_TEMPO) {
+        float q = Clamp((float)(passou - RANK_LUGAR_TEMPO) / 0.25f, 0.0f, 1.0f);
+        int tam = 14 + (int)(8.0f * (1.0f - q) * q * 4.0f * 0.5f);      // cresce e volta ao tamanho normal
+        const char *lugar = (t->posicao >= 0) ? TextFormat("VOCÊ ESTÁ EM %dº LUGAR!", t->posicao + 1)
+                                               : "Fora do TOP 10... jogue de novo para entrar!";
+        Color corLugar = (t->posicao == 0) ? GOLD : (t->posicao > 0 ? LIME : ORANGE);
+        DrawText(lugar, cx - MeasureText(lugar, tam) / 2, (int)painel.y + 408 - (tam - 14) / 2, tam, Fade(corLugar, q));
+    }
+
+    if (passou > RANK_ANIM_FIM && ((int)(GetTime() * 2.0)) % 2 == 0)
         DesenharDicaAvancar((int)(painel.x + painel.width) - 80, (int)(painel.y + painel.height) - 26, 12);
 }
 
@@ -230,5 +290,5 @@ void DesenharRankingMenu(const Ranking *r, float tempo)
         return;
     }
 
-    DesenharListaRanking(r, (int)painel.x + 24, (int)painel.y + 42, 166, 14, 0, tempo);
+    DesenharListaRanking(r, (int)painel.x + 24, (int)painel.y + 42, 166, 14, 0, tempo, -1.0f);
 }

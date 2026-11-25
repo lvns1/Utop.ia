@@ -16,6 +16,8 @@
 #include "../../include/entidades/luci_companion.h"
 #include "../../include/telas/ranking.h"
 #include "../../include/telas/historico_luci.h"
+#include "../../include/bloco2/biblioteca.h"         // desenhos do Byte, do Byteco e dos chefes (retratos do diálogo)
+#include "rlgl.h"
 
 Texture2D texMapaCorredor = {0};      // sem o arquivo, o corredor usa o cenário simples
 
@@ -677,6 +679,92 @@ ResultadoDialogo DialogoAtualizar(SessaoDialogo *d)
     return RES_NADA;
 }
 
+// ---------- Retrato de quem fala, em cima da caixa ----------
+// Quem fala sai do começo do texto ("Luci:", "Byte:", ...). Cada um tem a sua cor de moldura.
+typedef enum { FALANTE_NENHUM, FALANTE_LUCI, FALANTE_BYTE, FALANTE_BYTECO, FALANTE_SILOGISTA,
+               FALANTE_ALUCINADOR, FALANTE_SISTEMA } FalanteDialogo;
+
+static bool ComecaCom(const char *t, const char *prefixo)
+{
+    while (*t == ' ' || *t == '\n')
+        t++;
+    return strncmp(t, prefixo, strlen(prefixo)) == 0;
+}
+
+static FalanteDialogo FalanteDoDialogo(const SessaoDialogo *d)
+{
+    if (DialogoFalaDaLuci(d))             return FALANTE_LUCI;
+    if (d->estado != DLG_PAGINAS && d->estado != DLG_FEEDBACK && d->estado != DLG_CONFIRMA)
+        return FALANTE_NENHUM;
+    if (ComecaCom(d->texto, "Byte:"))       return FALANTE_BYTE;
+    if (ComecaCom(d->texto, "Byteco:"))     return FALANTE_BYTECO;
+    if (ComecaCom(d->texto, "Silogista:"))  return FALANTE_SILOGISTA;
+    if (ComecaCom(d->texto, "Alucinador:")) return FALANTE_ALUCINADOR;
+    if (ComecaCom(d->texto, "SISTEMA:"))    return FALANTE_SISTEMA;
+    return FALANTE_NENHUM;
+}
+
+// SISTEMA: um monitorzinho em alerta (as falas dele são os avisos da corrupção)
+static void DesenharIconeSistema(Vector2 c, float t)
+{
+    Color alerta = (((int)(t * 4.0f)) % 2) ? (Color){ 230, 41, 55, 255 } : (Color){ 255, 120, 60, 255 };
+
+    DrawRectangle((int)c.x - 20, (int)c.y - 16, 40, 28, (Color){ 30, 10, 18, 255 });
+    DrawRectangleLinesEx((Rectangle){ c.x - 20, c.y - 16, 40, 28 }, 2, alerta);
+    DrawRectangle((int)c.x - 3, (int)c.y - 11, 6, 12, alerta);                 // o "!"
+    DrawRectangle((int)c.x - 3, (int)c.y + 4, 6, 4, alerta);
+    DrawRectangle((int)c.x - 6, (int)c.y + 12, 12, 6, (Color){ 60, 40, 50, 255 });
+}
+
+// Moldura 64 x 64 sobre o canto esquerdo da caixa. Enquanto o texto "digita", a Luci mexe a boca
+// e os outros balançam de leve; a moldura da Luci puxa para o magenta quando ela está instável.
+static void DesenharRetratoDialogo(Rectangle caixa, FalanteDialogo falante, bool digitando)
+{
+    static const Color CORES[] = { { 0 }, { 102, 191, 255, 255 }, { 0, 228, 255, 255 }, { 255, 180, 60, 255 },
+                                   { 170, 140, 255, 255 }, { 255, 0, 255, 255 }, { 230, 41, 55, 255 } };
+    Rectangle r = { caixa.x + 14, caixa.y - 68, 64, 64 };
+    Vector2 centro = { r.x + r.width / 2, r.y + r.height / 2 };
+    float t = (float)GetTime();
+    Color borda = CORES[falante];
+
+    if (falante == FALANTE_LUCI)
+        borda = ColorLerp(borda, MAGENTA, Clamp(instabilidadeLuci, 0.0f, 1.0f));
+
+    DrawRectangleRec(r, BLACK);
+    for (int y = 4; y < (int)r.height; y += 4)                       // linhas de monitor no fundo
+        DrawLine((int)r.x + 3, (int)r.y + y, (int)(r.x + r.width) - 3, (int)r.y + y, Fade(borda, 0.10f));
+
+    if (falante == FALANTE_LUCI) {
+        bool falandoAntes = luciFalando;
+        luciFalando = digitando;
+        DesenharLuciTamanho((Vector2){ centro.x, centro.y + 2 }, 46.0f);
+        luciFalando = falandoAntes;
+    } else {
+        // Os outros usam o próprio desenho do jogo, menor e centralizado na moldura
+        float balanco = digitando ? 1.5f * sinf(t * 14.0f) : 0.0f;
+        rlPushMatrix();
+        rlTranslatef(centro.x, centro.y + balanco, 0.0f);
+        switch (falante) {
+            case FALANTE_BYTE:       rlScalef(0.85f, 0.85f, 1.0f); DesenharProfessorByte((Vector2){ 0, -10 }, t); break;   // o nome dele fica embaixo, dentro da moldura
+            case FALANTE_BYTECO:     rlScalef(1.2f, 1.2f, 1.0f);   DesenharByteco((Vector2){ 0, 6 }, t);         break;   // (o balcão fica fora da tela)
+            case FALANTE_SILOGISTA: {
+                Silogista s = { 0 };
+                rlScalef(0.48f, 0.48f, 1.0f);
+                DesenharSilogista(&s, (Vector2){ -40, 120 }, t);                // o visor olha para o texto
+            } break;
+            case FALANTE_ALUCINADOR: {
+                ChefeRogue chefe = { 0 };
+                rlScalef(0.46f, 0.46f, 1.0f);
+                DesenharAlucinador(&chefe, (Vector2){ -40, 120 }, t);
+            } break;
+            default:                 DesenharIconeSistema((Vector2){ 0, 0 }, t); break;
+        }
+        rlPopMatrix();
+    }
+
+    DrawRectangleLinesEx(r, 3, borda);
+}
+
 void DialogoDesenhar(const SessaoDialogo *d)
 {
     if (d->estado == DLG_NENHUM)
@@ -788,6 +876,10 @@ void DialogoDesenhar(const SessaoDialogo *d)
 
     DrawRectangleRec(caixa, BLACK);
     DrawRectangleLinesEx(caixa, 4, corBorda);
+
+    FalanteDialogo falante = FalanteDoDialogo(d);
+    if (falante != FALANTE_NENHUM)
+        DesenharRetratoDialogo(caixa, falante, !terminou);
 
     DesenharTextoLinhas(
         parcial,

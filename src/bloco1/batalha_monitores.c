@@ -14,6 +14,7 @@
 #include "../../include/core/save.h"
 #include "../../include/core/telemetria.h"
 #include "../../include/core/texto.h"
+#include "../../include/core/preferencias.h"
 #include "../../include/dados/conteudo_bloco1.h"
 #include "../../include/entidades/jogador.h"
 #include "../../include/entidades/luci_companion.h"
@@ -1302,7 +1303,7 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
         Lerp(base.height, CAIXA_DESVIO_B2.height, t)
     };
 
-    if (b->tremor > 0.0f) {
+    if (b->tremor > 0.0f && Prefs()->tremorTela) {      // (o tremor pode ser desligado na tela de Opções)
         caixa.x += (float)GetRandomValue(-3, 3);
         caixa.y += (float)GetRandomValue(-3, 3);
     }

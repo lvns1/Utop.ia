@@ -959,6 +959,10 @@ void RogueEntrarSala(Biblioteca *b, TipoSalaRogue tipo)
         snprintf(b->textoSistema, sizeof(b->textoSistema), "%s", MENSAGENS_SISTEMA[GetRandomValue(0, NUM_MENSAGENS_SISTEMA - 1)]);
         b->mensagemSistema = 4.0f;
     }
+
+    // Sala que já nasce limpa (recompensa, descanso...): as portas aparecem abertas, sem animação
+    b->limpaAntes = b->limpa;
+    b->portasAbrindo = 0.0f;
 }
 
 // Volta para o átrio (chegando do corredor, depois da derrota ou no fim da missão)
@@ -995,6 +999,8 @@ void RogueEntrarAtrio(Biblioteca *b, bool vindoDoCorredor)
     }
     b->armasOferecidas = 0;
     b->ofertaItem = GetRandomValue(0, NUM_ITENS_LOJA - 1);      // a oferta muda a cada volta ao átrio
+    b->limpaAntes = b->limpa;
+    b->portasAbrindo = 0.0f;
 }
 
 // ---------- Reformulação: geração do mapa da tentativa ----------

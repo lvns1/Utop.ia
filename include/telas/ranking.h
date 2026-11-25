@@ -44,6 +44,7 @@ typedef struct {
     int pontos;
     int idPartida;
     double inicio;
+    bool revelado;              // a posição já apareceu (o som toca uma vez só)
 } TelaRanking;
 
 // ----- Variáveis compartilhadas -----

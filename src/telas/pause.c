@@ -59,7 +59,7 @@ Texture2D CapturarFundoPausa(RenderTexture2D alvo)
 
 static Rectangle RetanguloOpcaoPausa(int slot)
 {
-    return (Rectangle){ 270, 206 + slot * 48.0f, 260, 40 };
+    return (Rectangle){ 270, 184 + slot * 48.0f, 260, 40 };
 }
 
 // Lê teclado e mouse no menu de pause.
@@ -102,13 +102,12 @@ int AtualizarPausa(int *selecao, bool temLobby)
     return -1;
 }
 
-void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmando)
+// Fundo do pause: a tela do jogo congelada e desfocada, um pouco mais escura
+// (também usado pelas OPÇÕES abertas de dentro do pause)
+void DesenharFundoPausa(Texture2D fundo)
 {
-    // Paleta do jogo
     Color fundoEscuro = (Color){ 8, 6, 18, 255 };      // fundo das salas
-    Color painelCor   = (Color){ 18, 15, 30, 255 };    // chão das salas
 
-    // Fundo: a tela do jogo congelada e desfocada, com as cores normais
     ClearBackground(fundoEscuro);
 
     if (fundo.id > 0) {
@@ -124,21 +123,29 @@ void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmand
 
     // Escurece só um pouco, para o menu se destacar
     DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(fundoEscuro, 0.35f));
+}
+
+void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmando)
+{
+    Color painelCor = (Color){ 18, 15, 30, 255 };    // chão das salas
+
+    DesenharFundoPausa(fundo);
 
     // Painel roxo, com um filete azul por dentro
-    Rectangle painel = { 240, 118, 320, 382 };
+    Rectangle painel = { 240, 100, 320, 420 };
 
     DrawRectangleRec(painel, Fade(painelCor, 0.92f));
     DrawRectangleLinesEx(painel, 4, PURPLE);
     DrawRectangleLinesEx((Rectangle){ painel.x + 8, painel.y + 8, painel.width - 16, painel.height - 16 }, 1, Fade(SKYBLUE, 0.35f));
 
     const char *titulo = "PAUSADO";
-    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 146, 40, PURPLE);
+    DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 40) / 2, 126, 40, PURPLE);
 
     // Opções, com a Luci na marcada
     const char *opcoes[NUM_OPCOES_PAUSA] = {
         "CONTINUAR",
         "FALAS DA LUCI",
+        "OPÇÕES",
         (opConfirmando == PAUSA_LOBBY) ? "ABANDONAR RUN?" : "VOLTAR AO LOBBY",
         "MENU PRINCIPAL",
         (opConfirmando == PAUSA_SAIR) ? "FECHAR O JOGO?" : "SAIR DO JOGO"
@@ -180,6 +187,6 @@ void DesenharPausa(Texture2D fundo, int selecao, bool temLobby, int opConfirmand
         dica2 = "Seu progresso será salvo antes de fechar";
     }
 
-    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 456, 10, Fade(SKYBLUE, 0.6f));
-    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 470, 10, GRAY);
+    DrawText(dica1, LARGURA_TELA / 2 - MeasureText(dica1, 10) / 2, 478, 10, Fade(SKYBLUE, 0.6f));
+    DrawText(dica2, LARGURA_TELA / 2 - MeasureText(dica2, 10) / 2, 478 + LinhaTexto(14), 10, GRAY);
 }

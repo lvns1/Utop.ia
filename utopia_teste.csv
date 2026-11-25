@@ -655,3 +655,49 @@ tempo_jogo_s;evento;detalhe;valor;quantidade
 208.7;rogue_encontro;VAZAMENTO DE DADOS;2.0;2
 216.9;rogue_morte;sala 2;19.4;17
 216.9;primeira_missao_morte;sala 2;19.4;17
+1.9;sessao_inicio;;0.0;0
+2.6;sessao_inicio;;0.0;0
+14.9;bloco3_entrada;boa;71.0;53
+14.9;bloco3_cena;separacao;0.0;0
+20.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.0;3
+21.9;dialogo;* REGISTRO 1 // COMBATE. 11 ecos apagados em 2 salas. 14 esq;0.6;2
+23.2;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 1 min 51 s. Der;0.5;2
+25.4;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.4;2
+25.7;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.3;1
+26.9;bloco3_cena;transformacao;0.0;0
+34.0;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.3;2
+48.0;bloco3_fase;;33.1;2
+50.1;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;2.1;3
+59.2;bloco3_contestar;certo;0.0;-1
+70.0;bloco3_contestar;certo;0.0;-1
+75.2;bloco3_contestar;certo;0.0;-1
+80.5;bloco3_contestar;certo;0.0;-1
+82.0;bloco3_queda;1;67.1;1
+85.5;bloco3_fase_oculta;;70.6;2
+88.6;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;3.1;6
+90.7;bloco3_parry;ESPANTALHO;2.0;1
+91.3;bloco3_combo;;2.0;1
+93.6;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;2
+94.1;bloco3_combo;;2.0;2
+98.7;bloco3_rebatido;AD HOMINEM;2.0;1
+101.3;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;3
+101.7;bloco3_combo;;2.0;3
+114.4;bloco3_rebatido;GENERALIZAÇÃO APRESSADA;2.0;1
+114.9;bloco3_rebatido;ESPANTALHO;2.0;2
+123.0;bloco3_parry;FALSO DILEMA;2.0;4
+132.3;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;5
+137.4;bloco3_rebatido;AD HOMINEM;2.0;1
+153.7;bloco3_parry;FALSO DILEMA;2.0;6
+154.7;bloco3_queda;2;139.8;2
+157.6;bloco3_fase_oculta;;142.6;3
+159.5;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;1.9;4
+171.2;bloco3_varredura;desviou;3.0;0
+176.9;bloco3_parry;BOLA DE NEVE;3.0;7
+177.5;bloco3_combo;;3.0;4
+185.8;bloco3_parry;GENERALIZAÇÃO APRESSADA;3.0;8
+186.5;bloco3_combo;;3.0;5
+191.1;bloco3_varredura;desviou;3.0;0
+199.6;bloco3_vitoria;bom;8.0;5
+203.4;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;1.4;4
+203.4;fim_do_jogo;bom;72.0;173
+204.4;ranking;AMC;173.0;6

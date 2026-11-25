@@ -367,7 +367,17 @@ int main(void) {
                 // Biblioteca: o átrio é calmo (mesmo tom da faixa das missões), a arena da Luci tem faixa própria.
                 // Caiu: a faixa de game over toca na tela da queda (volta a da sala quando ele levanta)
                 if      (jg->biblioteca.morreu && bgmGameover.stream.buffer) TrocarBGM(&bgmGameover, 8);
-                else if (jg->biblioteca.tipoSala == SALA_LUCI)  TrocarBGM(bgmLuci.stream.buffer  ? &bgmLuci  : &bgmBiblioteca, 7);
+                else if (jg->biblioteca.tipoSala == SALA_LUCI) {
+                    // A cena antes da luta e o fim usam a faixa da arena. Na luta, uma faixa por barra
+                    // (contradição, surto, núcleo): a queda congela o som e a barra nova entra com a próxima.
+                    const LuciChefe *lc = &jg->biblioteca.luci;
+                    bool luta = lc->apresentado && lc->morrendo <= 0.0f && !jg->biblioteca.resultadoAberto;
+                    int barra = (lc->faseOculta >= 3) ? 2 : (lc->faseOculta == 2 ? 1 : 0);
+                    if (luta && bgmLuciChefe[barra].stream.buffer)
+                        TrocarBGM(&bgmLuciChefe[barra], 9 + barra);
+                    else
+                        TrocarBGM(bgmLuci.stream.buffer ? &bgmLuci : &bgmBiblioteca, 7);
+                }
                 else if (jg->biblioteca.tipoSala == SALA_ATRIO) TrocarBGM(bgmAtrio.stream.buffer ? &bgmAtrio : &bgmBiblioteca, 6);
                 else                                        TrocarBGM(&bgmBiblioteca, 5);
             }

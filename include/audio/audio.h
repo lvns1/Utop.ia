@@ -84,6 +84,7 @@ extern Music bgmBiblioteca;
 extern Music bgmGameover;
 extern Music bgmAtrio;
 extern Music bgmLuci;
+extern Music bgmLuciChefe[3];
 extern GrupoSom gArma[NUM_SONS_ARMA];
 extern GrupoSom gVetorCarga, gOrbeImplosao, gFragDourado, gRaioColuna, gMorteInimigo;
 extern GrupoSom gLuciFio, gLuciCorrupcao, gLuciExplosao, gLuciTelegrafia, gLuciInvestida,

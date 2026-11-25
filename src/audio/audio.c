@@ -19,6 +19,9 @@
 //     bgm_mestre.ogg    → ALUCINAÇÃO MESTRE (boss do Bloco 1)
 //     bgm_biblioteca.ogg→ Biblioteca dos Ecos (Bloco 2 + Bloco 3)
 //     bgm_gameover.ogg  → Game over / derrota
+//     bgm_luci_chefe1/2/3.ogg → Luta contra a Luci, uma por barra:
+//                         1 CONTRADIÇÃO, 2 SURTO, 3 NÚCLEO (todas em lá frígio,
+//                         a mesma base da bgm_luci.ogg da arena, com o tema da Luci)
 //   Se algum arquivo não existir, o jogo continua sem música nessa tela.
 // =============================================================
 
@@ -35,7 +38,8 @@ Music bgmMestre    = {0};
 Music bgmBiblioteca= {0};
 Music bgmGameover  = {0};
 Music bgmAtrio     = {0};   // átrio da Biblioteca (hub entre as missões)
-Music bgmLuci      = {0};   // arena final da Luci (mapa3)
+Music bgmLuci      = {0};   // arena final da Luci (mapa3): a cena antes da luta e o fim
+Music bgmLuciChefe[3] = {0};   // a luta contra a Luci: uma faixa por barra (contradição, surto, núcleo)
 static Music *bgmAtual    = NULL;   // ponteiro para a música em reprodução
 static int    bgmTelaId   = -99;    // id interno da tela atual (evita reiniciar a mesma faixa)
 static float  bgmVolume   = 0.70f;  // 0.0 – 1.0
@@ -2779,6 +2783,9 @@ void IniciarSons(void)
     bgmGameover   = CarregarBGM("resources/audio/bgm_gameover.ogg");
     bgmAtrio      = CarregarBGM("resources/audio/bgm_atrio.ogg");
     bgmLuci       = CarregarBGM("resources/audio/bgm_luci.ogg");
+    bgmLuciChefe[0] = CarregarBGM("resources/audio/bgm_luci_chefe1.ogg");
+    bgmLuciChefe[1] = CarregarBGM("resources/audio/bgm_luci_chefe2.ogg");
+    bgmLuciChefe[2] = CarregarBGM("resources/audio/bgm_luci_chefe3.ogg");
 }
 
 // Para todos os SFX de uma vez (a 1ª queda da Luci "congela" o áudio)
@@ -2838,6 +2845,8 @@ void EncerrarSons(void)
     if (bgmGameover.stream.buffer)   UnloadMusicStream(bgmGameover);
     if (bgmAtrio.stream.buffer)      UnloadMusicStream(bgmAtrio);
     if (bgmLuci.stream.buffer)       UnloadMusicStream(bgmLuci);
+    for (int i = 0; i < 3; i++)
+        if (bgmLuciChefe[i].stream.buffer) UnloadMusicStream(bgmLuciChefe[i]);
 
     // Sons 2.0: cada grupo descarrega as vozes e as variações (a variação 0 é o sfx* antigo)
     for (int k = 0; k < NUM_GRUPOS_GERAIS; k++)

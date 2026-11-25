@@ -55,6 +55,7 @@
 #define MESTRE_TREINO_HP_CHEFE   0.6f     // ... nem a da Mestre (a luta de verdade começa depois)
 #define MESTRE_ALVOS             3
 #define MESTRE_ESQUIVAS          2        // esquivas para passar da etapa
+#define MESTRE_ESPERA_PULSO      2.5f     // segundos depois do Pulso até a escolha de melhoria abrir
 #define MESTRE_ACERTOS_ABERTURA  3        // tiros no escudo aberto para passar da etapa
 #define MESTRE_PONTOS            PONTOS_POR_ACERTO
 #define CARTAO_ETAPA_TEMPO       2.8f     // tutorial: o cartão de cada etapa fica no meio da tela (a Mestre espera)
@@ -84,6 +85,7 @@ typedef struct {
     int esquivas, acertosAbertura, parries, quedas, golpesLevados;
     int pulsos;                 // etapa do PULSO: quantas vezes o Q foi usado
     float recargaPulsoAnt;      // para perceber o instante em que o Pulso foi disparado
+    float desdePulso;           // tempo desde o Pulso do tutorial (o jogador vê o anel antes de a etapa mudar)
     int dicas;                  // ajuda progressiva: quantas dicas a Luci já deu nesta etapa
     bool estavaEsquivando;
     int fase;                   // luta: 1 e 2

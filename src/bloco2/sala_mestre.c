@@ -176,6 +176,7 @@ void MestreMudarEtapa(Biblioteca *b, EtapaMestre etapa)
         b->j.recargaPulso = 0.0f;
         m->pulsos = 0;
         m->recargaPulsoAnt = 0.0f;
+        m->desdePulso = 0.0f;
     } else if (etapa == MT_MELHORIA) {
         MestreAbrirEscolhaTreino(b);
     } else if (etapa == MT_LUTA) {
@@ -476,9 +477,12 @@ void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float dt)
     // Pulso (Q): conta o instante em que ele dispara (a recarga sai de zero)
     if (m->recargaPulsoAnt <= 0.0f && j->recargaPulso > 0.0f && m->etapa == MT_PULSO) {
         m->pulsos++;
+        m->desdePulso = 0.0f;
         RogueRecadoLuci(b, "Luci: Isso! O Pulso apagou as balas. Cuidado: ele gasta EP e tem recarga.");
     }
     m->recargaPulsoAnt = j->recargaPulso;
+    if (m->pulsos > 0)
+        m->desdePulso += dt;
 
     // Esquivas feitas (o treino conta as que começam)
     bool esquivando = j->tempoEsquiva > 0.0f;
@@ -547,7 +551,9 @@ void RogueAtualizarMestre(Biblioteca *b, ProgressoCorredor *prog, float dt)
             if (m->parries >= 1 && m->acao == MA_PAUSA) MestreMudarEtapa(b, MT_PULSO);
             break;
         case MT_PULSO:
-            if (m->pulsos >= 1 && m->tempoEtapa > 1.5f) MestreMudarEtapa(b, MT_MELHORIA);
+            // Espera o anel do Pulso e o recado da Luci antes da escolha (contava o tempo da etapa:
+            // quem demorava para apertar Q via a escolha abrir no mesmo instante)
+            if (m->pulsos >= 1 && m->desdePulso > MESTRE_ESPERA_PULSO) MestreMudarEtapa(b, MT_MELHORIA);
             break;
         case MT_MELHORIA:                                   // a escolha de treino fecha: Luci explica e começa a luta
             if (!b->escolhaAberta && b->escolhaTreinoFeita) {

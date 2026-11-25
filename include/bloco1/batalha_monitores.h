@@ -115,7 +115,7 @@ typedef struct {
     char opcoesTexto[MAX_OPCOES_B2][256];
 
     int hp;
-    int hpTeto;                 // vida com que a batalha começou: as verdades curam só o dano desta batalha
+    int hpTeto;                 // até quanto as verdades na defesa curam (a vida cheia)
     Vector2 alma;                   // a Luci, que o jogador guia na caixa de esquiva
     Vector2 rastroAlma[5];          // últimas posições dela (o rastro de luz)
     float cronoRastro;

@@ -264,7 +264,8 @@ void BatalhaB2LigarLuci(BatalhaB2 *b, int *estabilidade, int *ajudasTotal)
 void BatalhaB2IniciarMonitor(BatalhaB2 *b, int monitor, int nivelAlucinacao, int hpInicial)
 {
     BatalhaB2Base(b, GUARDIAO_ALUCINACAO, nivelAlucinacao);
-    b->hp = b->hpTeto = hpInicial;              // a vida vem do monitor anterior
+    b->hp = hpInicial;                          // a vida vem do monitor anterior...
+    b->hpTeto = HP_MAX_B2;                      // ...e as verdades na defesa curam até a vida cheia
 
     b->rodadas = RODADAS_MONITORES[monitor];
     b->numRodadas = RODADAS_POR_MONITOR;

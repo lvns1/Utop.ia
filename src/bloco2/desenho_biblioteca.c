@@ -26,22 +26,28 @@
 
 
 // Uma seta ">" apontando para "dir" (s = tamanho)
-// Uma vida (coração): cheia em vermelho, gasta só com o contorno escuro
+// Formato do coração (centro x,y; vai de y - r até y + r)
+static void DesenharFormaCoracao(float x, float y, float r, Color cor)
+{
+    DrawCircleV((Vector2){ x - r * 0.5f, y - r * 0.42f }, r * 0.58f, cor);
+    DrawCircleV((Vector2){ x + r * 0.5f, y - r * 0.42f }, r * 0.58f, cor);
+    DrawTriangle((Vector2){ x - r * 1.07f, y - r * 0.25f }, (Vector2){ x, y + r }, (Vector2){ x + r * 1.07f, y - r * 0.25f }, cor);
+}
+
+// Uma vida (coração com contorno escuro): cheia em vermelho com brilho, gasta em roxo apagado
 static void DesenharIconeVida(float x, float y, float r, bool cheia, float alfa)
 {
-    Color cor = cheia ? (Color){ 230, 41, 55, 255 } : (Color){ 50, 44, 60, 255 };
-    DrawCircleV((Vector2){ x - r * 0.5f, y - r * 0.2f }, r * 0.55f, Fade(cor, alfa));
-    DrawCircleV((Vector2){ x + r * 0.5f, y - r * 0.2f }, r * 0.55f, Fade(cor, alfa));
-    DrawTriangle((Vector2){ x - r * 1.05f, y }, (Vector2){ x, y + r * 1.1f }, (Vector2){ x + r * 1.05f, y }, Fade(cor, alfa));
-    if (!cheia)
-        DrawTriangleLines((Vector2){ x - r * 1.05f, y }, (Vector2){ x, y + r * 1.1f }, (Vector2){ x + r * 1.05f, y }, Fade(GRAY, alfa));
+    DesenharFormaCoracao(x, y + r * 0.04f, r * 1.22f, Fade((Color){ 8, 6, 16, 255 }, alfa));
+    DesenharFormaCoracao(x, y, r, Fade(cheia ? (Color){ 235, 45, 70, 255 } : (Color){ 72, 62, 92, 255 }, alfa));
+    if (cheia)
+        DrawCircleV((Vector2){ x - r * 0.48f, y - r * 0.5f }, r * 0.2f, Fade((Color){ 255, 190, 200, 255 }, 0.9f * alfa));
 }
 
 // As vidas da partida em fila, centradas em cx (a que acabou de ser gasta pode piscar)
 static void DesenharVidas(const Biblioteca *b, float cx, float y, float r, float alfa, bool piscarUltima)
 {
     int restam = RogueVidasRestantes(b);
-    float passo = r * 2.6f;
+    float passo = r * 2.75f;
     float x0 = cx - passo * (LIMITE_MORTES - 1) / 2.0f;
 
     for (int i = 0; i < LIMITE_MORTES; i++) {
@@ -960,13 +966,7 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
     DrawRectangle(0, yHud - 4, LARGURA_TELA, ALTURA_TELA - yHud + 4, (Color){ 12, 10, 24, 255 });
     DrawLine(0, yHud - 4, LARGURA_TELA, yHud - 4, Fade(PURPLE, 0.6f));
 
-    // Nome e, embaixo, as vidas da partida (a sala da Mestre ainda é o Bloco 1: lá não há vidas)
-    if (b->tipoSala == SALA_MESTRE) {
-        DrawText(nickname, 14, yHud + 4, 20, WHITE);
-    } else {
-        DrawText(nickname, 14, yHud, 18, WHITE);
-        DesenharVidas(b, 34, (float)yHud + 31, 5.0f, 1.0f, false);
-    }
+    DrawText(nickname, 14, yHud + 4, 20, WHITE);
 
     DrawText("HP", 66, yHud + 2, 10, WHITE);
     DrawRectangle(84, yHud, 140, 12, (Color){ 60, 10, 20, 255 });
@@ -1023,6 +1023,16 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
 
     if (!(b->tipoSala == SALA_MESTRE && b->mestre.etapa == MT_ARMA))   // ainda sem arma: o painel aparece quando ele pega
         DesenharHudArmas(b, tempo);
+
+    // Vidas da partida: um painel no mesmo estilo do da arma, logo à direita dele
+    // (a sala da Mestre ainda é o Bloco 1: lá não há vidas)
+    if (b->tipoSala != SALA_MESTRE) {
+        Rectangle pv = { 262, 506, 62, 22 };
+        bool ultima = RogueVidasRestantes(b) == 1;
+        DrawRectangleRec(pv, Fade((Color){ 12, 10, 24, 255 }, 0.8f));
+        DrawRectangleLinesEx(pv, 1, Fade((Color){ 235, 45, 70, 255 }, ultima ? 0.5f + 0.4f * sinf(tempo * 5.0f) : 0.7f));
+        DesenharVidas(b, pv.x + pv.width / 2, pv.y + pv.height / 2, 5.5f, 1.0f, false);
+    }
     if (!atrio)
         DesenharHudLuci(b, tempo);
 

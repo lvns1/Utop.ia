@@ -386,6 +386,11 @@ int main(void) {
                     int faseAluc = (jg->biblioteca.chefe.fase >= 2) ? 1 : 0;
                     TrocarBGM(&bgmAlucinador[faseAluc], 12 + faseAluc);
                 }
+                // Luta contra a JANELA DE CONTEXTO: fases 1 a 3 numa faixa, a SOBRECARGA (fase 4) em outra
+                else if (jg->biblioteca.janela.ativo && bgmJanela[(jg->biblioteca.janela.fase >= 4) ? 1 : 0].stream.buffer) {
+                    int faseJan = (jg->biblioteca.janela.fase >= 4) ? 1 : 0;
+                    TrocarBGM(&bgmJanela[faseJan], 14 + faseJan);
+                }
                 // Corredor do núcleo (Bloco 3): a Luci foi embora e os registros contam quem ela é.
                 // Toca a faixa da arena desde já (mesmo id): ela continua sem cortar quando a porta abre.
                 else if (jg->biblioteca.tipoSala == SALA_TRANSICAO)
@@ -900,7 +905,9 @@ int main(void) {
                      !jg->transicao.ativa &&
                      Vector2Distance(jg->posInicioFrame, jg->playerPos) > 0.01f;
 
-        if (!jg->pausado)
+        // Só nas telas do Bloco 1: na Biblioteca quem anima o Thomas é o Bloco 2 (RogueAtualizarJogador).
+        // Chamar aqui também dizia "parado" todo quadro e apagava a caminhada de lá.
+        if (!jg->pausado && (jg->tela == JOGANDO || jg->tela == CORREDOR))
             AtualizarAnimacao(&jg->animJogador, jg->andou, jg->dt);
 
         // =====================================================

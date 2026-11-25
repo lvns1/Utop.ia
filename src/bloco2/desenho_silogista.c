@@ -724,6 +724,7 @@ void DesenharArmaNaMao(const Biblioteca *b, float tempo, bool naMao)
     Vector2 n = (d.x >= 0.0f) ? (Vector2){ -d.y, d.x } : (Vector2){ d.y, -d.x };   // a arma nunca fica de cabeça para baixo
     float coice = Clamp(j->cronoTiro / 0.14f, 0.0f, 1.0f);                         // recuo logo depois do tiro
     Vector2 base = Vector2Add(Vector2Add(j->pos, (Vector2){ 0, 4 }), Vector2Scale(d, -3.5f * coice * ((arma == ARMA_KATANA) ? 0.0f : 1.0f)));
+    base = Vector2Add(base, DeslocamentoCorpoJogador());   // a arma sobe e desce junto com o passo
     float pop = (j->trocaArma > 1.0f) ? Clamp((j->trocaArma - 1.0f) / 0.3f, 0.0f, 1.0f) : 0.0f;
     float e = 1.0f + 0.5f * pop;                                 // a arma "pula" na troca
     Color cor = def->cor;

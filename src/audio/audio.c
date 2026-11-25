@@ -23,6 +23,9 @@
 //     bgm_alucinador1/2.ogg → Luta contra o ALUCINADOR (chefe da Biblioteca): fase 1 (tiros) e
 //                         fase 2 (escudo e julgamento). Si bemol, o tom da Biblioteca, trocando
 //                         o maior pelo menor no meio da frase ("ele mistura verdade e mentira")
+//     bgm_janela1/2.ogg → Luta contra a JANELA DE CONTEXTO (mini-chefe): fases 1 a 3 e a SOBRECARGA.
+//                         Drum and bass; um arpejo toca o que está "na janela" e esquece a nota
+//                         mais antiga quando passa do limite (quando o PROTEGER sai, o vidro racha)
 //     bgm_luci.ogg      → Bloco 3: corredor do núcleo, cena da arena e fim da luta
 //   A troca entre faixas é suave (BGM_TRANSICAO).
 //     bgm_luci_chefe1/2/3.ogg → Luta contra a Luci, uma por barra:
@@ -47,6 +50,7 @@ Music bgmAtrio     = {0};   // átrio da Biblioteca (hub entre as missões)
 Music bgmLuci      = {0};   // arena final da Luci (mapa3): a cena antes da luta e o fim
 Music bgmLuciChefe[3] = {0};   // a luta contra a Luci: uma faixa por barra (contradição, surto, núcleo)
 Music bgmAlucinador[2] = {0};  // a luta contra o Alucinador: fase 1 (tiros) e fase 2 (escudo)
+Music bgmJanela[2] = {0};      // a luta contra a Janela de Contexto: fases 1 a 3 e a SOBRECARGA (fase 4)
 static Music *bgmAtual    = NULL;   // ponteiro para a música em reprodução
 static int    bgmTelaId   = -99;    // id interno da tela atual (evita reiniciar a mesma faixa)
 static float  bgmVolume   = 0.70f;  // 0.0 – 1.0
@@ -2846,6 +2850,8 @@ void IniciarSons(void)
     bgmLuciChefe[2] = CarregarBGM("resources/audio/bgm_luci_chefe3.ogg");
     bgmAlucinador[0] = CarregarBGM("resources/audio/bgm_alucinador1.ogg");
     bgmAlucinador[1] = CarregarBGM("resources/audio/bgm_alucinador2.ogg");
+    bgmJanela[0] = CarregarBGM("resources/audio/bgm_janela1.ogg");
+    bgmJanela[1] = CarregarBGM("resources/audio/bgm_janela2.ogg");
 }
 
 // Para todos os SFX de uma vez (a 1ª queda da Luci "congela" o áudio)
@@ -2912,8 +2918,10 @@ void EncerrarSons(void)
     if (bgmLuci.stream.buffer)       UnloadMusicStream(bgmLuci);
     for (int i = 0; i < 3; i++)
         if (bgmLuciChefe[i].stream.buffer) UnloadMusicStream(bgmLuciChefe[i]);
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < 2; i++) {
         if (bgmAlucinador[i].stream.buffer) UnloadMusicStream(bgmAlucinador[i]);
+        if (bgmJanela[i].stream.buffer)     UnloadMusicStream(bgmJanela[i]);
+    }
 
     // Sons 2.0: cada grupo descarrega as vozes e as variações (a variação 0 é o sfx* antigo)
     for (int k = 0; k < NUM_GRUPOS_GERAIS; k++)

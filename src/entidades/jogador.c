@@ -280,6 +280,8 @@ static struct {
     float esticar, velEsticar; // > 0 achata, < 0 estica (uma molinha que volta ao normal)
     float dano;                // tempo do vermelho e do tremor depois de um golpe
     float ritmo;               // multiplica a troca de quadros (velocidade do passo)
+    double atualizado;         // quando a animação foi atualizada pela última vez
+    Vector2 deslocCorpo;       // quanto o corpo saiu do lugar no último desenho (balanço e tremor)
     int quadroAnt;
     PoeiraThomas poeira[MAX_POEIRA_THOMAS];
 } g_thomas = { .proximaPiscada = 3.0f, .ritmo = 1.0f };
@@ -289,6 +291,7 @@ static void ThomasEsticar(float quanto)
     if (THOMAS_ESTICAR) { g_thomas.esticar = quanto; g_thomas.velEsticar = 0.0f; }
 }
 
+Vector2 DeslocamentoCorpoJogador(void) { return g_thomas.deslocCorpo; }
 void RitmoPassoJogador(float fator) { g_thomas.ritmo = (fator > 0.2f) ? fator : 0.2f; }
 void JogadorReagirDano(void)        { g_thomas.dano = TEMPO_DANO_THOMAS; ThomasEsticar(0.7f); }
 void JogadorReagirEsquiva(void)     { ThomasEsticar(-0.9f); }
@@ -299,6 +302,7 @@ void AtualizarAnimacao(AnimacaoJogador *a, bool andando, float dt)
 {
     float ritmo = g_thomas.ritmo;
     g_thomas.ritmo = 1.0f;                              // o ritmo vale só para esta chamada
+    g_thomas.atualizado = GetTime();
 
     if (andando && !g_thomas.andando)  ThomasEsticar(-0.45f);   // arrancou: estica
     if (!andando && g_thomas.andando)  ThomasEsticar(0.55f);    // parou: achata
@@ -368,6 +372,10 @@ void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Dir
 
     if (s->quadros > 1) {
 
+        // Ninguém atualizou a animação agora há pouco (diálogo, loja, menu aberto): ele está parado
+        if (GetTime() - g_thomas.atualizado > 0.1)
+            g_thomas.andando = false;
+
         // Folha de animação: recorta só o personagem do quadro atual
         Rectangle sourceRec = s->recorte[quadro % s->quadros];
         bool parado = !g_thomas.andando;
@@ -422,6 +430,8 @@ void DesenharJogador(const SpriteDirecao sprites[NUM_DIRECOES], Vector2 pos, Dir
             float k = p->vida / 0.35f;
             DrawCircleV(p->pos, 1.5f + 2.0f * (1.0f - k), Fade((Color){ 210, 200, 190, 255 }, 0.5f * k));
         }
+
+        g_thomas.deslocCorpo = (Vector2){ tremor, -sobe };
 
         // Posição arredondada para os pixels ficarem nítidos
         Rectangle destRec = {

@@ -13,6 +13,7 @@
 
 // ----- Funções -----
 bool LerSave(DadosSave *d);
+void ApagarSave(void);
 bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direcao direcao, bool luciAcompanhando, const ProgressoCorredor *progresso, int estabilidadeLuci, int ajudasPedidas, bool chefeVencido, int idPartida, const ProgressoBiblioteca *biblioteca);
 void DesenharAvisoSave(float aviso, bool falhou, float tempo);
 void DesenharTextoBotao(Rectangle b, const char *texto, int tamanho, Color cor);

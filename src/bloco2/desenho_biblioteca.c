@@ -26,6 +26,32 @@
 
 
 // Uma seta ">" apontando para "dir" (s = tamanho)
+// Uma vida (coração): cheia em vermelho, gasta só com o contorno escuro
+static void DesenharIconeVida(float x, float y, float r, bool cheia, float alfa)
+{
+    Color cor = cheia ? (Color){ 230, 41, 55, 255 } : (Color){ 50, 44, 60, 255 };
+    DrawCircleV((Vector2){ x - r * 0.5f, y - r * 0.2f }, r * 0.55f, Fade(cor, alfa));
+    DrawCircleV((Vector2){ x + r * 0.5f, y - r * 0.2f }, r * 0.55f, Fade(cor, alfa));
+    DrawTriangle((Vector2){ x - r * 1.05f, y }, (Vector2){ x, y + r * 1.1f }, (Vector2){ x + r * 1.05f, y }, Fade(cor, alfa));
+    if (!cheia)
+        DrawTriangleLines((Vector2){ x - r * 1.05f, y }, (Vector2){ x, y + r * 1.1f }, (Vector2){ x + r * 1.05f, y }, Fade(GRAY, alfa));
+}
+
+// As vidas da partida em fila, centradas em cx (a que acabou de ser gasta pode piscar)
+static void DesenharVidas(const Biblioteca *b, float cx, float y, float r, float alfa, bool piscarUltima)
+{
+    int restam = RogueVidasRestantes(b);
+    float passo = r * 2.6f;
+    float x0 = cx - passo * (LIMITE_MORTES - 1) / 2.0f;
+
+    for (int i = 0; i < LIMITE_MORTES; i++) {
+        bool cheia = i < restam;
+        if (piscarUltima && i == restam && ((int)(GetTime() * 4.0) & 1) == 0)
+            cheia = true;
+        DesenharIconeVida(x0 + passo * i, y, r, cheia, alfa);
+    }
+}
+
 static void DesenharSetaAtalho(Vector2 p, Vector2 dir, float s, float espessura, Color c)
 {
     Vector2 perp = { -dir.y, dir.x };
@@ -158,8 +184,8 @@ static void DesenharSeletorChefes(const Biblioteca *b, float tempo)
     DesenharSetaAtalho((Vector2){ (float)xt, 81 }, (Vector2){ 1, 0 }, 5.0f, 3.0f, COR_ATALHO);
     DesenharSetaAtalho((Vector2){ (float)xt + 12, 81 }, (Vector2){ 1, 0 }, 5.0f, 3.0f, COR_ATALHO);
     DrawText("CONFRONTO DIRETO, SEM O MAPA DA MISSÃO", xt + 26, 76, 12, Fade(COR_ATALHO, 0.8f));
-    DrawText("Você começa só com o Disparador de Dados (sem itens nem melhorias). Vencendo ou perdendo, volta ao átrio.",
-             36, 98, 10, LIGHTGRAY);
+    DrawText("Só com o Disparador de Dados, sem itens nem melhorias. Vencendo ou perdendo, volta ao átrio.",
+             36, 98, 10, LIGHTGRAY);      // cabe na tela também com o TEXTO GRANDE
 
     for (int i = 0; i < NUM_CHEFES_SELETOR; i++) {
         Rectangle r = RogueRetCardSeletor(i, b->seletorFoco);
@@ -934,7 +960,13 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
     DrawRectangle(0, yHud - 4, LARGURA_TELA, ALTURA_TELA - yHud + 4, (Color){ 12, 10, 24, 255 });
     DrawLine(0, yHud - 4, LARGURA_TELA, yHud - 4, Fade(PURPLE, 0.6f));
 
-    DrawText(nickname, 14, yHud + 4, 20, WHITE);
+    // Nome e, embaixo, as vidas da partida (a sala da Mestre ainda é o Bloco 1: lá não há vidas)
+    if (b->tipoSala == SALA_MESTRE) {
+        DrawText(nickname, 14, yHud + 4, 20, WHITE);
+    } else {
+        DrawText(nickname, 14, yHud, 18, WHITE);
+        DesenharVidas(b, 34, (float)yHud + 31, 5.0f, 1.0f, false);
+    }
 
     DrawText("HP", 66, yHud + 2, 10, WHITE);
     DrawRectangle(84, yHud, 140, 12, (Color){ 60, 10, 20, 255 });
@@ -1123,19 +1155,37 @@ void RogueDesenhar(const Biblioteca *b, const SpriteDirecao sprites[NUM_DIRECOES
         DrawRectangle(0, 0, LARGURA_TELA, ALTURA_TELA, Fade(BLACK, 0.7f * k));
 
         bool bloco3 = RogueNoBloco3(b);
-        const char *titulo = bloco3 ? "A LUCI VENCEU ESTA" : "VOCÊ FOI CORROMPIDO";
+        int restam = RogueVidasRestantes(b);
+        bool semVidas = !b->modoSeletor && restam <= 0;
+
+        // As vidas em cima do título: a que acabou de ser gasta pisca (o seletor de chefes não gasta vida)
+        if (!b->modoSeletor)
+            DesenharVidas(b, LARGURA_TELA / 2.0f, 196.0f, 9.0f, k, true);
+
+        const char *titulo = semVidas ? "FIM DA PARTIDA" : (bloco3 ? "A LUCI VENCEU ESTA" : "VOCÊ FOI CORROMPIDO");
         DrawText(titulo, LARGURA_TELA / 2 - MeasureText(titulo, 36) / 2, 230, 36, Fade(MAGENTA, k));
 
-        const char *sub = TextFormat("Os ecos falsos venceram desta vez.  -%d pontos", PENALIDADE_HP_ZERO);
+        const char *sub = semVidas ? TextFormat("Você usou as %d vidas.  -%d pontos", LIMITE_MORTES, PENALIDADE_HP_ZERO)
+                                   : TextFormat("Os ecos falsos venceram desta vez.  -%d pontos", PENALIDADE_HP_ZERO);
         DrawText(sub, LARGURA_TELA / 2 - MeasureText(sub, 16) / 2, 282, 16, Fade(WHITE, k));
 
-        const char *perda = bloco3 ? "Você volta ao corredor do núcleo, sem perder nada. Tente de novo."
-                                   : "Você volta ao átrio sem os itens. Os Fragmentos de Conhecimento ficam com você.";
+        const char *perda;
+        if (semVidas)          perda = "A partida acabou. Seus pontos vão para o ranking.";
+        else if (b->modoSeletor) perda = "Seletor de chefes: é treino, não gasta vida. Você volta ao átrio.";
+        else if (bloco3)       perda = "Você volta ao corredor do núcleo, sem perder nada além da vida.";
+        else                   perda = "Você volta ao átrio sem os itens. Os Fragmentos de Conhecimento ficam com você.";
         DrawText(perda, LARGURA_TELA / 2 - MeasureText(perda, 12) / 2, 308, 12, Fade((Color){ 0, 228, 255, 255 }, k));
 
-        if (b->tempoMorte > 1.0f && ((int)(GetTime() * 2.0)) % 2 == 0)
+        if (!semVidas && !b->modoSeletor) {
+            const char *aviso = (restam == 1) ? "Resta 1 vida. A próxima derrota encerra a partida."
+                                              : TextFormat("Restam %d vidas.", restam);
+            DrawText(aviso, LARGURA_TELA / 2 - MeasureText(aviso, 14) / 2, 376, 14, Fade((restam == 1) ? ORANGE : WHITE, k));
+        }
+
+        if (b->tempoMorte > (semVidas ? 1.5f : 1.0f) && ((int)(GetTime() * 2.0)) % 2 == 0)
         {
-            const char *volta = bloco3 ? "ENTER / CLIQUE - voltar ao corredor" : "ENTER / CLIQUE - voltar ao átrio";
+            const char *volta = semVidas ? "ENTER / CLIQUE - ver o ranking"
+                              : (bloco3 ? "ENTER / CLIQUE - voltar ao corredor" : "ENTER / CLIQUE - voltar ao átrio");
             DrawText(volta, LARGURA_TELA / 2 - MeasureText(volta, 14) / 2, 340, 14, GOLD);
         }
     }

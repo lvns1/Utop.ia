@@ -342,6 +342,7 @@ typedef struct {
     bool usandoExtraGuardado, seloGuardado, seloAmplificadoGuardado, temMochilaGuardada;
 
     bool morreu;
+    bool partidaEncerrada;      // usou as LIMITE_MORTES vidas: a partida acabou (ranking e menu)
     float tempoMorte, tremor, pausaImpacto, fadeEntrada;
     char aviso[96];             // mensagem curta no meio da tela ("+3 FRAGMENTOS")
     float tempoAviso;
@@ -724,7 +725,7 @@ typedef enum { PORTA_NENHUMA, PORTA_ATRIO_MISSAO, PORTA_ATRIO_CORREDOR, PORTA_AT
 // Enciclopédia do átrio: W/S escolhe, E lê o texto completo, BACKSPACE/ESC sai
 #define RET_FECHAR_ENCICLOPEDIA ((Rectangle){ 656, 58, 26, 22 })
 
-typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO, ROGUE_MESTRE_VENCIDO } EventoRogue;
+typedef enum { ROGUE_NADA, ROGUE_SAIR, ROGUE_VITORIA, ROGUE_FIM_JOGO, ROGUE_MESTRE_VENCIDO, ROGUE_SEM_VIDAS } EventoRogue;
 // ---------- Tutorial da sala da Mestre ----------
 // Cada etapa abre com um CARTÃO no meio da tela (a tecla, uma demonstração animada e uma frase curta); depois ele
 // sobe para o topo e fica lá com o progresso. Na hora de agir, a tecla aparece em cima do Thomas ("AGORA!").
@@ -887,6 +888,7 @@ TipoArma RogueArmaAtual(const JogadorRogue *j);
 void RogueLimparEfeitos(JogadorRogue *j);
 void RogueLimparBuild(JogadorRogue *j);
 void RogueEsvaziarMochila(JogadorRogue *j);
+int RogueVidasRestantes(const Biblioteca *b);
 int RogueSortearPeso(const int *candidatos, int n, int (*peso)(int));
 int RogueSortearItem(const Biblioteca *b, unsigned int excluir, bool soPassivos);
 TipoItem RogueSortearTemporario(void);

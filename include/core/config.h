@@ -57,6 +57,8 @@
 #define PONTOS_POR_ACERTO   10
 #define PENALIDADE_ERRO     5        // resposta errada ou tempo esgotado (corredor e Bloco 2)
 #define PENALIDADE_HP_ZERO  15       // a vida chegou a zero numa batalha
+#define LIMITE_MORTES       3        // vidas da partida a partir do Bloco 2 (Biblioteca e luta contra a Luci). AJUSTE AQUI
+                                     // (o Bloco 1, a sala da Mestre e o seletor de chefes não gastam vida)
 // A pontuação nunca fica negativa
 #define TEMPO_QUIZ          60.0f    // segundos da barra de tempo de cada quiz (AJUSTE AQUI)
 #define ATRASO_RESPOSTA     0.4f     // evita responder sem querer apertando ENTER rápido demais

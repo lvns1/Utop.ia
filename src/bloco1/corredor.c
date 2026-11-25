@@ -306,6 +306,13 @@ static float LarguraAtalhoDialogo(int i)
     return (float)(MeasureText(TECLAS_ATALHO_DLG[i], 10) + 12 + 6 + MeasureText(ROTULOS_ATALHO_DLG[i], 11) + 10);
 }
 
+// Altura do atalho: cresce com o texto (no TEXTO GRANDE o rótulo encostava na borda da caixa, issue #31)
+static float AlturaAtalhoDialogo(void)
+{
+    float h = (float)EspacoLinhaTexto(14, 11) + 6.0f;
+    return (h < 20.0f) ? 20.0f : h;
+}
+
 static Rectangle DialogoRetCaixa(const SessaoDialogo *d);
 
 static Rectangle DialogoRetAtalho(const SessaoDialogo *d, int i)
@@ -313,7 +320,8 @@ static Rectangle DialogoRetAtalho(const SessaoDialogo *d, int i)
     Rectangle c = DialogoRetCaixa(d);
     float x1 = c.x + c.width - LarguraAtalhoDialogo(1);
     float x = (i == 1) ? x1 : x1 - 8.0f - LarguraAtalhoDialogo(0);
-    return (Rectangle){ x, c.y - 24.0f, LarguraAtalhoDialogo(i), 20.0f };
+    float h = AlturaAtalhoDialogo();
+    return (Rectangle){ x, c.y - h - 4.0f, LarguraAtalhoDialogo(i), h };
 }
 
 static void DesenharAtalhoDialogo(const SessaoDialogo *d, int i, bool ativo)
@@ -328,8 +336,10 @@ static void DesenharAtalhoDialogo(const SessaoDialogo *d, int i, bool ativo)
     DrawRectangleLinesEx(r, 1, Fade(sobre ? WHITE : SKYBLUE, 0.6f * alfa));
     DrawRectangleRec(tecla, Fade((Color){ 40, 40, 60, 255 }, alfa));
     DrawRectangleLinesEx(tecla, 1, Fade(LIGHTGRAY, alfa));
-    DrawText(TECLAS_ATALHO_DLG[i], (int)tecla.x + 6, (int)tecla.y + 2, 10, Fade(WHITE, alfa));
-    DrawText(ROTULOS_ATALHO_DLG[i], (int)(tecla.x + tecla.width) + 6, (int)r.y + 4, 11, Fade(sobre ? WHITE : SKYBLUE, alfa));
+    // A sobra de altura do TEXTO GRANDE fica dividida em cima e embaixo do texto
+    int sobra = (int)(r.height - 20.0f) / 2;
+    DrawText(TECLAS_ATALHO_DLG[i], (int)tecla.x + 6, (int)tecla.y + 2 + sobra, 10, Fade(WHITE, alfa));
+    DrawText(ROTULOS_ATALHO_DLG[i], (int)(tecla.x + tecla.width) + 6, (int)r.y + 4 + sobra, 11, Fade(sobre ? WHITE : SKYBLUE, alfa));
 }
 
 // BACKSPACE (ou clique no atalho): volta uma fala. Clique no "R": pede o histórico ao main.

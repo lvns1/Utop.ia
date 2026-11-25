@@ -1286,6 +1286,14 @@ void BatalhaB2Desenhar(const BatalhaB2 *b, const char *nickname, float tempo)
     float t = b->anim * b->anim * (3.0f - 2.0f * b->anim);
     Rectangle base = b->estiloAcao ? CAIXA_ACAO : CAIXA_B2;
 
+    // Nas falas (sem botões embaixo), a caixa cresce para baixo se o texto não couber:
+    // com o TEXTO GRANDE, quatro linhas passavam da borda (issue #31)
+    if (b->fase == B2_INTRO || b->fase == B2_RESULTADO || b->fase == B2_FIM) {
+        float precisa = 22.0f + (float)(ContarLinhas(b->texto) * EspacoLinhaTexto(28, FONTE_BATALHA)) + 30.0f;
+        if (precisa > base.height)
+            base.height = precisa;
+    }
+
     Rectangle caixa = {
         Lerp(base.x, CAIXA_DESVIO_B2.x, t),
         Lerp(base.y, CAIXA_DESVIO_B2.y, t),

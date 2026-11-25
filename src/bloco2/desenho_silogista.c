@@ -991,8 +991,10 @@ void DesenharHudArmas(const Biblioteca *b, float tempo)
         DrawRectangle(770, uy - 11, 22, 22, Fade(BLACK, 0.6f));
         DrawRectangleLines(770, uy - 11, 22, 22, Fade(CORES_RARIDADE[ITENS[i].raridade], 0.8f));
         DesenharIconeItem((TipoItem)i, (Vector2){ 781, (float)uy }, 0.55f, tempo);
-        if (ITENS[i].maxPilha > 1)
-            DrawText(TextFormat("%d", RogueQtd(j, (TipoItem)i)), 785, uy + 2, 8, WHITE);
+        if (ITENS[i].maxPilha > 1) {
+            const char *qtd = TextFormat("%d", RogueQtd(j, (TipoItem)i));
+            DrawText(qtd, 791 - MeasureText(qtd, 8), uy + 2, 8, WHITE);      // alinhado à direita: não sai da tela
+        }
         uy += 26;
     }
 }

@@ -299,6 +299,13 @@ void RogueLimparBuild(JogadorRogue *j)
     j->abatesEscudo = 0;
 }
 
+// Vidas que ainda restam na partida (as mortes ficam no save: carregar o jogo não devolve vidas)
+int RogueVidasRestantes(const Biblioteca *b)
+{
+    int restam = LIMITE_MORTES - b->perm->mortes;
+    return (restam > 0) ? restam : 0;
+}
+
 // Perdeu a tentativa (ou terminou a Biblioteca): a mochila, a arma extra, a build e o Selo da Inferência ficam para trás
 void RogueEsvaziarMochila(JogadorRogue *j)
 {

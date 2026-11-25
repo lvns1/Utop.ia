@@ -884,9 +884,18 @@ EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo
 
     // Derrota: volta para o átrio sem os itens da tentativa
     if (b->morreu) {
+        if (b->partidaEncerrada)
+            return ROGUE_NADA;                      // o ranking já abriu: a tela de derrota fica parada atrás dele
         b->tempoMorte += dt;
         bool confirmar = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || CliqueMouse();
-        if (b->tempoMorte > 1.0f && (confirmar || b->tempoMorte > 5.0f)) {
+        // Sem vidas, a tela espera o jogador (não avança sozinha)
+        bool semVidas = !b->modoSeletor && RogueVidasRestantes(b) <= 0;
+        if (semVidas && b->tempoMorte > 1.5f && confirmar) {
+            b->partidaEncerrada = true;
+            Telemetria("sem_vidas", TextFormat("sala %d", b->indiceRota + 1), (float)(GetTime() - b->inicio), b->perm->mortes);
+            return ROGUE_SEM_VIDAS;
+        }
+        if (!semVidas && b->tempoMorte > 1.0f && (confirmar || b->tempoMorte > 5.0f)) {
             b->morreu = false;
             if (b->tipoSala == SALA_TRANSICAO || b->tipoSala == SALA_LUCI) {
                 // Bloco 3: volta ao corredor do núcleo sem perder nada
@@ -962,7 +971,8 @@ EventoRogue RogueAtualizar(Biblioteca *b, ProgressoCorredor *prog, SessaoDialogo
         b->j.hp = 0.0f;
         b->morreu = true;
         b->tempoMorte = 0.0f;
-        b->perm->mortes++;
+        if (!b->modoSeletor)
+            b->perm->mortes++;                      // gasta uma vida (o seletor de chefes é treino: não gasta)
         AlterarPontos(prog, -PENALIDADE_HP_ZERO);
         RogueParticulas(b, b->j.pos, SKYBLUE, 30, 260);
         RogueAnel(b, b->j.pos, 120.0f, RED);

@@ -124,6 +124,8 @@ bool LerSave(DadosSave *d)
     if (d->biblioteca.desafiosCertos < 0)  d->biblioteca.desafiosCertos = 0;
     if (d->biblioteca.desafiosErrados < 0) d->biblioteca.desafiosErrados = 0;
     if (d->biblioteca.mortes < 0)          d->biblioteca.mortes = 0;
+    if (d->biblioteca.mortes >= LIMITE_MORTES)
+        return false;                       // partida encerrada sem vidas: não dá para continuar
     if (!(d->biblioteca.segundosRun >= 0.0f && d->biblioteca.segundosRun < 360000.0f)) d->biblioteca.segundosRun = 0.0f;
     if (d->biblioteca.finalJogo < 0 || d->biblioteca.finalJogo > 2) d->biblioteca.finalJogo = 0;
     d->biblioteca.corrupcaoLuciMax = (int)Clamp((float)d->biblioteca.corrupcaoLuciMax, 0.0f, 100.0f);
@@ -155,12 +157,25 @@ bool LerSave(DadosSave *d)
     return true;
 }
 
+// Apaga o save (a partida acabou sem vidas: não dá para CONTINUAR)
+void ApagarSave(void)
+{
+    remove(ARQUIVO_SAVE_TEMP);
+    remove(ARQUIVO_SAVE);
+}
+
 // Monta o save a partir do estado atual do jogo e grava
 bool SalvarJogo(const char *nickname, TelaAtual tela, Vector2 pos, Direcao direcao,
                        bool luciAcompanhando, const ProgressoCorredor *progresso,
                        int estabilidadeLuci, int ajudasPedidas, bool chefeVencido, int idPartida,
                        const ProgressoBiblioteca *biblioteca)
 {
+    // Partida encerrada (usou todas as vidas): nada é gravado, nem ao fechar a janela
+    if (biblioteca->mortes >= LIMITE_MORTES) {
+        ApagarSave();
+        return true;
+    }
+
     DadosSave d;
     memset(&d, 0, sizeof(d));
 

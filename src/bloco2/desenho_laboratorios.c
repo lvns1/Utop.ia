@@ -1180,17 +1180,24 @@ void DesenharHudBuild(const Biblioteca *b, int yInicio, float tempo)
         DrawRectangle(770, y - 11, 22, 22, Fade(BLACK, 0.6f));
         DrawRectangleLines(770, y - 11, 22, 22, Fade(cor, 0.8f));
         DesenharIconeUpgrade(b, o, (Vector2){ 781, (float)y }, 0.55f, tempo);
-        if (UPGRADES[u].maxNivel > 1)
-            DrawText(TextFormat("%d", b->j.up[u]), 785, y + 2, 8, WHITE);
+        if (UPGRADES[u].maxNivel > 1) {
+            const char *nivel = TextFormat("%d", b->j.up[u]);
+            DrawText(nivel, 791 - MeasureText(nivel, 8), y + 2, 8, WHITE);     // alinhado à direita: não sai da tela
+        }
         y += 26;
         mostrados++;
     }
 
-    if (total > mostrados)
-        DrawText(TextFormat("+%d", total - mostrados), 772, y - 6, 10, GOLD);
+    if (total > mostrados) {
+        const char *mais = TextFormat("+%d", total - mostrados);
+        DrawText(mais, 792 - MeasureText(mais, 10), y - 6, 10, GOLD);
+    }
 
     if (b->j.penalidade) {
-        DrawRectangle(770, y + 4, 22, 14, Fade(RED, 0.4f));
-        DrawText("BETA", 771, y + 7, 8, WHITE);
+        // A etiqueta cresce para a esquerda conforme o texto (com o TEXTO GRANDE ela não cabe em 22 px)
+        int largBeta = MeasureText("BETA", 8) + 4;
+        if (largBeta < 22) largBeta = 22;
+        DrawRectangle(792 - largBeta, y + 4, largBeta, 16, Fade(RED, 0.4f));
+        DrawText("BETA", 794 - largBeta, y + 6, 8, WHITE);
     }
 }

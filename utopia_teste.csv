@@ -1,0 +1,1533 @@
+tempo_jogo_s;evento;detalhe;valor;quantidade
+2.5;sessao_inicio;;0.0;0
+11.0;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.3;3
+15.9;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;2.9;3
+65.4;batalha_derrota_repetir;MONITOR 1 // O QUE É ALUCINAÇÃO;28.8;2
+125.2;batalha_derrota;MONITOR 1 // O QUE É ALUCINAÇÃO;59.8;3
+127.2;cartao;ALUCINAÇÃO;2.0;0
+141.7;atalho_bloco2_terminal;;1.0;0
+142.3;atalho_bloco1_bloco2;nao;1.0;0
+142.7;atalho_bloco2_terminal;;1.0;0
+143.8;atalho_bloco1_bloco2;sim;1.0;0
+148.8;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.0;5
+151.7;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;2.7;2
+157.3;atrio_primeira_visita;;13.1;0
+157.3;rogue_missao;inicio;0.0;1
+157.3;rogue_sala;COMBATE;0.0;0
+157.3;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+157.3;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+161.3;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+168.2;rogue_temporario;OVERCLOCK;0.0;0
+171.8;rogue_sala_limpa;sala 1 ELIMINAR;14.5;6
+173.4;primeira_missao_escolha;;0.0;0
+173.4;rogue_recompensa_sala;MELHORIA;0.0;0
+177.8;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+179.8;rogue_sala;EDUCATIVA;1.0;1
+183.5;dialogo;* TERMINAL // ALUCINAÇÕES DE IA;2.2;4
+183.5;rogue_terminal;conceito 1;0.0;4
+188.5;dialogo;* ARQUIVO DE AMEAÇA // NÚCLEO DE CORRUPÇÃO;1.2;3
+188.5;rogue_registro_sala;4;0.0;1
+197.6;rogue_sala;COMBATE;2.0;2
+197.6;rogue_encontro;SOBRECARGA;2.0;2
+211.6;rogue_temporario;OVERCLOCK;0.0;0
+218.3;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+220.9;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+227.4;rogue_sala_limpa;sala 3 SOBREVIVER;70.1;24
+228.6;rogue_recompensa_sala;MELHORIA;2.0;2
+229.8;rogue_build;DISPARADOR CALIBRADO;0.0;1
+231.1;rogue_sala;ESPECIAL;3.0;3
+231.1;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+264.4;rogue_sala_limpa;sala 4 ELIMINAR;107.1;35
+268.1;rogue_recompensa_sala;MELHORIA;3.0;3
+269.1;rogue_build;DISPARADOR CALIBRADO;0.0;2
+2.0;sessao_inicio;;0.0;0
+12.5;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;4.6;2
+16.7;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.5;3
+51.1;batalha_derrota;MONITOR 1 // O QUE É ALUCINAÇÃO;31.5;3
+52.7;cartao;ALUCINAÇÃO;1.6;0
+58.0;saber_mais;ALUCINAÇÃO;1.2;0
+60.9;cartao;ALUCINAÇÃO;0.6;0
+2.1;sessao_inicio;;0.0;0
+188.7;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;0.8;2
+188.7;atrio_byteco_brinde;;3.7;0
+194.4;atalho_bloco3_terminal;;0.0;0
+195.3;atalho_bloco2_bloco3;nao;10.2;0
+195.7;atalho_bloco3_terminal;;0.0;0
+196.4;atalho_bloco2_bloco3;nao;11.3;0
+196.6;atalho_bloco3_terminal;;0.0;0
+197.4;atalho_bloco2_bloco3;sim;12.3;0
+198.3;bloco3_entrada;boa;70.0;0
+198.3;bloco3_cena;separacao;0.0;0
+199.7;bloco3_cena;pulou;0.7;0
+201.8;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;2.1;3
+205.2;dialogo;* REGISTRO 1 // COMBATE. 0 ecos apagados em 0 salas. 3 esqui;0.7;2
+206.6;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 0 min 20 s. Der;0.7;2
+209.9;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.7;2
+210.3;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.4;1
+211.5;bloco3_cena;transformacao;0.0;0
+212.4;bloco3_cena;pulou;0.6;0
+213.4;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.0;2
+225.9;bloco3_fase;;40.8;2
+1.6;sessao_inicio;;0.0;0
+8.1;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.5;5
+9.0;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;0.8;2
+10.8;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.6;2
+12.4;atalho_bloco3_terminal;;0.0;0
+12.9;atalho_bloco2_bloco3;sim;10.4;0
+13.9;bloco3_entrada;boa;73.0;0
+13.9;bloco3_cena;separacao;0.0;0
+18.0;bloco3_cena;pulou;3.4;0
+19.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.5;3
+20.8;dialogo;* REGISTRO 1 // COMBATE. 0 ecos apagados em 0 salas. 11 esqu;0.6;2
+22.5;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 1 min 07 s. Der;0.7;2
+32.7;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;8.0;2
+33.1;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.4;1
+34.6;bloco3_cena;transformacao;0.0;0
+35.7;bloco3_cena;pulou;0.7;0
+36.2;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;0.6;2
+49.5;bloco3_fase;;46.9;2
+56.2;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;6.7;2
+78.3;bloco3_contestar;certo;0.0;-1
+88.3;bloco3_contestar;certo;0.0;-1
+99.1;bloco3_contestar;certo;0.0;-1
+105.0;bloco3_contestar;certo;0.0;-1
+110.5;bloco3_contestar;certo;0.0;-1
+112.9;bloco3_queda;1;110.4;1
+116.5;bloco3_fase_oculta;;113.9;2
+119.9;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;3.4;6
+124.6;rogue_morte;sala 0;122.1;0
+124.6;primeira_missao_morte;sala 0;122.1;0
+1.8;sessao_inicio;;0.0;0
+14.4;atrio_primeira_visita;;7.3;1
+14.4;rogue_missao;inicio;0.0;1
+14.4;rogue_sala;COMBATE;0.0;0
+14.4;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+14.4;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+20.6;rogue_sala_limpa;sala 1 ELIMINAR;6.2;4
+22.6;primeira_missao_escolha;;0.0;0
+22.6;rogue_recompensa_sala;MELHORIA;0.0;0
+1.6;sessao_inicio;;0.0;0
+8.0;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.3;3
+11.1;dialogo;Luci: Cada monitor guarda uma alucinação. Chegue perto e a;1.0;3
+25.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+39.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+42.3;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;30.0;2
+42.7;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;30.3;0
+43.2;cartao;ALUCINAÇÃO;0.6;0
+53.3;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+60.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;93.0;3
+63.3;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.6;2
+63.8;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.1;0
+64.5;cartao;INTRÍNSECA x EXTRÍNSECA;0.7;0
+74.0;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;38.0;1
+81.6;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;93.0;3
+84.3;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;18.8;2
+84.6;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;19.1;0
+85.2;cartao;COMO EVITAR;0.6;0
+86.6;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.4;3
+86.8;mestre_entrada;;0.0;0
+88.7;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.3;2
+91.0;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.1;3
+91.0;mestre_etapa;;0.0;1
+95.7;mestre_etapa;;0.0;2
+101.9;mestre_etapa;;0.0;3
+109.8;mestre_etapa;;0.0;4
+115.8;mestre_parry;;4.0;1
+118.7;mestre_etapa;;0.0;5
+122.9;mestre_etapa;;0.0;6
+123.7;tutorial_escolha_treino;;0.0;0
+123.8;mestre_etapa;;0.0;7
+138.4;mestre_vitoria;;14.6;0
+145.5;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;5.1;5
+145.5;ponte_bloco1_2;inicio;58.7;0
+151.4;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;3.3;5
+19.9;sessao_inicio;;0.0;0
+41.1;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;3.3;3
+49.5;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;5.4;3
+64.4;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;18.0;0
+92.0;batalha_derrota;MONITOR 1 // O QUE É ALUCINAÇÃO;40.3;2
+93.9;cartao;ALUCINAÇÃO;1.9;0
+98.2;atalho_bloco2_terminal;;1.0;0
+100.0;atalho_bloco1_bloco2;sim;1.0;0
+105.4;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.4;5
+106.8;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.2;2
+108.2;atrio_primeira_visita;;7.9;0
+108.2;rogue_missao;inicio;0.0;1
+108.2;rogue_sala;COMBATE;0.0;0
+108.2;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+108.2;rogue_encontro;ISCA E ANZOL;1.0;1
+116.6;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+122.1;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+122.9;rogue_sala_limpa;sala 1 ELIMINAR;14.7;8
+125.7;primeira_missao_escolha;;0.0;0
+125.7;rogue_recompensa_sala;MELHORIA;0.0;0
+127.9;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+131.0;rogue_sala;EVENTO;1.0;1
+135.4;rogue_evento;1;0.0;1
+135.4;rogue_encontro;SOBRECARGA ELITE;2.0;1
+14.0;sessao_inicio;;0.0;0
+24.2;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.2;3
+28.9;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;2.6;3
+53.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;26.0;0
+61.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;57.0;1
+64.6;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;33.8;2
+66.4;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;35.6;0
+67.4;cartao;ALUCINAÇÃO;0.9;0
+84.0;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+92.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;75.0;2
+94.9;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.8;2
+95.9;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;21.8;0
+96.7;cartao;INTRÍNSECA x EXTRÍNSECA;0.8;0
+20.3;sessao_inicio;;0.0;0
+73.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;16.6;5
+89.7;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;3.4;3
+21.8;sessao_inicio;;0.0;0
+97.5;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.6;3
+102.9;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;2.5;3
+4.9;sessao_inicio;;0.0;0
+21.7;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;5.0;0
+26.1;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.6;3
+39.8;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+47.2;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;57.0;1
+49.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;19.8;2
+50.0;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;19.9;0
+50.8;cartao;ALUCINAÇÃO;0.8;0
+60.9;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;70.0;5
+68.8;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;51.0;1
+71.5;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.9;2
+71.8;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.2;0
+72.3;cartao;INTRÍNSECA x EXTRÍNSECA;0.5;0
+81.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;66.0;3
+89.5;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;75.0;2
+92.2;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;19.0;2
+92.2;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;19.1;0
+92.9;cartao;COMO EVITAR;0.6;0
+93.9;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.0;3
+94.1;mestre_entrada;;0.0;0
+96.3;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.7;2
+99.3;dialogo;* Você pegou o DISPARADOR DE DADOS.;2.0;3
+99.3;mestre_etapa;;0.0;1
+104.1;mestre_etapa;;0.0;2
+110.3;mestre_etapa;;0.0;3
+118.2;mestre_etapa;;0.0;4
+124.2;mestre_parry;;4.0;1
+127.1;mestre_etapa;;0.0;5
+131.1;mestre_etapa;;0.0;6
+132.3;tutorial_escolha_treino;;0.0;0
+132.3;mestre_etapa;;0.0;7
+147.7;mestre_vitoria;;15.4;0
+151.9;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;2.2;5
+151.9;ponte_bloco1_2;inicio;57.8;0
+158.9;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;4.4;7
+161.2;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.7;5
+163.1;atrio_primeira_visita;;9.9;0
+163.1;rogue_missao;inicio;0.0;1
+163.1;rogue_sala;COMBATE;0.0;0
+163.1;rogue_encontro;ENXAME DIGITAL;1.0;1
+171.3;rogue_sala_limpa;sala 1 ELIMINAR;8.1;20
+172.5;primeira_missao_escolha;;0.0;0
+172.5;rogue_recompensa_sala;MELHORIA;0.0;0
+176.4;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+178.4;rogue_sala;COMBATE;1.0;1
+178.4;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+178.4;rogue_encontro;DADOS PERSISTENTES;2.0;2
+186.0;rogue_desafio;errado;0.0;0
+190.8;rogue_sala_limpa;sala 2 ELIMINAR;27.6;33
+191.2;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+191.6;rogue_recompensa_sala;ARSENAL;1.0;1
+195.6;rogue_build;FLUXO CONTÍNUO;0.0;1
+199.0;luci_scanner;certo;0.0;5
+200.8;rogue_secreta;descoberta;0.0;1
+201.2;rogue_sala;SECRETA;1.0;2
+202.1;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+207.0;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+209.2;dialogo;* REGISTRO RECUPERADO // ACOMPANHANTE;1.0;3
+209.2;rogue_registro_sala;104;0.0;1
+211.2;rogue_sala;COMBATE;2.0;3
+211.2;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+211.2;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+215.7;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+225.4;rogue_sala_limpa;sala 4 MECANISMO CORROMPIDO;62.3;42
+227.0;rogue_recompensa_sala;MELHORIA;2.0;3
+228.0;rogue_build;OVERCLOCK;1.0;1
+229.2;luci_scanner;certo;0.0;5
+230.1;rogue_sala;ESPECIAL;3.0;4
+230.1;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+251.9;rogue_sala_limpa;sala 5 ELIMINAR;88.7;55
+262.6;rogue_recompensa_sala;MELHORIA;3.0;4
+266.1;rogue_build;ALTA CONFIANÇA;0.0;1
+266.8;luci_scanner;certo;0.0;5
+269.1;rogue_sala;COMBATE;4.0;5
+269.1;rogue_encontro;SOBRECARGA;2.0;5
+279.4;rogue_temporario;OVERCLOCK;0.0;0
+287.1;rogue_sala_limpa;sala 6 ALVO PRIORITÁRIO;123.9;78
+289.2;rogue_recompensa_sala;MELHORIA;3.0;5
+290.2;rogue_build;VÁLVULA DE ESCAPE;1.0;1
+290.7;luci_scanner;certo;0.0;5
+291.7;rogue_sala;EVENTO;5.0;6
+294.8;rogue_evento;7;1.0;4
+296.4;rogue_sala;ESPECIAL;6.0;7
+296.4;rogue_especial;RETROPROPAGADOR;0.0;7
+317.4;rogue_sala_limpa;sala 8 ELIMINAR;154.3;96
+318.9;rogue_recompensa_sala;MELHORIA;5.0;7
+324.4;rogue_build;RESFRIAMENTO LÍQUIDO;0.0;1
+324.8;luci_scanner;certo;0.0;5
+326.8;rogue_sala;COMBATE;7.0;8
+326.8;rogue_encontro;REDE PROTEGIDA;3.0;7
+354.3;rogue_morte;sala 9;191.1;105
+354.3;primeira_missao_morte;sala 9;191.1;105
+1.9;sessao_inicio;;0.0;0
+15.3;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.0;3
+17.9;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;0.9;3
+30.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;54.0;2
+42.8;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;45.0;0
+45.5;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;26.5;2
+48.5;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;29.5;0
+49.0;cartao;ALUCINAÇÃO;0.6;0
+59.6;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;38.0;1
+71.8;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;81.0;2
+74.4;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;24.7;2
+74.6;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;24.8;0
+75.1;cartao;INTRÍNSECA x EXTRÍNSECA;0.6;0
+84.4;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;42.0;1
+91.8;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;33.0;0
+98.8;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.9;3
+111.4;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;10.3;3
+125.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;38.0;1
+138.1;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.0;3
+140.5;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.0;3
+1.9;sessao_inicio;;0.0;0
+10.4;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.5;3
+13.0;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;0.9;3
+23.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;62.0;3
+31.0;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+34.0;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;20.0;2
+34.1;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;20.1;0
+34.6;cartao;ALUCINAÇÃO;0.4;0
+44.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;70.0;5
+52.4;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;105.0;5
+55.0;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.6;2
+55.7;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.2;0
+56.1;cartao;INTRÍNSECA x EXTRÍNSECA;0.4;0
+66.0;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;62.0;3
+74.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;57.0;1
+76.9;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;19.3;2
+77.0;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;19.5;0
+77.5;cartao;COMO EVITAR;0.5;0
+78.6;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.1;3
+78.8;mestre_entrada;;0.0;0
+82.5;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;3.2;1
+86.4;dialogo;* Você pegou o DISPARADOR DE DADOS.;2.2;2
+86.4;mestre_etapa;;0.0;1
+92.3;mestre_etapa;;0.0;2
+98.6;mestre_etapa;;0.0;3
+108.6;mestre_dica;;10.0;3
+112.4;mestre_etapa;;0.0;4
+118.2;mestre_parry;;4.0;1
+121.1;mestre_etapa;;0.0;5
+125.3;mestre_etapa;;0.0;6
+126.2;tutorial_escolha_treino;;0.0;0
+126.2;mestre_etapa;;0.0;7
+136.0;mestre_parry;;7.0;2
+142.6;mestre_vitoria;;16.3;0
+147.7;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;3.1;5
+147.7;ponte_bloco1_2;inicio;68.9;0
+154.6;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;4.3;6
+158.2;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.1;5
+162.7;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;2.1;2
+162.7;atrio_byteco_brinde;;84.0;0
+165.5;atrio_primeira_visita;;16.5;1
+165.5;rogue_missao;inicio;0.0;1
+165.5;rogue_sala;COMBATE;0.0;0
+165.5;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+170.3;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+175.4;rogue_sala_limpa;sala 1 ELIMINAR;9.9;10
+177.3;primeira_missao_escolha;;0.0;0
+177.3;rogue_recompensa_sala;MELHORIA;0.0;0
+179.7;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+181.3;luci_scanner;certo;0.0;5
+181.6;rogue_sala;COMBATE;1.0;1
+181.6;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+181.6;rogue_encontro;REDE PROTEGIDA;2.0;2
+185.0;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+208.7;rogue_sala_limpa;sala 2 SOBREVIVER;43.2;21
+210.5;rogue_recompensa_sala;MELHORIA;1.0;1
+213.4;rogue_build;SOBRECARGA DE TENSORES;0.0;2
+213.8;luci_scanner;certo;0.0;5
+216.2;rogue_secreta;descoberta;0.0;1
+216.4;rogue_sala;SECRETA;1.0;2
+217.2;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+219.3;rogue_build;ECO BENIGNO;1.0;1
+221.1;dialogo;* REGISTRO RECUPERADO // CÂMARA DA INFERÊNCIA;1.1;3
+221.1;rogue_registro_sala;103;0.0;1
+222.7;rogue_sala;COMBATE;2.0;3
+222.7;rogue_encontro;PROTOCOLO BLINDADO;2.0;3
+235.8;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+259.7;rogue_sala_limpa;sala 4 ALVO PRIORITÁRIO;94.3;31
+260.3;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+261.5;luci_scanner;certo;0.0;5
+263.0;rogue_recompensa_sala;MELHORIA;2.0;3
+265.6;rogue_build;JANELA DE CONTEXTO;0.0;1
+268.4;rogue_sala;ESPECIAL;3.0;4
+268.4;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+287.1;rogue_sala_limpa;sala 5 ELIMINAR;121.6;42
+287.6;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+288.2;rogue_recompensa_sala;MELHORIA;3.0;4
+291.8;rogue_build;CONTRA-ATAQUE HEURÍSTICO;1.0;1
+293.1;luci_scanner;certo;0.0;5
+294.9;rogue_sala;COMBATE;4.0;5
+294.9;rogue_encontro;REDE ZUMBI;2.0;5
+297.3;rogue_desafio;certo;0.0;9
+318.4;rogue_sala_limpa;sala 6 ELIMINAR;152.9;62
+319.8;rogue_recompensa_sala;ARSENAL;3.0;5
+322.6;rogue_build;ORBE DE BUFFER;1.0;1
+324.7;luci_scanner;certo;0.0;5
+325.5;rogue_sala;COMBATE;5.0;6
+325.5;rogue_encontro;CAOS SISTÊMICO;3.0;6
+330.8;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+338.3;rogue_desafio;certo;0.0;1
+338.7;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+341.6;rogue_temporario;OVERCLOCK;0.0;0
+346.2;rogue_sala_limpa;sala 7 ELIMINAR;180.7;86
+347.5;rogue_recompensa_sala;MELHORIA;4.0;6
+352.4;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+355.1;luci_scanner;certo;0.0;5
+355.5;rogue_sala;ESPECIAL;6.0;7
+355.5;rogue_especial;RETROPROPAGADOR;0.0;7
+373.4;rogue_temporario;OVERCLOCK;0.0;0
+379.0;rogue_sala_limpa;sala 8 ELIMINAR;213.6;103
+379.7;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+380.3;rogue_recompensa_sala;MELHORIA;5.0;7
+388.0;rogue_build;CONTRA-ATAQUE HEURÍSTICO;1.0;2
+389.1;luci_scanner;certo;0.0;5
+390.9;rogue_sala;ELITE;7.0;8
+390.9;rogue_encontro;CAÇADOR DE TECLAS;3.0;8
+395.4;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+408.8;rogue_sala_limpa;sala 9 ELIMINAR;243.3;129
+409.6;rogue_recompensa_sala;MELHORIA RARA;5.0;8
+411.2;rogue_build;ECO BENIGNO;1.0;2
+413.2;luci_scanner;certo;0.0;5
+413.8;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+414.3;rogue_sala;ESPECIAL;8.0;9
+414.3;rogue_especial;JANELA DE CONTEXTO;0.0;9
+415.8;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.1;2
+452.8;rogue_minichefe;janela;287.3;5
+454.1;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.3;2
+461.6;rogue_sala_limpa;sala 10 ELIMINAR;296.1;158
+462.8;rogue_recompensa_sala;MELHORIA;6.0;9
+466.1;rogue_build;BUFFER EXPANDIDO;1.0;1
+467.7;luci_scanner;certo;0.0;5
+470.9;rogue_sala;COMBATE;9.0;10
+470.9;rogue_encontro;REDE PROTEGIDA;3.0;10
+485.7;rogue_sala_limpa;sala 11 NÚCLEOS DE CORRUPÇÃO;320.3;172
+486.8;rogue_temporario;OVERCLOCK;0.0;0
+487.0;rogue_recompensa_sala;MELHORIA;7.0;10
+487.9;rogue_build;BURACO NEGRO;1.0;1
+488.8;luci_scanner;certo;0.0;5
+489.6;rogue_sala;ALUCINADOR;10.0;11
+492.4;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.5;4
+497.8;rogue_chefe_fase2;;332.3;0
+499.8;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;2.0;3
+502.2;rogue_chefe_afirmacao;errado;6.0;9
+508.5;rogue_chefe_afirmacao;errado;6.0;1
+516.0;rogue_chefe_afirmacao;errado;6.0;13
+522.4;rogue_chefe_afirmacao;certo;6.0;14
+531.7;rogue_chefe_afirmacao;certo;6.0;20
+533.8;rogue_temporario;OVERCLOCK;0.0;0
+537.2;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;2.8;7
+537.2;rogue_chefe_vitoria;;371.7;1
+537.2;ranking;CAC;615.0;5
+539.1;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;1.0;1
+541.4;rogue_loja;PROCESSADOR NEURAL;9.0;70
+541.6;rogue_loja;PROCESSADOR NEURAL;9.0;61
+543.1;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;10.0;1
+543.2;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;16.0;2
+543.3;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;24.0;3
+549.2;bloco3_porta;;383.7;1
+550.1;bloco3_entrada;boa;80.0;615
+550.1;bloco3_cena;separacao;0.0;0
+551.2;bloco3_cena;pulou;0.4;0
+553.1;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.8;3
+555.5;dialogo;* REGISTRO 1 // COMBATE. 132 ecos apagados em 12 salas. 68 e;0.7;2
+556.8;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 7 min 55 s. Der;0.5;2
+559.4;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.5;2
+559.6;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.2;1
+561.8;bloco3_cena;transformacao;0.0;0
+563.0;bloco3_cena;pulou;0.9;0
+566.5;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;3.4;3
+570.1;bloco3_dica;verificou;0.0;0
+575.7;bloco3_dica;verificou;0.0;0
+577.0;bloco3_fase;;411.5;2
+578.5;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;1.5;3
+583.1;bloco3_contestar;errado;0.0;10
+587.4;bloco3_contestar;certo;0.0;-1
+592.4;bloco3_contestar;certo;0.0;-1
+608.2;bloco3_contestar;certo;0.0;-1
+610.9;bloco3_queda;1;445.4;1
+614.4;bloco3_fase_oculta;;448.9;2
+620.1;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;5.6;6
+627.0;bloco3_parry;BOLA DE NEVE;2.0;1
+627.6;bloco3_combo;;2.0;1
+631.0;bloco3_rebatido;AD HOMINEM;2.0;1
+631.5;bloco3_rebatido;FALSO DILEMA;2.0;2
+631.8;bloco3_rebatido;ESPANTALHO;2.0;3
+632.8;bloco3_combo;;2.0;2
+635.1;bloco3_queda;2;469.7;2
+638.0;bloco3_fase_oculta;;472.5;3
+639.9;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;1.9;4
+648.2;bloco3_parry;GENERALIZAÇÃO APRESSADA;3.0;2
+649.6;bloco3_combo;;3.0;3
+653.0;bloco3_varredura;desviou;3.0;0
+659.1;rogue_morte;sala 0;493.6;184
+659.1;primeira_missao_morte;sala 0;493.6;184
+1.8;sessao_inicio;;0.0;0
+9.0;rogue_missao;inicio;0.0;2
+9.0;rogue_sala;COMBATE;0.0;0
+9.0;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;2.0;1
+9.0;rogue_encontro;ISCA E ANZOL;1.0;1
+24.6;rogue_morte;sala 1;15.6;0
+31.2;rogue_missao;inicio;0.0;3
+31.2;rogue_sala;COMBATE;0.0;0
+31.2;rogue_encontro;ISCA E ANZOL;1.0;1
+50.8;rogue_morte;sala 1;19.6;0
+53.1;sem_vidas;sala 1;21.9;3
+1.9;sessao_inicio;;0.0;0
+12.7;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.9;3
+18.5;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;3.9;3
+28.3;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;34.0;1
+36.3;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;33.0;0
+43.6;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;51.0;1
+46.4;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;26.9;3
+46.9;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;27.4;0
+47.5;cartao;ALUCINAÇÃO;0.5;0
+66.6;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;30.0;0
+81.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+89.4;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;45.0;0
+92.2;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;44.0;3
+92.4;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;44.2;2
+93.0;cartao;INTRÍNSECA x EXTRÍNSECA;0.6;0
+105.3;batalha_derrota;MONITOR 3 // RISCOS E MITIGAÇÃO;11.0;1
+105.9;cartao;COMO EVITAR;0.6;0
+107.5;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.6;3
+107.7;mestre_entrada;;0.0;0
+109.4;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.1;2
+111.2;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.0;3
+111.2;mestre_etapa;;0.0;1
+116.6;mestre_etapa;;0.0;2
+122.9;mestre_etapa;;0.0;3
+130.7;mestre_etapa;;0.0;4
+137.2;mestre_parry;;4.0;1
+140.1;mestre_etapa;;0.0;5
+150.1;mestre_dica;;10.0;5
+151.3;mestre_etapa;;0.0;6
+152.5;tutorial_escolha_treino;;0.0;0
+152.5;mestre_etapa;;0.0;7
+168.4;mestre_vitoria;;15.9;0
+175.0;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;4.5;4
+175.0;ponte_bloco1_2;inicio;67.3;0
+181.5;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;3.9;7
+192.6;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.1;5
+194.2;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.3;2
+199.6;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;2.4;2
+199.6;atrio_byteco_brinde;;91.9;0
+202.2;atrio_primeira_visita;;25.9;1
+202.2;rogue_missao;inicio;0.0;1
+202.2;rogue_sala;COMBATE;0.0;0
+202.2;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+207.6;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+208.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+218.3;rogue_sala_limpa;sala 1 ELIMINAR;16.0;10
+219.4;rogue_sala;COMBATE;1.0;1
+219.4;rogue_encontro;SOBRECARGA;2.0;2
+232.2;rogue_morte;sala 2;30.0;20
+232.2;primeira_missao_morte;sala 2;30.0;20
+241.7;rogue_missao;inicio;0.0;2
+241.7;rogue_sala;COMBATE;0.0;0
+241.7;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;2.0;0
+241.7;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+248.0;rogue_morte;sala 1;6.3;0
+1.8;sessao_inicio;;0.0;0
+13.6;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.7;3
+16.0;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;0.8;3
+25.8;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+34.6;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;99.0;3
+37.4;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;20.2;2
+37.7;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;20.5;0
+38.3;cartao;ALUCINAÇÃO;0.6;0
+47.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;42.0;1
+55.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;99.0;3
+58.4;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.6;2
+58.5;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;19.7;0
+59.0;cartao;INTRÍNSECA x EXTRÍNSECA;0.6;0
+68.1;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;38.0;1
+76.0;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;93.0;3
+78.7;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;18.8;2
+81.5;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;21.7;0
+82.2;cartao;COMO EVITAR;0.7;0
+83.7;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.5;3
+83.9;mestre_entrada;;0.0;0
+85.9;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.4;2
+89.0;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.6;2
+89.0;mestre_etapa;;0.0;1
+94.1;mestre_etapa;;0.0;2
+100.4;mestre_etapa;;0.0;3
+108.2;mestre_etapa;;0.0;4
+119.7;mestre_dica;;10.0;4
+119.9;mestre_parry;;4.0;1
+122.8;mestre_etapa;;0.0;5
+127.1;mestre_etapa;;0.0;6
+127.7;tutorial_escolha_treino;;0.0;0
+127.7;mestre_etapa;;0.0;7
+140.7;mestre_vitoria;;13.0;0
+145.1;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;2.4;5
+145.2;ponte_bloco1_2;inicio;61.2;0
+149.6;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;1.9;7
+151.9;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.0;5
+153.4;atrio_primeira_visita;;7.0;0
+153.4;rogue_missao;inicio;0.0;1
+153.4;rogue_sala;COMBATE;0.0;0
+153.4;rogue_encontro;ISCA E ANZOL;1.0;1
+165.0;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+175.5;rogue_morte;sala 1;22.1;2
+175.5;primeira_missao_morte;sala 1;22.1;2
+180.3;rogue_missao;inicio;0.0;2
+180.3;rogue_sala;COMBATE;0.0;0
+180.3;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+186.1;rogue_morte;sala 1;5.7;0
+193.3;rogue_missao;inicio;0.0;3
+193.3;rogue_sala;COMBATE;0.0;0
+193.3;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;3.0;1
+193.3;rogue_encontro;ISCA E ANZOL;1.0;1
+212.8;rogue_temporario;OVERCLOCK;0.0;0
+216.8;rogue_morte;sala 1;23.5;3
+218.7;sem_vidas;sala 1;25.4;3
+218.7;ranking;DAW;35.0;6
+2.0;sessao_inicio;;0.0;0
+14.8;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.6;3
+17.8;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.2;3
+30.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;54.0;2
+38.2;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;69.0;2
+40.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;21.9;2
+43.6;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;24.6;0
+44.1;cartao;ALUCINAÇÃO;0.6;0
+77.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;38.0;1
+92.1;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;54.0;2
+94.8;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;50.0;2
+95.1;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;50.3;4
+95.7;cartao;INTRÍNSECA x EXTRÍNSECA;0.5;0
+104.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;38.0;1
+116.0;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;63.0;1
+118.8;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;22.3;2
+119.2;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;22.6;0
+119.7;cartao;COMO EVITAR;0.6;0
+120.7;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.0;3
+120.9;mestre_entrada;;0.0;0
+122.1;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;0.6;2
+124.1;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.1;3
+124.1;mestre_etapa;;0.0;1
+128.9;mestre_etapa;;0.0;2
+135.2;mestre_etapa;;0.0;3
+143.1;mestre_etapa;;0.0;4
+149.7;mestre_parry;;4.0;1
+152.6;mestre_etapa;;0.0;5
+159.7;mestre_etapa;;0.0;6
+160.7;tutorial_escolha_treino;;0.0;0
+160.7;mestre_etapa;;0.0;7
+171.6;mestre_parry;;7.0;2
+173.8;mestre_vitoria;;12.9;0
+177.7;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;1.9;5
+177.7;ponte_bloco1_2;inicio;56.8;0
+184.1;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;3.7;7
+190.6;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.5;5
+195.2;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;0.9;2
+195.2;atrio_byteco_brinde;;74.3;0
+197.5;atrio_primeira_visita;;18.5;1
+197.5;rogue_missao;inicio;0.0;1
+197.5;rogue_sala;COMBATE;0.0;0
+197.5;rogue_encontro;ENXAME DIGITAL;1.0;1
+202.7;rogue_sala_limpa;sala 1 ELIMINAR;5.2;17
+203.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+204.2;primeira_missao_escolha;;0.0;0
+204.2;rogue_recompensa_sala;MELHORIA;0.0;0
+205.4;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+208.7;rogue_sala;COMBATE;1.0;1
+208.7;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+208.7;rogue_encontro;VAZAMENTO DE DADOS;2.0;2
+216.9;rogue_morte;sala 2;19.4;17
+216.9;primeira_missao_morte;sala 2;19.4;17
+1.9;sessao_inicio;;0.0;0
+2.6;sessao_inicio;;0.0;0
+14.9;bloco3_entrada;boa;71.0;53
+14.9;bloco3_cena;separacao;0.0;0
+20.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.0;3
+21.9;dialogo;* REGISTRO 1 // COMBATE. 11 ecos apagados em 2 salas. 14 esq;0.6;2
+23.2;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 1 min 51 s. Der;0.5;2
+25.4;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.4;2
+25.7;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.3;1
+26.9;bloco3_cena;transformacao;0.0;0
+34.0;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.3;2
+48.0;bloco3_fase;;33.1;2
+50.1;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;2.1;3
+59.2;bloco3_contestar;certo;0.0;-1
+70.0;bloco3_contestar;certo;0.0;-1
+75.2;bloco3_contestar;certo;0.0;-1
+80.5;bloco3_contestar;certo;0.0;-1
+82.0;bloco3_queda;1;67.1;1
+85.5;bloco3_fase_oculta;;70.6;2
+88.6;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;3.1;6
+90.7;bloco3_parry;ESPANTALHO;2.0;1
+91.3;bloco3_combo;;2.0;1
+93.6;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;2
+94.1;bloco3_combo;;2.0;2
+98.7;bloco3_rebatido;AD HOMINEM;2.0;1
+101.3;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;3
+101.7;bloco3_combo;;2.0;3
+114.4;bloco3_rebatido;GENERALIZAÇÃO APRESSADA;2.0;1
+114.9;bloco3_rebatido;ESPANTALHO;2.0;2
+123.0;bloco3_parry;FALSO DILEMA;2.0;4
+132.3;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;5
+137.4;bloco3_rebatido;AD HOMINEM;2.0;1
+153.7;bloco3_parry;FALSO DILEMA;2.0;6
+154.7;bloco3_queda;2;139.8;2
+157.6;bloco3_fase_oculta;;142.6;3
+159.5;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;1.9;4
+171.2;bloco3_varredura;desviou;3.0;0
+176.9;bloco3_parry;BOLA DE NEVE;3.0;7
+177.5;bloco3_combo;;3.0;4
+185.8;bloco3_parry;GENERALIZAÇÃO APRESSADA;3.0;8
+186.5;bloco3_combo;;3.0;5
+191.1;bloco3_varredura;desviou;3.0;0
+199.6;bloco3_vitoria;bom;8.0;5
+203.4;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;1.4;4
+203.4;fim_do_jogo;bom;72.0;173
+204.4;ranking;AMC;173.0;6
+1.8;sessao_inicio;;0.0;0
+43.9;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.3;3
+49.8;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.9;3
+66.6;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;50.0;2
+74.1;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+76.8;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;22.8;2
+77.1;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;23.2;0
+77.9;cartao;ALUCINAÇÃO;0.8;0
+88.9;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;66.0;3
+98.2;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;87.0;3
+100.9;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;21.5;2
+101.2;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;21.8;0
+101.8;cartao;INTRÍNSECA x EXTRÍNSECA;0.6;0
+110.2;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;26.0;0
+117.5;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;63.0;1
+120.1;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;17.7;2
+120.4;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;17.9;0
+120.9;cartao;COMO EVITAR;0.6;0
+122.2;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.2;3
+122.4;mestre_entrada;;0.0;0
+125.3;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;2.4;2
+127.9;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.1;3
+127.9;mestre_etapa;;0.0;1
+132.1;mestre_etapa;;0.0;2
+138.3;mestre_etapa;;0.0;3
+146.2;mestre_etapa;;0.0;4
+153.3;mestre_parry;;4.0;1
+156.3;mestre_etapa;;0.0;5
+163.7;mestre_etapa;;0.0;6
+164.6;tutorial_escolha_treino;;0.0;0
+164.6;mestre_etapa;;0.0;7
+183.6;mestre_parry;;7.0;2
+184.7;mestre_vitoria;;20.0;0
+188.8;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;2.0;5
+188.8;ponte_bloco1_2;inicio;66.4;0
+198.2;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;6.8;7
+201.5;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.4;5
+204.1;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;0.4;2
+204.1;atrio_byteco_brinde;;81.7;0
+249.7;atrio_primeira_visita;;59.6;1
+249.7;rogue_missao;inicio;0.0;1
+249.7;rogue_sala;COMBATE;0.0;0
+249.7;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+249.7;rogue_encontro;ISCA E ANZOL;1.0;1
+256.5;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+257.2;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+259.5;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+261.2;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+261.4;rogue_sala_limpa;sala 1 ELIMINAR;11.7;7
+262.8;primeira_missao_escolha;;0.0;0
+262.8;rogue_recompensa_sala;MELHORIA;0.0;0
+264.0;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+265.8;luci_scanner;certo;0.0;5
+266.5;rogue_sala;COMBATE;1.0;1
+266.5;rogue_encontro;PREVISÃO LETAL;2.0;2
+271.8;rogue_desafio;certo;0.0;8
+286.5;rogue_sala_limpa;sala 2 ELIMINAR;36.8;15
+287.5;rogue_recompensa_sala;MELHORIA;1.0;1
+288.4;rogue_build;DISPARADOR CALIBRADO;0.0;1
+289.1;luci_scanner;certo;0.0;5
+291.8;rogue_secreta;descoberta;0.0;1
+292.9;rogue_sala;SECRETA;1.0;2
+294.4;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+296.8;rogue_build;PROCESSAMENTO PARALELO;0.0;2
+298.7;dialogo;* REGISTRO RECUPERADO // DIA 1 DA BIBLIOTECA;1.0;3
+298.7;rogue_registro_sala;100;0.0;1
+300.5;rogue_sala;ELITE;2.0;3
+300.5;rogue_encontro;GUARDA DE ELITE;3.0;3
+327.1;rogue_sala_limpa;sala 4 ELIMINAR;77.4;33
+328.2;rogue_recompensa_sala;MELHORIA RARA;2.0;3
+333.0;rogue_build;DISPARADOR CALIBRADO;0.0;2
+335.9;luci_scanner;certo;0.0;5
+337.2;rogue_sala;ESPECIAL;3.0;4
+337.2;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+353.1;rogue_sala_limpa;sala 5 ELIMINAR;103.4;45
+354.7;rogue_recompensa_sala;MELHORIA;3.0;4
+357.8;rogue_build;SAÍDA GENERATIVA;1.0;1
+358.4;luci_scanner;certo;0.0;5
+360.7;rogue_sala;DESCANSO;4.0;5
+362.7;rogue_evento;8;2.0;3
+364.5;rogue_sala;COMBATE;5.0;6
+364.5;rogue_encontro;PROTOCOLO BLINDADO;3.0;5
+375.7;rogue_sala_limpa;sala 7 NÚCLEOS DE CORRUPÇÃO;126.0;48
+377.4;rogue_recompensa_sala;ARSENAL;4.0;6
+379.8;rogue_build;ROTEADOR DE PACOTES;1.0;1
+382.6;luci_scanner;certo;0.0;5
+383.7;rogue_sala;ESPECIAL;6.0;7
+383.7;rogue_especial;RETROPROPAGADOR;0.0;7
+404.5;rogue_sala_limpa;sala 8 ELIMINAR;154.8;67
+405.7;rogue_recompensa_sala;MELHORIA;5.0;7
+406.8;rogue_build;ROTA EXPRESSA;0.0;1
+407.3;luci_scanner;certo;0.0;5
+409.0;rogue_sala;ELITE;7.0;8
+409.0;rogue_encontro;SOBRECARGA ELITE;3.0;7
+415.4;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+416.3;rogue_temporario;OVERCLOCK;0.0;0
+421.2;rogue_sala_limpa;sala 9 ELIMINAR;171.5;79
+422.2;luci_scanner;certo;0.0;5
+422.9;rogue_recompensa_sala;MELHORIA RARA;5.0;8
+426.8;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+428.1;rogue_sala;ESPECIAL;8.0;9
+428.1;rogue_especial;JANELA DE CONTEXTO;0.0;9
+429.5;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.0;2
+458.8;rogue_temporario;OVERCLOCK;0.0;0
+464.2;rogue_temporario;OVERCLOCK;0.0;0
+482.1;rogue_minichefe;janela;232.4;7
+483.3;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.2;2
+485.0;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+488.4;rogue_sala_limpa;sala 10 ELIMINAR;238.6;142
+489.6;rogue_recompensa_sala;MELHORIA;6.0;9
+494.1;rogue_build;TABELA DE ROTAS;1.0;1
+495.3;rogue_sala;COMBATE;9.0;10
+495.3;rogue_encontro;PROTOCOLO BLINDADO;3.0;9
+518.2;rogue_desafio;certo;0.0;1
+521.6;rogue_sala_limpa;sala 11 ELIMINAR;271.9;153
+523.1;rogue_recompensa_sala;MELHORIA;7.0;10
+524.2;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+526.4;luci_scanner;certo;0.0;5
+527.2;rogue_sala;ALUCINADOR;10.0;11
+529.9;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.3;4
+543.2;rogue_chefe_fase2;;293.5;0
+544.8;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.5;3
+547.1;rogue_chefe_afirmacao;certo;6.0;14
+556.5;rogue_chefe_afirmacao;certo;6.0;12
+562.9;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;1.8;7
+562.9;rogue_chefe_vitoria;;313.2;1
+562.9;ranking;ACW;581.0;6
+564.8;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;0.7;1
+2.0;sessao_inicio;;0.0;0
+9.2;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.0;3
+13.9;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.8;3
+37.2;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;26.0;0
+44.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;33.0;0
+51.3;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;63.0;1
+54.1;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;25.5;3
+54.5;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;25.9;0
+55.1;cartao;ALUCINAÇÃO;0.6;0
+65.0;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;70.0;4
+73.7;ataque;MONITOR 2 // TIPOS DE ALUCINAÇÃO;99.0;3
+76.4;golpe_final;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.6;2
+76.7;batalha_vitoria;MONITOR 2 // TIPOS DE ALUCINAÇÃO;20.9;0
+77.2;cartao;INTRÍNSECA x EXTRÍNSECA;0.5;0
+86.9;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;26.0;0
+94.3;ataque;MONITOR 3 // RISCOS E MITIGAÇÃO;45.0;0
+97.0;golpe_final;MONITOR 3 // RISCOS E MITIGAÇÃO;18.1;2
+97.3;batalha_vitoria;MONITOR 3 // RISCOS E MITIGAÇÃO;18.4;0
+98.2;cartao;COMO EVITAR;0.9;0
+99.3;dialogo;Luci: Os 3 monitores se apagaram... espera! As alucinações;1.1;3
+99.5;mestre_entrada;;0.0;0
+101.2;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.2;2
+103.3;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.2;3
+103.3;mestre_etapa;;0.0;1
+107.6;mestre_etapa;;0.0;2
+113.9;mestre_etapa;;0.0;3
+121.8;mestre_etapa;;0.0;4
+127.7;mestre_parry;;4.0;1
+130.6;mestre_etapa;;0.0;5
+137.5;mestre_etapa;;0.0;6
+138.6;tutorial_escolha_treino;;0.0;0
+138.6;mestre_etapa;;0.0;7
+147.8;mestre_parry;;7.0;2
+149.9;mestre_vitoria;;11.1;0
+154.1;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;2.3;5
+154.2;ponte_bloco1_2;inicio;54.7;0
+161.2;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;4.4;7
+191.5;dialogo;Luci: Antes de entrar, vamos falar com o Professor Byte. Ele;0.6;1
+193.6;dialogo;Luci: Antes de entrar, vamos falar com o Professor Byte. Ele;0.9;1
+195.4;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;1.2;5
+1.9;sessao_inicio;;0.0;0
+17.2;atrio_primeira_visita;;14.4;0
+17.2;rogue_missao;inicio;0.0;1
+17.2;rogue_sala;COMBATE;0.0;0
+17.2;rogue_encontro;ENXAME DIGITAL;1.0;1
+27.5;rogue_sala_limpa;sala 1 ELIMINAR;10.3;26
+29.1;luci_scanner;certo;0.0;5
+30.1;primeira_missao_escolha;;0.0;0
+30.1;rogue_recompensa_sala;MELHORIA;0.0;0
+31.7;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+33.6;rogue_sala;COMBATE;1.0;1
+33.6;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+33.6;rogue_encontro;REDE ZUMBI;2.0;2
+38.3;rogue_desafio;certo;0.0;2
+52.5;rogue_sala_limpa;sala 2 ELIMINAR;35.2;48
+54.8;rogue_recompensa_sala;MELHORIA;1.0;1
+58.8;rogue_build;RECICLAGEM DE ENERGIA;0.0;1
+59.4;luci_scanner;certo;0.0;5
+61.7;rogue_secreta;descoberta;0.0;1
+61.9;rogue_sala;SECRETA;1.0;2
+62.8;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+69.1;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+71.9;rogue_sala;COMBATE;2.0;3
+71.9;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+76.2;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+79.7;rogue_desafio;certo;0.0;1
+81.7;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+89.4;rogue_sala_limpa;sala 4 ELIMINAR;72.2;63
+92.4;rogue_recompensa_sala;MELHORIA;2.0;3
+94.5;rogue_build;CONTRA-ATAQUE HEURÍSTICO;1.0;1
+95.4;luci_scanner;certo;0.0;5
+95.9;rogue_sala;ESPECIAL;3.0;4
+95.9;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+95.9;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+117.0;rogue_sala_limpa;sala 5 ELIMINAR;99.7;76
+118.4;rogue_recompensa_sala;MELHORIA;3.0;4
+120.0;rogue_build;RESÍDUO DE DADOS;1.0;1
+120.6;luci_scanner;certo;0.0;5
+123.9;rogue_sala;COMBATE;4.0;5
+123.9;rogue_encontro;REDE PROTEGIDA;2.0;5
+152.5;rogue_sala_limpa;sala 6 NÚCLEOS DE CORRUPÇÃO;135.3;89
+153.9;rogue_recompensa_sala;ARSENAL;3.0;5
+158.1;rogue_build;RAIO CLÁSSICO;2.0;1
+160.2;luci_scanner;certo;0.0;5
+161.4;rogue_sala;LABORATÓRIO;5.0;6
+162.8;rogue_lab_acao;FIREWALL ÉTICO;0.0;2
+182.6;rogue_lab;FIREWALL ÉTICO;2.0;2
+185.3;luci_scanner;certo;0.0;5
+185.8;rogue_sala;ESPECIAL;6.0;7
+185.8;rogue_especial;RETROPROPAGADOR;0.0;7
+204.5;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+206.1;rogue_sala_limpa;sala 8 ELIMINAR;188.9;108
+207.5;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+209.2;rogue_recompensa_sala;MELHORIA;5.0;7
+212.8;rogue_build;ECO BENIGNO;1.0;1
+213.3;luci_scanner;certo;0.0;5
+215.9;rogue_sala;ELITE;7.0;8
+215.9;rogue_encontro;CAÇADOR DE TECLAS;3.0;7
+237.1;rogue_sala_limpa;sala 9 ELIMINAR;219.9;128
+238.2;rogue_recompensa_sala;MELHORIA RARA;5.0;8
+240.3;rogue_build;ECO BENIGNO;1.0;2
+241.4;luci_scanner;certo;0.0;5
+243.6;rogue_sala;ESPECIAL;8.0;9
+243.6;rogue_especial;JANELA DE CONTEXTO;0.0;9
+245.0;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.0;2
+271.2;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+272.7;rogue_minichefe;janela;255.4;3
+273.9;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.2;2
+278.2;rogue_sala_limpa;sala 10 ELIMINAR;260.9;153
+279.9;rogue_recompensa_sala;MELHORIA;6.0;9
+281.7;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+283.0;luci_scanner;certo;0.0;5
+285.0;rogue_sala;ELITE;9.0;10
+285.0;rogue_encontro;MURALHA ELITE;3.0;9
+314.4;rogue_sala_limpa;sala 11 ELIMINAR;297.2;175
+315.3;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+316.8;rogue_recompensa_sala;MELHORIA RARA;7.0;10
+320.1;rogue_build;REDE NEURAL ÁGIL;0.0;1
+322.3;rogue_sala;ALUCINADOR;10.0;11
+324.7;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.0;4
+331.2;rogue_chefe_fase2;;313.9;0
+333.0;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.9;3
+337.6;rogue_chefe_afirmacao;certo;6.0;9
+348.3;rogue_chefe_afirmacao;errado;6.0;5
+349.2;rogue_morte;sala 12;332.0;175
+349.2;primeira_missao_morte;sala 12;332.0;175
+2.4;sessao_inicio;;0.0;0
+16.8;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;3.8;2
+16.8;atrio_byteco_brinde;;8.1;1
+18.7;rogue_loja;PROCESSADOR NEURAL;9.0;60
+20.7;rogue_loja;FLUXO CONTÍNUO;9.0;51
+23.3;rogue_missao;inicio;0.0;2
+23.3;rogue_sala;COMBATE;0.0;0
+23.3;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+24.4;tutorial_ligacao_conceito;ECO FALSO;2.0;2
+41.1;rogue_sala_limpa;sala 1 ELIMINAR;17.8;12
+43.7;rogue_recompensa_sala;MELHORIA;0.0;0
+44.8;rogue_build;RESFRIAMENTO LÍQUIDO;0.0;1
+45.4;luci_scanner;certo;0.0;5
+47.2;rogue_sala;COMBATE;1.0;1
+47.2;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;2.0;1
+47.2;rogue_encontro;PROTOCOLO BLINDADO;2.0;2
+58.1;rogue_sala_limpa;sala 2 NÚCLEOS DE CORRUPÇÃO;34.8;15
+59.5;luci_scanner;certo;0.0;5
+61.0;rogue_recompensa_sala;MELHORIA;1.0;1
+62.8;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+63.6;rogue_sala;ELITE;2.0;2
+63.6;rogue_encontro;SOBRECARGA ELITE;3.0;3
+69.2;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;2.0;0
+78.5;rogue_sala_limpa;sala 3 ELIMINAR;55.2;27
+81.6;rogue_recompensa_sala;MELHORIA RARA;2.0;2
+82.8;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+83.7;luci_scanner;certo;0.0;5
+84.4;rogue_sala;ESPECIAL;3.0;3
+84.4;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+101.9;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+102.1;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+105.6;rogue_sala_limpa;sala 4 ELIMINAR;82.2;38
+107.8;rogue_recompensa_sala;MELHORIA;3.0;3
+110.4;rogue_build;PROCESSAMENTO PARALELO;0.0;2
+110.9;luci_scanner;certo;0.0;5
+112.9;rogue_sala;COMBATE;4.0;4
+112.9;rogue_encontro;PREVISÃO LETAL;2.0;5
+132.1;rogue_sala_limpa;sala 5 MECANISMO CORROMPIDO;108.8;42
+133.3;rogue_recompensa_sala;RESTAURAÇÃO;3.0;4
+134.2;luci_scanner;certo;0.0;5
+136.6;rogue_sala;DESCANSO;5.0;5
+138.6;rogue_evento;8;2.0;4
+141.9;rogue_sala;ESPECIAL;6.0;6
+141.9;rogue_especial;RETROPROPAGADOR;0.0;6
+2.4;sessao_inicio;;0.0;0
+7.8;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;1.2;2
+12.5;rogue_loja;ORBE DE BUFFER;12.0;59
+14.9;rogue_loja;FLUXO CONTÍNUO;9.0;50
+16.7;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;10.0;1
+16.8;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;16.0;2
+17.0;rogue_melhoria;NÚCLEO DE PROCESSAMENTO;24.0;3
+19.5;rogue_missao;inicio;0.0;3
+19.5;rogue_sala;COMBATE;0.0;0
+19.5;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;3.0;0
+19.5;rogue_encontro;ARQUIVOS CORROMPIDOS;1.0;1
+29.9;rogue_sala_limpa;sala 1 ELIMINAR;10.4;5
+31.8;rogue_recompensa_sala;MELHORIA;0.0;0
+33.3;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+34.9;rogue_sala;COMBATE;1.0;1
+34.9;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;3.0;1
+34.9;rogue_encontro;REDE ZUMBI;2.0;2
+43.2;rogue_desafio;certo;0.0;2
+54.1;rogue_sala_limpa;sala 2 ELIMINAR;34.6;22
+56.5;rogue_recompensa_sala;MELHORIA;1.0;1
+62.1;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+64.8;luci_scanner;certo;0.0;5
+67.8;rogue_sala;COMBATE;2.0;2
+67.8;rogue_encontro;ENXAME DIGITAL;2.0;3
+74.4;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+127.8;rogue_sala_limpa;sala 3 ALVO PRIORITÁRIO;108.3;56
+129.6;rogue_temporario;OVERCLOCK;0.0;0
+130.7;rogue_recompensa_sala;MELHORIA;2.0;2
+132.2;rogue_build;VÁLVULA DE ESCAPE;1.0;1
+132.8;luci_scanner;certo;0.0;5
+133.8;rogue_sala;ESPECIAL;3.0;3
+133.8;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+141.6;tutorial_ligacao_conceito;ECO FALSO;3.0;2
+451.4;rogue_sala_limpa;sala 4 ELIMINAR;431.9;67
+452.6;rogue_recompensa_sala;MELHORIA;3.0;3
+464.0;rogue_build;RESFRIAMENTO LÍQUIDO;0.0;1
+468.8;luci_scanner;certo;0.0;5
+470.1;rogue_sala;EVENTO;4.0;4
+472.9;rogue_evento;5;2.0;3
+481.2;rogue_sala;COMBATE;5.0;5
+481.2;rogue_encontro;FORTALEZA DE CACHE;3.0;5
+485.6;rogue_desafio;certo;0.0;8
+506.6;rogue_sala_limpa;sala 6 ELIMINAR;487.1;78
+507.9;rogue_recompensa_sala;FRAGMENTOS;4.0;5
+509.5;luci_scanner;certo;0.0;5
+512.2;rogue_secreta;descoberta;0.0;4
+514.1;rogue_sala;SECRETA;5.0;6
+515.6;rogue_recompensa_sala;MELHORIA RARA;4.0;6
+521.2;rogue_build;SUPERNOVA;2.0;1
+522.0;luci_scanner;certo;0.0;5
+524.3;dialogo;* REGISTRO RECUPERADO // ACOMPANHANTE;1.4;3
+524.3;rogue_registro_sala;104;0.0;4
+525.2;rogue_sala;ESPECIAL;6.0;7
+525.2;rogue_especial;RETROPROPAGADOR;0.0;7
+662.2;rogue_sala_limpa;sala 8 ELIMINAR;642.7;92
+663.8;rogue_recompensa_sala;MELHORIA;5.0;7
+665.1;rogue_build;SOBRECARGA DE TENSORES;0.0;2
+666.4;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+667.9;luci_scanner;certo;0.0;5
+670.1;rogue_sala;COMBATE;7.0;8
+670.1;rogue_encontro;CAOS SISTÊMICO;3.0;7
+684.5;rogue_sala_limpa;sala 9 ELIMINAR;665.0;111
+686.1;rogue_recompensa_sala;MELHORIA;5.0;8
+692.8;rogue_build;BURACO NEGRO;1.0;1
+696.0;luci_scanner;certo;0.0;5
+697.0;rogue_sala;ESPECIAL;8.0;9
+697.0;rogue_especial;JANELA DE CONTEXTO;0.0;9
+698.7;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.3;2
+737.3;rogue_minichefe;janela;717.8;5
+737.3;rogue_sala_limpa;sala 10 ELIMINAR;717.8;152
+738.9;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.5;2
+740.0;rogue_recompensa_sala;MELHORIA;6.0;9
+742.4;rogue_build;SOBRECARGA DE TENSORES;0.0;3
+743.0;luci_scanner;certo;0.0;5
+745.1;rogue_sala;DESCANSO;9.0;10
+748.8;rogue_evento;8;2.0;7
+751.0;rogue_sala;ALUCINADOR;10.0;11
+754.7;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;3.3;4
+762.1;rogue_chefe_fase2;;742.6;0
+763.9;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.8;3
+766.5;rogue_chefe_afirmacao;certo;6.0;5
+976.3;rogue_chefe_afirmacao;errado;6.0;15
+985.4;rogue_chefe_afirmacao;certo;6.0;10
+993.8;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.6;7
+993.8;rogue_chefe_vitoria;;974.3;3
+993.9;ranking;DWM;1129.0;2
+996.1;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;0.7;1
+1000.2;rogue_loja;PROCESSADOR NEURAL;9.0;73
+1000.4;rogue_loja;PROCESSADOR NEURAL;9.0;64
+1047.6;rogue_loja;FIREWALL;8.0;56
+1047.7;rogue_loja;FIREWALL;8.0;48
+1050.3;rogue_melhoria;MEMÓRIA EXPANDIDA;10.0;1
+1050.5;rogue_melhoria;MEMÓRIA EXPANDIDA;16.0;2
+1052.5;bloco3_porta;;1033.0;3
+1053.3;bloco3_entrada;boa;84.0;1129
+1053.3;bloco3_cena;separacao;0.0;0
+1061.5;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;3.2;3
+1063.4;dialogo;* REGISTRO 1 // COMBATE. 260 ecos apagados em 31 salas. 177 ;0.6;2
+1064.8;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 16 min 41 s. De;0.4;2
+1067.1;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.5;2
+1067.3;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.2;1
+1068.9;bloco3_cena;transformacao;0.0;0
+1078.7;bloco3_cena;pulou;4.4;0
+1080.2;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.5;2
+1083.8;bloco3_dica;verificou;0.0;0
+1089.4;bloco3_dica;verificou;0.0;0
+1091.2;bloco3_fase;;1071.7;2
+1442.5;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;351.2;3
+3619.6;dialogo;Byte: Lembre: resposta convincente não é resposta verdadei;0.7;2
+3625.5;rogue_loja;FLUXO CONTÍNUO;9.0;13
+3627.6;rogue_missao;inicio;0.0;4
+3627.6;rogue_sala;COMBATE;0.0;0
+3627.6;rogue_encontro;ENXAME DIGITAL;1.0;1
+3660.5;rogue_temporario;OVERCLOCK;0.0;0
+3685.6;rogue_sala_limpa;sala 1 ELIMINAR;58.0;15
+3687.6;rogue_recompensa_sala;MELHORIA;0.0;0
+3688.9;rogue_build;ALTA CONFIANÇA;0.0;1
+3691.0;rogue_sala;COMBATE;1.0;1
+3691.0;rogue_encontro;REDE PROTEGIDA;2.0;2
+3692.8;rogue_desafio;certo;0.0;8
+3712.4;rogue_temporario;OVERCLOCK;0.0;0
+3713.7;rogue_sala_limpa;sala 2 ELIMINAR;86.1;24
+3714.2;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+3715.0;rogue_recompensa_sala;MELHORIA;1.0;1
+3716.5;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+3875.8;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;2.7;3
+3879.3;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.5;3
+3898.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;34.0;1
+3907.3;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;57.0;1
+3909.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;23.7;2
+3910.0;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;23.8;0
+3910.8;cartao;ALUCINAÇÃO;0.8;0
+3932.3;mestre_entrada;;0.0;0
+3933.5;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;0.9;2
+3935.0;dialogo;* Você pegou o DISPARADOR DE DADOS.;0.8;3
+3935.0;mestre_etapa;;0.0;1
+3940.6;mestre_etapa;;0.0;2
+3952.4;atalho_bloco3_terminal;;0.0;0
+3952.9;atalho_bloco2_bloco3;nao;3.9;0
+3953.5;atalho_bloco3_terminal;;0.0;0
+3954.0;atalho_bloco2_bloco3;nao;5.0;0
+3954.3;atalho_bloco3_terminal;;0.0;0
+3955.3;atalho_bloco2_bloco3;sim;6.3;0
+3956.2;bloco3_entrada;boa;70.0;20
+3956.2;bloco3_cena;separacao;0.0;0
+3962.6;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.5;3
+3963.6;dialogo;* REGISTRO 1 // COMBATE. 0 ecos apagados em 0 salas. 5 esqui;0.5;2
+3964.7;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 0 min 25 s. Der;0.4;2
+3967.4;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.6;2
+3968.2;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.8;1
+3969.8;bloco3_cena;transformacao;0.0;0
+3974.4;bloco3_cena;pulou;4.3;0
+3975.6;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.2;2
+2.3;sessao_inicio;;0.0;0
+7.2;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.7;3
+23.9;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.0;3
+2.0;sessao_inicio;;0.0;0
+22.0;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;1.1;3
+24.5;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;1.1;3
+34.9;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+43.0;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;81.0;2
+45.6;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;20.0;2
+46.0;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;20.3;0
+46.6;cartao;ALUCINAÇÃO;0.6;0
+60.2;mestre_entrada;;0.0;0
+61.6;dialogo;* Uma sala esquecida do arquivo. No centro, algo brilha num ;1.1;2
+63.7;dialogo;* Você pegou o DISPARADOR DE DADOS.;1.1;3
+63.7;mestre_etapa;;0.0;1
+68.4;mestre_etapa;;0.0;2
+77.7;mestre_etapa;;0.0;3
+85.6;mestre_etapa;;0.0;4
+92.1;mestre_parry;;4.0;1
+95.0;mestre_etapa;;0.0;5
+102.5;mestre_etapa;;0.0;6
+103.2;tutorial_escolha_treino;;0.0;0
+103.2;mestre_etapa;;0.0;7
+113.0;mestre_parry;;7.0;2
+119.0;mestre_vitoria;;15.7;0
+123.0;dialogo;* A ALUCINAÇÃO MESTRE se desfaz em letras soltas.;1.9;5
+123.0;ponte_bloco1_2;inicio;62.8;0
+128.3;dialogo;* As portas se fecham atrás de vocês. Prateleiras sem fim,;2.7;7
+131.3;dialogo;Byte: Bem-vindo à Biblioteca dos Ecos! Sou o Professor Byte;2.2;5
+132.0;atrio_primeira_visita;;7.7;0
+132.0;rogue_missao;inicio;0.0;1
+132.0;rogue_sala;COMBATE;0.0;0
+132.0;rogue_encontro;ISCA E ANZOL;1.0;1
+138.5;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+141.6;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+143.1;rogue_sala_limpa;sala 1 ELIMINAR;11.1;6
+144.2;primeira_missao_escolha;;0.0;0
+144.2;rogue_recompensa_sala;MELHORIA;0.0;0
+145.4;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+146.1;luci_scanner;certo;0.0;5
+148.3;rogue_sala;COMBATE;1.0;1
+148.3;rogue_encontro;REDE ZUMBI;2.0;2
+167.9;rogue_sala_limpa;sala 2 MECANISMO CORROMPIDO;35.9;16
+168.9;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+169.0;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+170.5;rogue_recompensa_sala;MELHORIA;1.0;1
+172.3;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+172.9;luci_scanner;certo;0.0;5
+174.7;rogue_sala;COMBATE;2.0;2
+174.7;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+174.7;rogue_encontro;ISCA E ANZOL;2.0;3
+187.7;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+199.6;rogue_sala_limpa;sala 3 ALVO PRIORITÁRIO;67.6;27
+201.8;rogue_recompensa_sala;ARSENAL;2.0;2
+203.4;rogue_build;FLUXO CONTÍNUO;0.0;1
+205.2;rogue_secreta;descoberta;0.0;2
+205.6;rogue_sala;SECRETA;2.0;3
+208.2;rogue_recompensa_sala;MELHORIA RARA;2.0;3
+209.1;rogue_build;OVERCLOCK;1.0;1
+211.4;dialogo;* REGISTRO RECUPERADO // ACOMPANHANTE;1.1;3
+211.4;rogue_registro_sala;104;0.0;2
+212.0;rogue_sala;ESPECIAL;3.0;4
+212.0;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+228.7;rogue_sala_limpa;sala 5 ELIMINAR;96.7;38
+230.5;rogue_recompensa_sala;MELHORIA;3.0;4
+233.8;rogue_build;SOBRECARGA DE TENSORES;0.0;2
+236.6;luci_scanner;certo;0.0;5
+237.6;rogue_sala;EVENTO;4.0;5
+240.7;rogue_evento;3;1.0;3
+248.8;rogue_sala;COMBATE;5.0;6
+248.8;rogue_encontro;REDE PROTEGIDA;3.0;5
+282.2;rogue_sala_limpa;sala 7 MECANISMO CORROMPIDO;150.2;57
+284.9;rogue_recompensa_sala;MELHORIA;4.0;6
+287.5;rogue_build;DISPARADOR CALIBRADO;0.0;1
+289.6;luci_scanner;certo;0.0;5
+290.7;rogue_sala;ESPECIAL;6.0;7
+290.7;rogue_especial;RETROPROPAGADOR;0.0;7
+308.2;rogue_sala_limpa;sala 8 ELIMINAR;176.2;79
+310.4;rogue_recompensa_sala;MELHORIA;5.0;7
+313.9;rogue_build;DISPARADOR CALIBRADO;0.0;2
+315.0;luci_scanner;certo;0.0;5
+316.8;rogue_sala;COMBATE;7.0;8
+316.8;rogue_encontro;TEMPESTADE DE SPAM;3.0;7
+325.2;rogue_temporario;OVERCLOCK;0.0;0
+354.5;rogue_sala_limpa;sala 9 SOBREVIVER;222.6;126
+355.6;rogue_recompensa_sala;FRAGMENTOS;5.0;8
+357.3;luci_scanner;certo;0.0;5
+358.5;rogue_sala;ESPECIAL;8.0;9
+358.5;rogue_especial;JANELA DE CONTEXTO;0.0;9
+363.1;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;4.2;2
+395.7;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+402.3;rogue_minichefe;janela;270.3;4
+403.5;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.2;2
+409.6;rogue_sala_limpa;sala 10 ELIMINAR;277.6;146
+410.4;rogue_recompensa_sala;MELHORIA;6.0;9
+411.6;rogue_build;PROCESSAMENTO PARALELO;0.0;2
+412.2;luci_scanner;certo;0.0;5
+413.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+414.0;rogue_sala;ELITE;9.0;10
+414.0;rogue_encontro;GUARDA DE ELITE;3.0;9
+426.8;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+432.0;rogue_sala_limpa;sala 11 ELIMINAR;300.0;166
+433.8;rogue_recompensa_sala;MELHORIA RARA;7.0;10
+437.5;rogue_build;SOBRECARGA DE TENSORES;0.0;3
+438.1;luci_scanner;certo;0.0;5
+445.6;rogue_sala;ALUCINADOR;10.0;11
+448.3;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;2.4;4
+483.6;rogue_chefe_fase2;;351.6;0
+485.2;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.6;3
+602.7;rogue_chefe_afirmacao;certo;6.0;6
+614.4;rogue_chefe_afirmacao;certo;6.0;19
+622.3;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;2.7;7
+622.3;rogue_chefe_vitoria;;490.3;1
+622.3;ranking;CNA;544.0;8
+624.2;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;0.5;1
+626.2;dialogo;Byteco: Psiu! Eu troco Fragmentos de Conhecimento por itens ;1.2;2
+626.2;atrio_byteco_brinde;;494.2;1
+626.4;rogue_loja;ANTIVÍRUS;3.0;83
+628.1;rogue_loja;KATANA DE BYTES;15.0;68
+630.0;rogue_loja;ROTEADOR DE PACOTES;11.0;57
+632.8;rogue_missao;inicio;0.0;2
+632.8;rogue_sala;COMBATE;0.0;0
+632.8;rogue_encontro;ENXAME DIGITAL;1.0;1
+638.8;rogue_sala_limpa;sala 1 ELIMINAR;6.1;17
+640.9;rogue_recompensa_sala;MELHORIA;0.0;0
+642.8;rogue_build;TOKENS SALTITANTES;1.0;1
+645.9;rogue_sala;RECOMPENSA;1.0;1
+657.7;rogue_recompensa;FIREWALL;0.0;0
+658.8;rogue_sala;COMBATE;2.0;2
+658.8;rogue_encontro;DADOS PERSISTENTES;2.0;2
+693.9;rogue_temporario;OVERCLOCK;0.0;0
+707.2;rogue_sala_limpa;sala 3 MECANISMO CORROMPIDO;74.4;50
+708.9;rogue_recompensa_sala;FRAGMENTOS;2.0;2
+709.8;luci_scanner;certo;0.0;5
+711.8;rogue_sala;ESPECIAL;3.0;3
+711.8;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+739.5;rogue_sala_limpa;sala 4 ELIMINAR;106.8;63
+745.7;luci_scanner;certo;0.0;5
+747.0;rogue_recompensa_sala;MELHORIA;3.0;3
+760.6;rogue_build;TORNADO DE DADOS;2.0;1
+764.8;rogue_sala;DESCANSO;4.0;4
+767.4;rogue_evento;8;2.0;3
+769.2;rogue_sala;RECOMPENSA;5.0;5
+776.1;rogue_recompensa;FIREWALL;0.0;0
+776.9;rogue_sala;ESPECIAL;6.0;6
+776.9;rogue_especial;RETROPROPAGADOR;0.0;6
+799.7;rogue_sala_limpa;sala 7 ELIMINAR;166.9;78
+800.4;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+801.4;rogue_recompensa_sala;MELHORIA;5.0;6
+803.7;rogue_build;TABELA DE ROTAS;1.0;1
+804.4;luci_scanner;certo;0.0;5
+805.7;rogue_sala;COMBATE;7.0;7
+805.7;rogue_encontro;FORTALEZA DE CACHE;3.0;5
+847.7;rogue_temporario;OVERCLOCK;0.0;0
+854.0;rogue_sala_limpa;sala 8 NÚCLEOS DE CORRUPÇÃO;221.2;101
+855.3;rogue_recompensa_sala;FRAGMENTOS;5.0;7
+856.6;luci_scanner;certo;0.0;5
+858.9;rogue_sala;ESPECIAL;8.0;8
+858.9;rogue_especial;JANELA DE CONTEXTO;0.0;8
+859.9;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;0.7;2
+864.9;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+920.1;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+927.4;rogue_temporario;OVERCLOCK;0.0;0
+938.9;rogue_minichefe;janela;306.2;7
+940.2;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.3;2
+944.4;rogue_sala_limpa;sala 9 ELIMINAR;311.6;180
+945.8;rogue_recompensa_sala;MELHORIA;6.0;8
+956.5;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+957.3;rogue_sala;COMBATE;9.0;9
+957.3;rogue_encontro;PREVISÃO LETAL;3.0;7
+961.5;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+974.9;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+981.5;rogue_sala_limpa;sala 10 ALVO PRIORITÁRIO;348.8;191
+983.0;rogue_recompensa_sala;MELHORIA;7.0;9
+984.2;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+986.7;rogue_sala;ALUCINADOR;10.0;10
+988.8;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;1.7;4
+1001.7;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+1004.8;rogue_chefe_fase2;;372.0;0
+1006.3;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.5;3
+1010.7;rogue_chefe_afirmacao;certo;6.0;4
+1021.1;rogue_chefe_afirmacao;certo;6.0;5
+1030.2;rogue_chefe_afirmacao;certo;6.0;3
+1040.6;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;2.9;7
+1040.6;rogue_chefe_vitoria;;407.8;2
+1040.6;ranking;CNA;1109.0;4
+1042.7;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;0.6;1
+1047.7;bloco3_porta;;415.0;2
+1048.6;bloco3_entrada;boa;91.0;1109
+1048.6;bloco3_cena;separacao;0.0;0
+1049.8;bloco3_cena;pulou;0.4;0
+1050.9;dialogo;* A porta se fecha. O corredor é feito de linhas de texto q;1.2;3
+1052.2;dialogo;* REGISTRO 1 // COMBATE. 249 ecos apagados em 23 salas. 142 ;0.4;2
+1054.0;dialogo;* REGISTRO 3 // ORIGEM. Tempo na Biblioteca: 14 min 15 s. De;0.5;2
+1056.2;dialogo;* REGISTRO 2 // CONFIANÇA. Você quase não me pediu ajuda:;0.4;2
+1056.5;dialogo;Luci: Agora você sabe. A porta do núcleo está aberta. Eu ;0.3;1
+1057.7;bloco3_cena;transformacao;0.0;0
+1058.7;bloco3_cena;pulou;0.6;0
+1059.8;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.1;2
+1071.8;bloco3_fase;;439.0;2
+1073.6;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;1.8;3
+1079.1;bloco3_contestar;certo;0.0;-1
+1089.8;bloco3_contestar;certo;0.0;-1
+1100.3;bloco3_contestar;certo;0.0;-1
+1102.2;bloco3_queda;1;469.5;1
+1105.8;bloco3_fase_oculta;;473.0;2
+1108.9;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;3.2;6
+1111.0;bloco3_parry;FALSO DILEMA;2.0;1
+1111.6;bloco3_combo;;2.0;1
+1115.4;bloco3_parry;AD HOMINEM;2.0;2
+1115.9;bloco3_combo;;2.0;2
+1119.8;bloco3_rebatido;BOLA DE NEVE;2.0;1
+1120.1;bloco3_rebatido;FALSO DILEMA;2.0;2
+1120.5;bloco3_rebatido;GENERALIZAÇÃO APRESSADA;2.0;3
+1121.3;bloco3_combo;;2.0;3
+1126.4;bloco3_queda;2;493.7;2
+1129.3;bloco3_fase_oculta;;496.5;3
+1131.3;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;2.0;4
+1138.5;bloco3_parry;ESPANTALHO;3.0;3
+1139.0;bloco3_combo;;3.0;4
+1145.9;bloco3_varredura;desviou;3.0;0
+1165.2;bloco3_varredura;desviou;3.0;0
+1169.5;bloco3_parry;AD HOMINEM;3.0;4
+1170.1;bloco3_vitoria;bom;4.0;4
+1174.6;dialogo;* A Luci para de falhar. O magenta se desfaz e o azul volta,;2.2;4
+1174.6;fim_do_jogo;bom;91.0;1224
+1175.9;ranking;CNA;1224.0;2
+1185.9;rogue_loja;PULSO DE FIREWALL;14.0;77
+1188.5;rogue_missao;inicio;0.0;3
+1188.5;rogue_sala;COMBATE;0.0;0
+1188.5;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;3.0;1
+1188.5;rogue_encontro;ISCA E ANZOL;1.0;1
+1195.9;rogue_temporario;FIREWALL PORTÁTIL;0.0;0
+1196.5;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;3.0;0
+1198.8;rogue_sala_limpa;sala 1 ELIMINAR;10.4;7
+1200.0;rogue_recompensa_sala;MELHORIA;0.0;0
+1205.4;rogue_sala;COMBATE;1.0;1
+1205.4;rogue_encontro;REDE ZUMBI;2.0;2
+1208.2;rogue_desafio;certo;0.0;1
+1221.7;rogue_sala_limpa;sala 2 ELIMINAR;33.2;29
+1224.0;rogue_recompensa_sala;ARSENAL;1.0;1
+1232.3;luci_scanner;certo;0.0;5
+1232.7;rogue_sala;COMBATE;2.0;2
+1232.7;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+1245.5;tutorial_ligacao_conceito;ECO FALSO;3.0;2
+1247.0;rogue_sala_limpa;sala 3 NÚCLEOS DE CORRUPÇÃO;58.5;39
+1248.7;rogue_recompensa_sala;MELHORIA;2.0;2
+1250.6;rogue_build;JANELA DE CONTEXTO;0.0;1
+1251.8;luci_scanner;certo;0.0;5
+1253.2;rogue_sala;ESPECIAL;3.0;3
+1253.2;rogue_especial;SENTINELA DE ATENÇÃO;0.0;3
+2.0;sessao_inicio;;0.0;0
+18.8;dialogo;Luci: Olá, Thomas! Eu sou a Luci, uma parte da IA que você;0.8;3
+21.6;dialogo;Luci: Chegue perto de um monitor e aperte E. Cada um guarda ;0.8;3
+32.7;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;42.0;1
+40.3;ataque;MONITOR 1 // O QUE É ALUCINAÇÃO;99.0;3
+44.9;golpe_final;MONITOR 1 // O QUE É ALUCINAÇÃO;21.0;2
+45.2;batalha_vitoria;MONITOR 1 // O QUE É ALUCINAÇÃO;21.2;0
+45.8;cartao;ALUCINAÇÃO;0.7;0
+70.2;bloco3_entrada;boa;70.0;20
+70.2;bloco3_cena;separacao;0.0;0
+70.2;bloco3_cena;transformacao;0.0;0
+71.8;bloco3_cena;pulou;0.9;0
+72.9;dialogo;Luci: Eu sou a alucinação de UtopIA. Mas você me ensinou ;1.1;2
+82.2;bloco3_dica;verificou;0.0;0
+83.1;bloco3_fase;;12.9;2
+85.2;dialogo;Luci: Você não acreditou no meu 'lado seguro'. Então vamo;2.1;3
+88.6;bloco3_contestar;errado;0.0;1
+94.4;bloco3_contestar;certo;0.0;-1
+99.3;bloco3_contestar;errado;0.0;3
+106.5;bloco3_contestar;errado;0.0;3
+111.1;bloco3_contestar;certo;0.0;-1
+117.0;bloco3_contestar;certo;0.0;-1
+127.8;bloco3_contestar;certo;0.0;-1
+128.5;bloco3_queda;1;58.3;1
+132.0;bloco3_fase_oculta;;61.8;2
+145.6;dialogo;* O som some. Só sobra estática. A barra dela apagou... e ;13.6;6
+152.1;bloco3_parry;FALSO DILEMA;2.0;1
+152.6;bloco3_combo;;2.0;1
+156.2;bloco3_rebatido;APELO À AUTORIDADE;2.0;1
+156.6;bloco3_rebatido;ESPANTALHO;2.0;2
+156.9;bloco3_rebatido;FALSO DILEMA;2.0;3
+157.7;bloco3_combo;;2.0;2
+163.0;bloco3_parry;FALSO DILEMA;2.0;2
+163.6;bloco3_combo;;2.0;3
+178.6;bloco3_parry;GENERALIZAÇÃO APRESSADA;2.0;3
+179.2;bloco3_combo;;2.0;4
+179.2;bloco3_queda;2;109.0;2
+182.0;bloco3_fase_oculta;;111.9;3
+183.9;dialogo;* Uma explosão de estática. O chão do núcleo começa a s;1.9;4
+196.7;bloco3_varredura;acertou;3.0;0
+216.0;bloco3_varredura;acertou;3.0;0
+237.2;bloco3_varredura;desviou;3.0;0
+241.8;bloco3_parry;AD HOMINEM;3.0;4
+242.3;bloco3_combo;;3.0;5
+2.8;sessao_inicio;;0.0;0
+14.1;atrio_primeira_visita;;10.2;0
+14.1;rogue_missao;inicio;0.0;1
+14.1;rogue_sala;COMBATE;0.0;0
+14.1;tutorial_ligacao_conceito;FRAGMENTO ALUCINADO;1.0;0
+14.1;rogue_encontro;VAZAMENTO DE DADOS;1.0;1
+27.4;rogue_sala_limpa;sala 1 ELIMINAR;13.3;9
+28.1;primeira_missao_escolha;;0.0;0
+28.1;rogue_recompensa_sala;MELHORIA;0.0;0
+29.3;rogue_build;SOBRECARGA DE TENSORES;0.0;1
+30.8;luci_scanner;certo;0.0;5
+31.4;rogue_sala;COMBATE;1.0;1
+31.4;rogue_encontro;REDE ZUMBI;2.0;2
+38.6;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+39.0;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+60.8;rogue_sala_limpa;sala 2 ALVO PRIORITÁRIO;46.6;20
+63.1;rogue_temporario;OVERCLOCK;0.0;0
+64.1;rogue_recompensa_sala;MELHORIA;1.0;1
+65.9;rogue_build;DISPARADOR CALIBRADO;0.0;1
+66.4;rogue_temporario;OVERCLOCK;0.0;0
+67.5;luci_scanner;certo;0.0;5
+75.6;rogue_secreta;descoberta;0.0;1
+76.6;rogue_sala;SECRETA;1.0;2
+78.2;rogue_recompensa_sala;MELHORIA RARA;1.0;2
+81.0;rogue_build;RESÍDUO DE DADOS;1.0;1
+87.5;dialogo;* REGISTRO RECUPERADO // CÂMARA DA INFERÊNCIA;1.3;3
+87.5;rogue_registro_sala;103;0.0;1
+89.2;rogue_sala;COMBATE;2.0;3
+89.2;rogue_encontro;VAZAMENTO DE DADOS;2.0;3
+90.3;tutorial_ligacao_conceito;ECO FALSO;1.0;2
+99.6;rogue_temporario;OVERCLOCK;0.0;0
+104.1;rogue_temporario;LIMPEZA DE CACHE;0.0;0
+106.9;rogue_sala_limpa;sala 4 MECANISMO CORROMPIDO;92.8;31
+108.9;rogue_recompensa_sala;FRAGMENTOS;2.0;3
+109.7;luci_scanner;certo;0.0;5
+111.7;rogue_sala;ESPECIAL;3.0;4
+111.7;rogue_especial;SENTINELA DE ATENÇÃO;0.0;4
+115.9;rogue_temporario;OVERCLOCK;0.0;0
+125.8;rogue_sala_limpa;sala 5 ELIMINAR;111.7;43
+127.7;rogue_recompensa_sala;MELHORIA;3.0;4
+128.9;rogue_build;ATENÇÃO MULTICABEÇA;1.0;1
+133.9;rogue_sala;DESCANSO;4.0;5
+136.6;rogue_evento;8;2.0;3
+138.1;luci_scanner;certo;0.0;5
+142.2;rogue_sala;ELITE;5.0;6
+142.2;tutorial_ligacao_conceito;GUARDIÃO DE DADOS;1.0;1
+142.2;rogue_encontro;GUARDA DE ELITE;3.0;5
+156.3;rogue_sala_limpa;sala 7 ELIMINAR;142.2;64
+157.6;rogue_recompensa_sala;MELHORIA RARA;4.0;6
+159.3;rogue_build;AMOSTRAGEM MÚLTIPLA;2.0;1
+159.9;rogue_temporario;CAMPO DE LATÊNCIA;0.0;0
+159.9;rogue_temporario;OVERCLOCK;0.0;0
+160.6;luci_scanner;certo;0.0;5
+165.4;rogue_sala;ESPECIAL;6.0;7
+165.4;rogue_especial;RETROPROPAGADOR;0.0;7
+174.9;rogue_temporario;OVERCLOCK;0.0;0
+177.2;rogue_sala_limpa;sala 8 ELIMINAR;163.1;76
+178.2;rogue_recompensa_sala;MELHORIA;5.0;7
+179.5;rogue_build;PROCESSAMENTO PARALELO;0.0;1
+182.2;rogue_sala;DESCANSO;7.0;8
+184.0;rogue_evento;8;2.0;5
+185.1;rogue_sala;ESPECIAL;8.0;9
+185.1;rogue_especial;JANELA DE CONTEXTO;0.0;9
+186.5;dialogo;Luci: A barra no topo é a memória dele. Atire no escudo pa;1.0;2
+197.8;rogue_minichefe;janela;183.7;2
+198.9;dialogo;* A JANELA DE CONTEXTO se apaga. Ela só lembrava do que cab;1.1;2
+204.4;rogue_temporario;PACOTE DE INTEGRIDADE;0.0;0
+207.0;rogue_sala_limpa;sala 10 ELIMINAR;192.9;90
+209.0;rogue_recompensa_sala;MELHORIA;6.0;9
+211.8;rogue_build;PULSO AMPLIFICADO;0.0;1
+212.8;luci_scanner;certo;0.0;5
+213.7;rogue_sala;DESCANSO;9.0;10
+215.7;rogue_evento;8;2.0;7
+219.3;rogue_sala;ALUCINADOR;10.0;11
+221.4;dialogo;* A sala escurece. Livros flutuam, reescrevendo as próprias;1.8;4
+225.5;rogue_chefe_fase2;;211.4;0
+227.1;dialogo;Alucinador: Chega de tiros. Vamos ver se você sabe separar ;1.6;3
+231.5;rogue_chefe_afirmacao;certo;6.0;10
+242.3;rogue_chefe_afirmacao;certo;6.0;12
+249.8;dialogo;* O Alucinador se desfaz em milhares de páginas em branco.;3.1;7
+249.8;rogue_chefe_vitoria;;235.7;1
+249.9;ranking;DAS;425.0;9
+255.0;dialogo;Luci: Aquela porta à direita... leva ao núcleo de UtopIA. ;2.8;0
+1.8;sessao_inicio;;0.0;0

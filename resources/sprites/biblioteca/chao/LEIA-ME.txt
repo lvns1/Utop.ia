@@ -1,0 +1,12 @@
+LADRILHOS DO CHÃO (Blocos 2 e 3)
+
+O jogo funciona sem estes arquivos: sem eles, o chão volta a ser a cor lisa com a
+grade roxa. Para desligar: SPRITES_CHAO 0 em include/core/config.h.
+
+  biblioteca.png   salas da missão e átrio (Bloco 2)
+  nucleo.png       corredor do Núcleo (Bloco 3)
+
+Cada arquivo tem 8 ladrilhos de 40x40 lado a lado (320x40). Os três primeiros são
+lisos e aparecem mais (às vezes espelhados); os outros têm detalhe (rachadura,
+circuito, grade, símbolo...). Cada sala sorteia os seus e mantém sempre o mesmo
+chão. As chances de cada ladrilho ficam em src/bloco2/sprites_biblioteca.c.

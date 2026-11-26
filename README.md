@@ -62,7 +62,7 @@ Escolha o comando correspondente ao seu sistema operacional:
 <summary><strong>🪟 Windows (MinGW / PowerShell)</strong></summary>
 
 ```bash
-gcc main.c -o main.exe -std=c99 -Wall
+gcc main.c (Get-ChildItem src -Recurse -Filter *.c | % FullName) -o Utopia -lraylib -lopengl32 -lgdi32 -lwinmm
 ```
 
 </details>
@@ -71,7 +71,7 @@ gcc main.c -o main.exe -std=c99 -Wall
 <summary><strong>🐧 Linux</strong></summary>
 
 ```bash
-gcc main.c -o main -std=c99 -Wall
+gcc main.c src/*/*.c -o main -std=c99 -Wall
 ```
 
 </details>
@@ -80,7 +80,7 @@ gcc main.c -o main -std=c99 -Wall
 <summary><strong>🍎 macOS</strong></summary>
 
 ```bash
-gcc main.c -o main -std=c99 -Wall
+gcc main.c src/*/*.c -o main -std=c99 -Wall
 ```
 
 </details>

@@ -47,6 +47,36 @@
 
 // A tela que vai para o save: a batalha volta para a sala de origem e a sala da
 // ALUCINAÇÃO MESTRE volta para o corredor (a luta recomeça pela porta da direita)
+// Travadas: registra no CSV dos testes o quadro que demorou demais e o que havia na tela nele
+static void RegistrarQuadroLento(const Jogo *jg)
+{
+#if TELEMETRIA_ATIVA
+    static int registrados = 0;
+    float ms = GetFrameTime() * 1000.0f;
+
+    if (ms < QUADRO_LENTO_MS || GetTime() < 3.0 || registrados >= MAX_QUADROS_LENTOS)
+        return;                                     // os primeiros segundos são a carga do jogo
+    registrados++;
+
+    if (jg->tela != BIBLIOTECA) {
+        Telemetria("quadro_lento", TextFormat("tela %d%s", (int)jg->tela, jg->pausado ? " pausa" : ""), ms, 0);
+        return;
+    }
+
+    const Biblioteca *b = &jg->biblioteca;
+    int inimigos = 0, tiros = 0, particulas = 0;
+    for (int i = 0; i < MAX_INIMIGOS; i++)         if (b->ini[i].ativo) inimigos++;
+    for (int i = 0; i < MAX_PROJETEIS; i++)        if (b->proj[i].ativo) tiros++;
+    for (int i = 0; i < MAX_PARTICULAS_ROGUE; i++) if (b->part[i].vida > 0.0f) particulas++;
+
+    Telemetria("quadro_lento", TextFormat("%s ini %d tiros %d part %d arma %d%s", NOMES_SALAS_ROGUE[b->tipoSala],
+                                          inimigos, tiros, particulas, (int)RogueArmaAtual(&b->j), jg->pausado ? " pausa" : ""),
+               ms, inimigos);
+#else
+    (void)jg;
+#endif
+}
+
 static TelaAtual TelaParaSalvar(TelaAtual tela, TelaAtual salaDaBatalha, const Biblioteca *b)
 {
     if (tela == BATALHA_B2) return salaDaBatalha;
@@ -365,7 +395,12 @@ int main(void) {
         &jg->cartao
     };
 
-    SetTargetFPS(60);
+    // Um limitador só: a sincronização com o monitor (FLAG_VSYNC_HINT) já segura o ritmo, e o
+    // SetTargetFPS(60) junto dela brigava com o monitor: em 60 Hz um quadro às vezes perdia a vez
+    // (engasgo) e em 120/144 Hz os quadros saíam em intervalos desencontrados (tremedeira no combate).
+    // O alvo agora é a própria taxa do monitor; o jogo usa o tempo de cada quadro (dt), então roda igual.
+    int hzMonitor = GetMonitorRefreshRate(GetCurrentMonitor());
+    SetTargetFPS((hzMonitor >= 30 && hzMonitor <= 240) ? hzMonitor : 60);
 
     // --- BGM: inicia com a música do menu ---
     TrocarBGM(&bgmMenu, 0);
@@ -375,6 +410,7 @@ int main(void) {
     while (!WindowShouldClose() && !jg->fecharJogo) {
 
         jg->dt = DtJogo();
+        RegistrarQuadroLento(jg);
 
         // --- BGM: mantém o buffer de streaming preenchido ---
         AtualizarBGM();

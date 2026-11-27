@@ -19,6 +19,13 @@
 Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador é colocado dentro de uma representação do interior de uma IA, onde precisa **resolver quizzes, interpretar informações, tomar decisões, solucionar puzzles e enfrentar as consequências de seus próprios hábitos de uso da tecnologia**.
 
 ---
+
+## 🎮 Apresentação UtopIA
+
+Acesse a apresentação do projeto: [Apresentação UtopIA](https://canva.link/apresentacao-utopia)
+
+---
+
 ## 🛠️ Tecnologias Utilizadas
 
 * **Linguagem**: C.
@@ -612,6 +619,12 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 *Board geral de organização das User Stories — 2ª unidade.*
 
+<a href="assets/trello/board3.png">
+  <img src="assets/trello/board3.png" width="600">
+</a>
+
+*Board geral de organização das User Stories — Sprint 2*
+
 <details>
 
 <summary><strong>US01 — Exibir o menu principal</strong></summary>
@@ -766,6 +779,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US09](assets/storyboards/US_09_storyboard.png)
 
+[🗒️ Relato — US09](assets/relatos/US_09_relato.png)
+
+[🎥 Screen Cast — US09](https://youtu.be/dmdXdoxvx4w?si=bv3kBNpNyV92TZzD)
+
 </details>
 
 <details>
@@ -779,6 +796,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US10](assets/sketches/us10_sketche.png)
 
 [🎬 Storyboard — US10](assets/storyboards/US_10_storyboard.png)
+
+[🗒️ Relato — US10](assets/relatos/US_10_relato.png)
+
+[🎥 Screen Cast — US10](https://youtu.be/kirXXyiabmc?si=FdE_d4BfpeeZ0_z_)
 
 </details>
 
@@ -794,6 +815,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US11](assets/storyboards/US_11_storyboard.png)
 
+[🗒️ Relato — US11](assets/relatos/US_11_relato.png)
+
+[🎥 Screen Cast — US11](https://youtu.be/8d1fOxgNnM0?si=4SNYnUWr_0FdHH3D)
+
 </details>
 
 <details>
@@ -807,6 +832,8 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US12](assets/sketches/us12_sketche.png)
 
 [🎬 Storyboard — US12](assets/storyboards/US_12_storyboard.png)
+
+[🗒️ Relato — US12](assets/relatos/US_12_relato.png)
 
 </details>
 
@@ -822,6 +849,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US13](assets/storyboards/US_13_storyboard.png)
 
+[🗒️ Relato — US13](assets/relatos/US_13_relato.png)
+
+[🎥 Screen Cast — US13](https://youtu.be/QFn0ezQ_mpk?si=0GBkjPXe6Q2fIr9u)
+
 </details>
 
 <details>
@@ -835,6 +866,11 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US14](assets/sketches/us14_sketche.png)
 
 [🎬 Storyboard — US14](assets/storyboards/US_14_storyboard.png)
+
+[🗒️ Relato — US14](assets/relatos/US_14_relato.png)
+
+[🎥 Screen Cast — US14](https://youtu.be/isDSum5gURc?si=yDgbvFNLJRwjJAWB)
+
 
 </details>
 
@@ -850,6 +886,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US15](assets/storyboards/US_15_storyboard.png)
 
+[🗒️ Relato — US15](assets/relatos/US_15_relato.png)
+
+[🎥 Screen Cast — US15](https://youtu.be/oiA3AujOGFY?si=6CxhUkOE-dMCiXjZ)
+
 </details>
 
 <details>
@@ -863,6 +903,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US16](assets/sketches/us16_sketche.png)
 
 [🎬 Storyboard — US16](assets/storyboards/US_16_storyboard.png)
+
+[🗒️ Relato — US16](assets/relatos/US_16_relato.png)
+
+[🎥 Screen Cast — US16]()
 
 </details>
 
@@ -878,6 +922,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US17](assets/storyboards/US_17_storyboard.png)
 
+[🗒️ Relato — US17](assets/relatos/US_17_relato.png)
+
+[🎥 Screen Cast — US17](https://youtu.be/zc8of5FBHYU?si=5nvJNcjdetspsP39)
+
 </details>
 
 <details>
@@ -892,6 +940,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🎬 Storyboard — US18](assets/storyboards/US_18_storyboard.png)
 
+[🗒️ Relato — US18](assets/relatos/US_18_relato.png)
+
+[🎥 Screen Cast — US18](https://youtu.be/CbReH7areiw?si=_RLQJkkoPBkkXH26)
+
 </details>
 
 <details>
@@ -905,6 +957,10 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 [✏️ Sketch — US19](assets/sketches/us19_sketche.png)
 
 [🎬 Storyboard — US19](assets/storyboards/US_19_storyboard.png)
+
+[🗒️ Relato — US19](assets/relatos/US_19_relato.png)
+
+[🎥 Screen Cast — US19](https://youtu.be/l1-vPwGfdo4?si=VvGPLqeeQPD76t8f)
 
 </details>
 
@@ -1029,29 +1085,22 @@ O desenvolvimento do UtopIA foi acompanhado ao longo das semanas por meio do Jir
 
 ## 👥 Equipe
 
-1. **🎨 Interface Humano-Computador (IHC)**
+1. **📋 Gestão**
 
-   * **Filipe:** Desenvolvedor front end
-   * **Brenda Paiva:** Pesquisadora de IHC e UI/UX Designer
-   * **Áurea:** Visual Designer
+   * **Brenna:** Product Owner (PO)
+   * **Brenda Paiva:** Analista de Projetos
+   * **Ardilles:** Analista de Projetos e Testes
 
-2. **💻 Programação Imperativa e Funcional (PIF)**
+2. **💻 Desenvolvimento**
 
-   * **Messias:** Desenvolvedor Core
-   * **Lucas:** Desenvolvedor de Algoritmos
-   * **Brenna:** Desenvolvedora de Sistemas
+   * **Messias:** Tech Lead
+   * **Lucas:** Desenvolvedor Full Stack
+   * **Gabriel:** Quality Assurance (QA)
 
-3. **🏗️ Fundamentos de Desenvolvimento de Software (FDS)**
+3. **🎨 Design**
 
-   * **Ardilles:** Arquiteto de Software
-   * **Gabriel:** Scrum Master / Project Owner
-   * **Brenna:**  Product Owner (PO)
-
-4. **🧠 Lógica**
-
-   * **Lucas:** Designer de Puzzles
-   * **Gabriel:** Engenheiro de Regras
-   * **Brenna:** Analista de Conteúdo
+   * **Filipe:** Designer
+   * **Áurea:** Designer
 
 ---
 

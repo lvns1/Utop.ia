@@ -22,8 +22,10 @@ Em vez de apresentar o conteúdo exclusivamente de maneira teórica, o jogador �
 
 ## 🎮 Apresentação UtopIA
 
-Acesse a apresentação do projeto: [Apresentação UtopIA](https://canva.link/apresentacao-utopia)
+Acesse os materiais da apresentação do projeto:
 
+- **Slide:** [Apresentação UtopIA](https://canva.link/apresentacao-utopia)
+- **Vídeo:** [Assista à apresentação UtopIA](https://youtu.be/2lhpN_ZMDa0?si=8nqqRO6kW2XAbZHN)
 ---
 
 ## 🛠️ Tecnologias Utilizadas
@@ -906,7 +908,7 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 [🗒️ Relato — US16](assets/relatos/US_16_relato.png)
 
-[🎥 Screen Cast — US16]()
+[🎥 Screen Cast — US16](https://youtu.be/dml9BduKC-Y?si=MU2wC35Pd2E9aIu-)
 
 </details>
 
@@ -968,14 +970,13 @@ As User Stories foram utilizadas para representar as funcionalidades, necessidad
 
 ### 📂 Documentação do Projeto
 
-Os documentos abaixo reúnem os principais registros de pesquisa, análise, especificação e desenvolvimento do UtopIA.
+Os documentos abaixo reúnem os principais registros de pesquisa, análise, especificação, testes e desenvolvimento do UtopIA.
 
 <details>
 
 <summary><strong>📋 Requisitos e Planejamento</strong></summary>
 
 - [Definição de Pronto (DoD)](assets/docs/definição_de_pronto_dod.pdf)
-
 - [Documento de Requisitos do UtopIA](assets/docs/documento_de_requisitos_utopia.pdf)
 
 </details>
@@ -985,8 +986,16 @@ Os documentos abaixo reúnem os principais registros de pesquisa, análise, espe
 <summary><strong>🔍 Pesquisa e Análise</strong></summary>
 
 - [Pesquisa de Alucinação de IA](assets/docs/pesquisa_alucinação_de_ia.pdf)
-
 - [Avaliação Heurística do Wireframe](assets/docs/avaliação_heurística_do_wireframe.pdf)
+
+</details>
+
+<details>
+
+<summary><strong>🧪 Testes e Validação</strong></summary>
+
+- [Planejamento de Teste de Usabilidade](assets/docs/Planejamento%20de%20Teste%20de%20Usabilidade%20-%20Utop.IA.docx)
+- [Relatório de Teste de Usabilidade](assets/docs/Relat%C3%B3rio%20de%20teste%20de%20usabilidade%20-%20%20Squad%207%20%28Utop.IA%29.docx)
 
 </details>
 
@@ -995,8 +1004,8 @@ Os documentos abaixo reúnem os principais registros de pesquisa, análise, espe
 <summary><strong>⚙️ Desenvolvimento e Entregas</strong></summary>
 
 - [Entregável de Lógica](assets/docs/entregável_lógica_utopia.pdf)
-
 - [Relatório de Contribuições](assets/docs/relatorio_contribuicoes_utopia.pdf)
+- [Relatório Final de Gestão](assets/docs/Squad%207%20-%20AV2%20-%20Atividade%204_%20Diagnóstico%20e%20Otimização%20do%20Projeto%20Integrador%20com%20Inteligência%20Artificial.docx)
 
 </details>
 
@@ -1004,10 +1013,11 @@ Os documentos abaixo reúnem os principais registros de pesquisa, análise, espe
 
 ### 🎥 Screen Cast
 
-Apresentações em vídeo do protótipo de baixa fidelidade e do MVP do UtopIA.
+Apresentações em vídeo do protótipo de baixa fidelidade, do MVP e da versão final do UtopIA.
 
 - [▶️ Assistir ao Screen Cast — Protótipo Lo-Fi](https://youtu.be/dCDFLTai1D8?si=o-KndwSv8ooUi0Bw)
 - [▶️ Assistir ao Screen Cast — MVP](https://youtu.be/CMliOCfOi9g)
+- [▶️ Assistir ao Screen Cast — PIF (Versão Final)](https://youtu.be/4V4ZlJjaJ8k)
 
 ---
 

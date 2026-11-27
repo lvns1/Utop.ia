@@ -1061,6 +1061,12 @@ Projeto desenvolvido como parte do **Projeto Integrador**, unindo diferentes ár
 
 ---
 
+## 🎬 Vídeo de Apresentação
+
+[![YouTube](https://img.shields.io/badge/YouTube-Vídeo%20de%20Apresentação-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/2lhpN_ZMDa0)
+
+---
+
 <div align="center">
 
 ### 🧠 UTOPIA

@@ -87,6 +87,53 @@ static void SomarLuz(Vector2 pos, float raio, Color cor, float forca)
     }
 }
 
+// Soma uma luz ao longo de um segmento (laser, barreira, feixe): cai com a distância até a linha,
+// em vez de um círculo enorme no meio dela
+static void SomarLuzLinha(Vector2 a, Vector2 b, float raio, Color cor, float forca)
+{
+    if (raio < 2.0f || forca <= 0.0f)
+        return;
+
+    float cw = AREA_LUZ.width / (LUZ_COLUNAS - 1);
+    float ch = AREA_LUZ.height / (LUZ_LINHAS - 1);
+    int c0 = (int)floorf((fminf(a.x, b.x) - raio - AREA_LUZ.x) / cw), c1 = (int)ceilf((fmaxf(a.x, b.x) + raio - AREA_LUZ.x) / cw);
+    int l0 = (int)floorf((fminf(a.y, b.y) - raio - AREA_LUZ.y) / ch), l1 = (int)ceilf((fmaxf(a.y, b.y) + raio - AREA_LUZ.y) / ch);
+    if (c0 < 0) c0 = 0;
+    if (l0 < 0) l0 = 0;
+    if (c1 > LUZ_COLUNAS - 1) c1 = LUZ_COLUNAS - 1;
+    if (l1 > LUZ_LINHAS - 1)  l1 = LUZ_LINHAS - 1;
+
+    Vector2 ab = Vector2Subtract(b, a);
+    float comp2 = fmaxf(Vector2LengthSqr(ab), 0.0001f);
+    float kr = cor.r / 255.0f * forca, kg = cor.g / 255.0f * forca, kb = cor.b / 255.0f * forca;
+    float inv = 1.0f / (raio * raio);
+
+    for (int l = l0; l <= l1; l++) {
+        for (int c = c0; c <= c1; c++) {
+            Vector2 p = { AREA_LUZ.x + c * cw, AREA_LUZ.y + l * ch };
+            float u = Clamp(Vector2DotProduct(Vector2Subtract(p, a), ab) / comp2, 0.0f, 1.0f);
+            Vector2 perto = Vector2Add(a, Vector2Scale(ab, u));
+            float t = 1.0f - Vector2LengthSqr(Vector2Subtract(p, perto)) * inv;
+            if (t <= 0.0f) continue;
+            t *= t;
+            grade[l][c].r += kr * t;
+            grade[l][c].g += kg * t;
+            grade[l][c].b += kb * t;
+        }
+    }
+}
+
+// Luz de uma armadilha retangular: uma linha no eixo comprido (o laser corta a sala inteira)
+static void SomarLuzRetangulo(Rectangle r, float margem, Color cor, float forca)
+{
+    Vector2 c = { r.x + r.width / 2, r.y + r.height / 2 };
+    bool deitado = r.width >= r.height;
+    float curto = deitado ? r.height : r.width;
+    float meio = ((deitado ? r.width : r.height) - curto) / 2;
+    Vector2 eixo = deitado ? (Vector2){ meio, 0 } : (Vector2){ 0, meio };
+    SomarLuzLinha(Vector2Subtract(c, eixo), Vector2Add(c, eixo), curto / 2 + margem, cor, forca);
+}
+
 // Todas as fontes de luz da sala neste quadro
 static void JuntarLuzes(const Biblioteca *b, float tempo)
 {
@@ -103,17 +150,33 @@ static void JuntarLuzes(const Biblioteca *b, float tempo)
         float surgindo = (e->surgindo > 0.0f) ? 1.0f - e->surgindo / TEMPO_SURGINDO : 1.0f;
         float forca = (e->elite ? 0.6f : 0.45f) + ((e->flash > 0.0f) ? 0.4f : 0.0f);
         SomarLuz(e->pos, (e->raio * 3.0f + 24.0f) * surgindo, DEF_INIMIGOS[e->tipo].cor, forca);
+
+        if (e->tipo == INIMIGO_SENTINELA && e->estado == 2)           // o feixe acende o chão por onde passa
+            SomarLuzLinha(e->pos, e->fimFeixe, 46.0f, (Color){ 170, 235, 255, 255 }, 0.8f);
+        if (e->tipo == INIMIGO_FIREWALL && e->estado == 2) {          // a barreira de energia
+            Vector2 a, c;
+            RogueBarreiraFirewall(e, &a, &c);
+            SomarLuzLinha(a, c, 34.0f, (Color){ 0, 228, 48, 255 }, 0.45f);
+        }
     }
     if (b->chefe.ativo)
         SomarLuz(b->chefe.pos, 170.0f, (Color){ 255, 70, 220, 255 }, 0.6f + ((b->chefe.flash > 0.0f) ? 0.3f : 0.0f));
 
-    // Tiros: cada um ilumina o chão por onde passa
+    // Tiros: cada um ilumina o chão por onde passa. Armas de muitas balas por disparo (a Fragmentadora
+    // solta 7 ou mais de uma vez) acendem menos cada uma: juntas, iluminavam como um holofote
     for (int i = 0; i < MAX_PROJETEIS; i++) {
         const Projetil *p = &b->proj[i];
         if (!p->ativo) continue;
-        if (p->alvoDedutivo != 0)  SomarLuz(p->pos, 70.0f, GOLD, 0.6f);
-        else if (p->doJogador)     SomarLuz(p->pos, 34.0f + p->raio * 4.0f, p->secundario ? LIME : DEF_ARMAS[p->arma].cor, 0.5f);
-        else                       SomarLuz(p->pos, 30.0f + p->raio * 3.0f, (Color){ 255, 150, 50, 255 }, 0.55f);
+        if (p->alvoDedutivo != 0) {
+            SomarLuz(p->pos, 70.0f, GOLD, 0.6f);
+        } else if (p->doJogador) {
+            float balas = (float)DEF_ARMAS[p->arma].projeteis;
+            float forca = (balas > 1.0f && !p->secundario) ? 0.5f / sqrtf(balas) : 0.5f;
+            float raio = (balas > 1.0f && !p->secundario) ? 26.0f + p->raio * 2.0f : 34.0f + p->raio * 4.0f;
+            SomarLuz(p->pos, raio, p->secundario ? LIME : DEF_ARMAS[p->arma].cor, forca);
+        } else {
+            SomarLuz(p->pos, 30.0f + p->raio * 3.0f, (Color){ 255, 150, 50, 255 }, 0.55f);
+        }
     }
 
     // Explosões e mortes: um clarão rápido
@@ -129,15 +192,21 @@ static void JuntarLuzes(const Biblioteca *b, float tempo)
         if (a->ativo) SomarLuz(a->pos, a->raio * 1.4f + 10.0f, a->cor, 0.55f);
     }
 
-    // Armadilhas: laranja avisando, vermelho ativas
-    for (int i = 0; i < MAX_ARMADILHAS; i++) {
+    // Armadilhas: laranja avisando, vermelho ativas. O laser acende só a faixa dele: vermelho piscando
+    // no aviso e na cor do raio (ciano e branco) quando dispara. Com a sala limpa elas ficam apagadas.
+    bool desligadas = b->limpa && !(b->tipoSala == SALA_DESAFIO && b->estadoDesafio == 1);
+    for (int i = 0; i < MAX_ARMADILHAS && !desligadas; i++) {
         const Armadilha *a = &b->arm[i];
         if (!a->ativo || a->fase == 0) continue;
         Color cor = (a->fase == 1) ? (Color){ 255, 170, 50, 255 } : (Color){ 255, 60, 60, 255 };
-        bool retangulo = a->r.width > 0.0f && a->r.height > 0.0f;
-        Vector2 c = retangulo ? (Vector2){ a->r.x + a->r.width / 2, a->r.y + a->r.height / 2 } : a->pos;
-        float raio = retangulo ? fmaxf(a->r.width, a->r.height) * 0.6f : a->raio * 1.4f + 10.0f;
-        SomarLuz(c, raio, cor, (a->fase == 1) ? 0.4f : 0.6f);
+        if (a->tipo == ARM_FEIXE) {
+            if (a->fase == 1) SomarLuzRetangulo(a->r, 22.0f, (Color){ 255, 50, 60, 255 }, (sinf(tempo * 31.4f) > 0.0f) ? 0.35f : 0.18f);
+            else              SomarLuzRetangulo(a->r, 40.0f, (Color){ 150, 235, 255, 255 }, 0.9f);
+        } else if (a->r.width > 0.0f && a->r.height > 0.0f) {
+            SomarLuzRetangulo(a->r, 30.0f, cor, (a->fase == 1) ? 0.4f : 0.6f);
+        } else {
+            SomarLuz(a->pos, a->raio * 1.4f + 10.0f, cor, (a->fase == 1) ? 0.4f : 0.6f);
+        }
     }
 
     // Portas: ciano quando a sala está limpa, um vermelho fraco enquanto está trancada
@@ -204,7 +273,9 @@ static void DesenharGrade(LuzPonto base, float kLuz, int modo)
             const LuzPonto *p[4] = { &grade[l][c], &grade[l + 1][c], &grade[l + 1][c + 1], &grade[l][c + 1] };
             const float px[4] = { x0, x0, x1, x1 }, py[4] = { y0, y1, y1, y0 };
             for (int k = 0; k < 4; k++) {           // em cima à esquerda, embaixo à esquerda, embaixo à direita, em cima à direita
-                rlColor4ub(Canal(base.r + p[k]->r * kLuz), Canal(base.g + p[k]->g * kLuz), Canal(base.b + p[k]->b * kLuz), 255);
+                // a luz somada tem teto: muitas fontes juntas (rajada, explosões) não estouram o chão em branco
+                rlColor4ub(Canal(base.r + fminf(p[k]->r, 1.0f) * kLuz), Canal(base.g + fminf(p[k]->g, 1.0f) * kLuz),
+                           Canal(base.b + fminf(p[k]->b, 1.0f) * kLuz), 255);
                 rlTexCoord2f(u, v);
                 rlVertex2f(px[k], py[k]);
             }

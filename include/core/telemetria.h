@@ -19,6 +19,13 @@
 #define TELEMETRIA_ATIVA     1
 #define ARQUIVO_TELEMETRIA   "utopia_teste.csv"
 
+// Quadros lentos (travadas): todo quadro que demorar mais que isto vira uma linha "quadro_lento"
+// no CSV, com a tela, a sala, quantos inimigos, tiros e partículas havia e a arma em uso
+#ifndef QUADRO_LENTO_MS
+#define QUADRO_LENTO_MS      50.0f
+#endif
+#define MAX_QUADROS_LENTOS   300      // por sessão (não enche o arquivo se o PC estiver lento o tempo todo)
+
 // ----- Variáveis compartilhadas -----
 
 // ----- Funções -----
